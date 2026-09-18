@@ -1,0 +1,497 @@
+{
+  "schema": "weekly_packet/v1",
+  "athlete_key": "example",
+  "tp_athlete_id": "9999999",
+  "as_of": "2026-09-18",
+  "settings": {
+    "ftp_watts": 250,
+    "weight_kg": 71.2,
+    "thresholds": {
+      "powerZones": [
+        {
+          "threshold": 250
+        },
+        {
+          "zone": 1,
+          "threshold": 137
+        }
+      ],
+      "heartRateZones": [
+        {
+          "threshold": 150,
+          "maximumHeartRate": 188
+        }
+      ]
+    }
+  },
+  "events": [
+    {
+      "id": "5002",
+      "date": "2026-10-04",
+      "name": "Example Local Crit",
+      "priority": "B"
+    },
+    {
+      "id": "5001",
+      "date": "2026-11-07",
+      "name": "Example Gravel Grit 100",
+      "priority": "A"
+    }
+  ],
+  "pmc_daily": [
+    {
+      "date": "2026-08-07",
+      "ctl": null,
+      "atl": null,
+      "tsb": null,
+      "tss_actual": null,
+      "tss_planned": null
+    },
+    {
+      "date": "2026-08-08",
+      "ctl": 48,
+      "atl": 50,
+      "tsb": 4,
+      "tss_actual": 55,
+      "tss_planned": 60
+    },
+    {
+      "date": "2026-08-09",
+      "ctl": 48.2,
+      "atl": 52.6,
+      "tsb": 3.8,
+      "tss_actual": 65,
+      "tss_planned": 68
+    },
+    {
+      "date": "2026-08-10",
+      "ctl": 48.3,
+      "atl": 54.9,
+      "tsb": 3.3,
+      "tss_actual": 75,
+      "tss_planned": 76
+    },
+    {
+      "date": "2026-08-11",
+      "ctl": 48.5,
+      "atl": 56.7,
+      "tsb": 2.4,
+      "tss_actual": 0,
+      "tss_planned": 0
+    },
+    {
+      "date": "2026-08-12",
+      "ctl": 48.6,
+      "atl": 57.8,
+      "tsb": 1.2,
+      "tss_actual": 95,
+      "tss_planned": 92
+    },
+    {
+      "date": "2026-08-13",
+      "ctl": 48.8,
+      "atl": 58,
+      "tsb": -0.1,
+      "tss_actual": 55,
+      "tss_planned": 60
+    },
+    {
+      "date": "2026-08-14",
+      "ctl": 48.9,
+      "atl": 57.3,
+      "tsb": -1.6,
+      "tss_actual": 65,
+      "tss_planned": 68
+    },
+    {
+      "date": "2026-08-15",
+      "ctl": 49.1,
+      "atl": 55.8,
+      "tsb": -3.1,
+      "tss_actual": 75,
+      "tss_planned": 76
+    },
+    {
+      "date": "2026-08-16",
+      "ctl": 49.2,
+      "atl": 53.7,
+      "tsb": -4.5,
+      "tss_actual": 85,
+      "tss_planned": 84
+    },
+    {
+      "date": "2026-08-17",
+      "ctl": 49.4,
+      "atl": 51.1,
+      "tsb": -5.8,
+      "tss_actual": 95,
+      "tss_planned": 92
+    },
+    {
+      "date": "2026-08-18",
+      "ctl": 49.5,
+      "atl": 48.5,
+      "tsb": -6.8,
+      "tss_actual": 0,
+      "tss_planned": 0
+    },
+    {
+      "date": "2026-08-19",
+      "ctl": 49.7,
+      "atl": 46,
+      "tsb": -7.5,
+      "tss_actual": 65,
+      "tss_planned": 68
+    },
+    {
+      "date": "2026-08-20",
+      "ctl": 49.8,
+      "atl": 43.9,
+      "tsb": -7.9,
+      "tss_actual": 75,
+      "tss_planned": 76
+    },
+    {
+      "date": "2026-08-21",
+      "ctl": 50,
+      "atl": 42.6,
+      "tsb": -8,
+      "tss_actual": 85,
+      "tss_planned": 84
+    },
+    {
+      "date": "2026-08-22",
+      "ctl": 50.1,
+      "atl": 42,
+      "tsb": -7.6,
+      "tss_actual": 95,
+      "tss_planned": 92
+    },
+    {
+      "date": "2026-08-23",
+      "ctl": 50.3,
+      "atl": 42.3,
+      "tsb": -6.9,
+      "tss_actual": 55,
+      "tss_planned": 60
+    },
+    {
+      "date": "2026-08-24",
+      "ctl": 50.4,
+      "atl": 43.5,
+      "tsb": -5.9,
+      "tss_actual": 65,
+      "tss_planned": 68
+    },
+    {
+      "date": "2026-08-25",
+      "ctl": 50.6,
+      "atl": 45.4,
+      "tsb": -4.7,
+      "tss_actual": 0,
+      "tss_planned": 0
+    },
+    {
+      "date": "2026-08-26",
+      "ctl": 50.7,
+      "atl": 47.8,
+      "tsb": -3.3,
+      "tss_actual": 85,
+      "tss_planned": 84
+    },
+    {
+      "date": "2026-08-27",
+      "ctl": 50.9,
+      "atl": 50.4,
+      "tsb": -1.8,
+      "tss_actual": 95,
+      "tss_planned": 92
+    },
+    {
+      "date": "2026-08-28",
+      "ctl": 51,
+      "atl": 53,
+      "tsb": -0.3,
+      "tss_actual": 55,
+      "tss_planned": 60
+    },
+    {
+      "date": "2026-08-29",
+      "ctl": 51.2,
+      "atl": 55.3,
+      "tsb": 1.1,
+      "tss_actual": 65,
+      "tss_planned": 68
+    },
+    {
+      "date": "2026-08-30",
+      "ctl": 51.3,
+      "atl": 56.9,
+      "tsb": 2.3,
+      "tss_actual": 75,
+      "tss_planned": 76
+    },
+    {
+      "date": "2026-08-31",
+      "ctl": 51.5,
+      "atl": 57.9,
+      "tsb": 3.2,
+      "tss_actual": 85,
+      "tss_planned": 84
+    },
+    {
+      "date": "2026-09-01",
+      "ctl": 51.6,
+      "atl": 57.9,
+      "tsb": 3.8,
+      "tss_actual": 0,
+      "tss_planned": 0
+    },
+    {
+      "date": "2026-09-02",
+      "ctl": 51.8,
+      "atl": 57.1,
+      "tsb": 4,
+      "tss_actual": 55,
+      "tss_planned": 60
+    },
+    {
+      "date": "2026-09-03",
+      "ctl": 51.9,
+      "atl": 55.5,
+      "tsb": 3.9,
+      "tss_actual": 65,
+      "tss_planned": 68
+    },
+    {
+      "date": "2026-09-04",
+      "ctl": 52.1,
+      "atl": 53.3,
+      "tsb": 3.4,
+      "tss_actual": 75,
+      "tss_planned": 76
+    },
+    {
+      "date": "2026-09-05",
+      "ctl": 52.2,
+      "atl": 50.7,
+      "tsb": 2.5,
+      "tss_actual": 85,
+      "tss_planned": 84
+    },
+    {
+      "date": "2026-09-06",
+      "ctl": 52.4,
+      "atl": 48.1,
+      "tsb": 1.4,
+      "tss_actual": 95,
+      "tss_planned": 92
+    },
+    {
+      "date": "2026-09-07",
+      "ctl": 52.5,
+      "atl": 45.6,
+      "tsb": 0.1,
+      "tss_actual": 55,
+      "tss_planned": 60
+    },
+    {
+      "date": "2026-09-08",
+      "ctl": 52.7,
+      "atl": 43.7,
+      "tsb": -1.4,
+      "tss_actual": 0,
+      "tss_planned": 0
+    },
+    {
+      "date": "2026-09-09",
+      "ctl": 52.8,
+      "atl": 42.4,
+      "tsb": -2.9,
+      "tss_actual": 75,
+      "tss_planned": 76
+    },
+    {
+      "date": "2026-09-10",
+      "ctl": 53,
+      "atl": 42,
+      "tsb": -4.3,
+      "tss_actual": 85,
+      "tss_planned": 84
+    },
+    {
+      "date": "2026-09-11",
+      "ctl": 53.1,
+      "atl": 42.5,
+      "tsb": -5.6,
+      "tss_actual": 95,
+      "tss_planned": 92
+    },
+    {
+      "date": "2026-09-12",
+      "ctl": 53.3,
+      "atl": 43.7,
+      "tsb": -6.7,
+      "tss_actual": 55,
+      "tss_planned": 60
+    },
+    {
+      "date": "2026-09-13",
+      "ctl": 53.4,
+      "atl": 45.7,
+      "tsb": -7.5,
+      "tss_actual": 65,
+      "tss_planned": 68
+    },
+    {
+      "date": "2026-09-14",
+      "ctl": 53.6,
+      "atl": 48.2,
+      "tsb": -7.9,
+      "tss_actual": 75,
+      "tss_planned": 76
+    },
+    {
+      "date": "2026-09-15",
+      "ctl": 53.7,
+      "atl": 50.8,
+      "tsb": -8,
+      "tss_actual": 0,
+      "tss_planned": 0
+    },
+    {
+      "date": "2026-09-16",
+      "ctl": 53.9,
+      "atl": 53.4,
+      "tsb": -7.7,
+      "tss_actual": 95,
+      "tss_planned": 92
+    },
+    {
+      "date": "2026-09-17",
+      "ctl": 54,
+      "atl": 55.6,
+      "tsb": -7,
+      "tss_actual": 55,
+      "tss_planned": 60
+    }
+  ],
+  "workouts": [
+    {
+      "workout_id": "w-1001",
+      "date": "2026-09-14",
+      "title": "Endurance 2.5h",
+      "type_id": 2,
+      "dur_planned_h": 2.5,
+      "dur_actual_h": 2.6,
+      "tss_planned": 110,
+      "tss_actual": 118,
+      "if_actual": 0.66,
+      "np": 178
+    },
+    {
+      "workout_id": "w-1002",
+      "date": "2026-09-16",
+      "title": "Threshold 3x12",
+      "type_id": 2,
+      "dur_planned_h": 1.25,
+      "dur_actual_h": 1.3,
+      "tss_planned": 85,
+      "tss_actual": 88,
+      "if_actual": 0.89,
+      "np": 231
+    },
+    {
+      "workout_id": "w-1003",
+      "date": "2026-09-18",
+      "title": "Rest Day",
+      "type_id": 7,
+      "dur_planned_h": 0,
+      "dur_actual_h": null,
+      "tss_planned": 0,
+      "tss_actual": null,
+      "if_actual": null,
+      "np": null
+    },
+    {
+      "workout_id": "w-1004",
+      "date": "2026-09-20",
+      "title": "Long Gravel Ride",
+      "type_id": 2,
+      "dur_planned_h": 4,
+      "dur_actual_h": null,
+      "tss_planned": 190,
+      "tss_actual": null,
+      "if_actual": null,
+      "np": null
+    },
+    {
+      "workout_id": "w-1005",
+      "date": "2026-09-25",
+      "title": "VO2 5x4",
+      "type_id": 2,
+      "dur_planned_h": 1.5,
+      "dur_actual_h": null,
+      "tss_planned": 95,
+      "tss_actual": null,
+      "if_actual": null,
+      "np": null
+    }
+  ],
+  "notes": [
+    {
+      "note_id": "n-201",
+      "date": "2026-09-14",
+      "title": "Week of Sep 14",
+      "description": "Threshold week. Long ride Sunday, keep it conversational the first hour.",
+      "comments": [
+        {
+          "id": "c-1",
+          "date": "2026-09-15",
+          "author": "Example Athlete",
+          "text": "Felt strong on the long ride, legs a bit heavy by hour 3."
+        }
+      ]
+    },
+    {
+      "note_id": "n-202",
+      "date": "2026-09-17",
+      "title": "Mid-week check-in",
+      "description": "Legs should be fresher after yesterday off. Hit the Thursday numbers.",
+      "comments": []
+    }
+  ],
+  "source_manifest": {
+    "captured_at": "2026-09-18T13:05:00.000Z",
+    "endpoints": [
+      {
+        "path": "/fitness/v1/athletes/9999999/settings",
+        "status": 200
+      },
+      {
+        "path": "/fitness/v6/athletes/9999999/events/2026-09-18/2027-03-17",
+        "status": 200
+      },
+      {
+        "path": "/fitness/v1/athletes/9999999/reporting/performancedata/2026-08-07/2026-09-17",
+        "status": 200
+      },
+      {
+        "path": "/fitness/v6/athletes/9999999/workouts/2026-08-07/2026-10-02",
+        "status": 200
+      },
+      {
+        "path": "/fitness/v3/athletes/9999999/calendarNote/2026-08-01/2026-10-02",
+        "status": 200
+      },
+      {
+        "path": "/fitness/v1/athletes/9999999/calendarNote/n-201/comments",
+        "status": 200
+      },
+      {
+        "path": "/fitness/v1/athletes/9999999/calendarNote/n-202/comments",
+        "status": 204
+      }
+    ]
+  }
+}
