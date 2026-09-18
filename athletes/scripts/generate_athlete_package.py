@@ -1533,19 +1533,38 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
     # sol review): they ship as a blank graph. Same mechanism as knee-safety.
     _extra_excluded_ids = frozenset(_extra_excluded_ids) | library_selector.structureless_item_ids(idx)
 
+    # Variety policy block identity: the engine's block_number advances
+    # only at a PHASE change (a 12-week base is one block_number; a 4-week
+    # coached block whose W1 sits in a different phase is two). Spread is
+    # judged per mesocycle in the coaching sense instead: a new meso opens
+    # on the first load week after a recovery/testing week, regardless of
+    # phase. Taper and race weeks stay in the meso that precedes them.
+    _meso = 0
+    _prev_week_type = None
     for bw in bb_plan.get('weeks', []):
         plan_week = bw.get('plan_week', bw.get('week_num', 0))
         week_in_block = bw.get('week_num', 1)
         block_number = bw.get('block_number', 1)
         phase = bw.get('phase')
         week_type = bw.get('week_type')
+        # Only a recovery week closes a meso; the week after it (load, or a
+        # re-test week that opens the next block) starts the new one.
+        if week_type in ('load', 'testing') and _prev_week_type == 'recovery':
+            _meso += 1
+        _prev_week_type = week_type
+        bw['block_id'] = ('meso', _meso)
         touched = False
+        _filler_ordinal = 0
         for bd in bw.get('days', []):
             day_abbrev = bd.get('day')
             if (plan_week, day_abbrev) in excluded_calendar_slots:
                 continue
             if not _library_selection_in_scope(bd):
                 continue
+            _slot_filler_ordinal = None
+            if bd.get('role') == 'filler':
+                _slot_filler_ordinal = _filler_ordinal
+                _filler_ordinal += 1
 
             canonical_name = bd.get('name')
             # R1 follow-up 3c: remap a torque/standing-by-construction
@@ -1573,6 +1592,11 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
                 'week_type': week_type,
                 'series_key': (block_number, day_abbrev, canonical_name),
                 'week_in_block': week_in_block,
+                # Variety policy (2026-09-18): block spread keys on the
+                # global block number; the filler ordinal drives the
+                # easy-day library rotation.
+                'block_id': bw['block_id'],
+                'filler_ordinal': _slot_filler_ordinal,
                 # R3: plan_week/day extend the non-series rotation seed and
                 # key the same-week hard-duplicate check.
                 'plan_week': plan_week,
@@ -1621,6 +1645,15 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
     # list D9's fallback reporting already writes to library_fallbacks.json
     # and renders under coaching_brief.md's LIBRARY FALLBACKS section.
     fallbacks.extend(sorted(lint_exclusions.values(), key=lambda rec: rec['item_id']))
+
+    # Variety rule 5: the spread report rides on the plan dict (the return
+    # value is the D9 fallback list, a contract intake_to_plan reads). The
+    # selector memory rides along too: the post-trim recovery rebalance in
+    # generate_zwo_files re-selects days and must see the same used_items /
+    # series_state, and the report is rebuilt after it (bb_plan is never
+    # serialised -- only bb_plan['library_variety'] is).
+    bb_plan['_library_selection_state'] = {'used_items': used_items, 'series_state': series_state}
+    bb_plan['library_variety'] = library_selector.variety_report(bb_plan, idx, series_state)
 
     return fallbacks
 
@@ -1690,6 +1723,7 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
                 'day_cap_min': (day_caps or {}).get(day.get('day')),
                 'role': day.get('role'), 'phase': bw.get('phase'),
                 'series_key': None, 'week_in_block': bw.get('week_num', 1),
+                'block_id': bw.get('block_id', bw.get('block_number')),
                 'athlete_seed': athlete_seed, 'race_demands': False,
                 'week_type': 'recovery',
                 'plan_week': bw.get('plan_week'), 'day': day.get('day'),
@@ -2223,12 +2257,29 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         # floor; day caps remain hard inside the selector.
         if _library_selection_enabled:
             from tp_library_snapshot import load_index as _load_tp_index
+            _tp_index = _load_tp_index()
+            # Same selector memory as the first pass (variety policy 2026-09-18:
+            # a fresh {} here let this pass re-place an item already used in
+            # the block, and the report written earlier described the wrong plan).
+            _sel_state = _bb_plan.get('_library_selection_state') or {}
             _rebalance_recovery_weeks_post_resolution(
                 _bb_plan, day_caps=_bb_day_caps or {}, athlete_seed=_seed,
                 session_floor_min=_session_floor_min,
-                series_state={}, used_items={}, index=_load_tp_index(),
+                series_state=_sel_state.get('series_state', {}),
+                used_items=_sel_state.get('used_items', {}), index=_tp_index,
                 lint_exclusions={}, discipline=_bb_discipline,
-                extra_excluded_ids=library_selector_module.structureless_item_ids(_load_tp_index()))
+                extra_excluded_ids=library_selector_module.structureless_item_ids(_tp_index))
+            # Variety rule 5: the spread report describes the plan as shipped,
+            # so it is rebuilt and written after the last mutation of
+            # day['library_resolution'] (same short-lived athlete_dir as
+            # library_fallbacks.json; copied out by generate_athlete_package).
+            _bb_plan['library_variety'] = library_selector_module.variety_report(
+                _bb_plan, _tp_index, _sel_state.get('series_state'))
+            try:
+                (athlete_dir / 'library_variety.json').write_text(
+                    json.dumps(_bb_plan['library_variety'], indent=2) + '\n')
+            except OSError:
+                pass
 
         # Build lookup: (plan_week, day_abbrev) → block plan day data.
         # week_in_block rides along for series numbering in workout titles
@@ -5509,6 +5560,10 @@ def generate_athlete_package(athlete_id: str) -> dict:
         if _private_fallbacks.is_file():
             (athlete_dir / 'library_fallbacks.json').write_text(
                 _private_fallbacks.read_text(encoding='utf-8'), encoding='utf-8')
+        _private_variety = _authored_dir / 'library_variety.json'
+        if _private_variety.is_file():
+            (athlete_dir / 'library_variety.json').write_text(
+                _private_variety.read_text(encoding='utf-8'), encoding='utf-8')
     detail(f"Authored {len(zwo_files)} canonical workout sessions")
     control = canonical_model['athlete']
     detail(f"Canonical control: {control['control_metric']} ({control['control_basis']})")

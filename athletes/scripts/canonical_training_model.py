@@ -774,8 +774,15 @@ def validate_canonical_model(model: Dict[str, Any]) -> None:
             raise CanonicalModelError("athlete-visible title contains an internal token")
         description = str(session.get("description") or "")
         if description and sanitize_athlete_description(description) != description:
+            # Name the session and the first line the sanitizer would
+            # change -- a bare "contains compiler-only copy" once cost a
+            # rebuild to locate (2026-09-18).
+            _clean_lines = sanitize_athlete_description(description).splitlines()
+            _offending = next(
+                (line for line in description.splitlines() if line not in _clean_lines), "")
             raise CanonicalModelError(
-                "athlete-visible description contains compiler-only copy")
+                "athlete-visible description contains compiler-only copy: "
+                f"{session.get('title') or session.get('date') or '?'!s} -> {_offending[:120]!r}")
         for segment in session.get("segments") or []:
             target = segment.get("target") or {}
             if target.get("type") not in TARGET_TYPES:

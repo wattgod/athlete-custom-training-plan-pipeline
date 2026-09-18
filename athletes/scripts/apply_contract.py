@@ -69,7 +69,11 @@ MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS = 360
 _VISIBLE_INTERNAL_TAG = re.compile(
     r"\[[A-Z][A-Z0-9 _-]{0,40}:\s*[^\]]*\]", re.IGNORECASE)
 _FUEL_TAG = re.compile(
-    r"^\[(FUEL|LONG-RIDE FUEL|RACE FUEL):\s*([^\]]+)\]\s*$",
+    # Any "<TIER> FUEL" label: fueling_policy's HIGH / LONG-RIDE / RACE tiers
+    # and the curated copy's own "[MODERATE FUEL: ...]" (2026-09-18: a
+    # quality-day pick shipped "[HIGH FUEL: ...]" and the contract rejected
+    # its own tag as an internal token; MODERATE FUEL sits in 4 library items).
+    r"^\[((?:[A-Z][A-Z -]*)?FUEL):\s*([^\]]+)\]\s*$",
     re.IGNORECASE,
 )
 _ATHLETE_WEEK_BOILERPLATE = re.compile(
