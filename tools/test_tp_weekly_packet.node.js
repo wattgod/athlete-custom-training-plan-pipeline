@@ -130,14 +130,14 @@ test('mapWorkouts maps fields, sorts by date, drops rows outside the window', ()
   const raw = {
     workouts: [
       { workoutId: 'w2', workoutDay: '2026-09-19T00:00:00', title: 'Threshold', workoutTypeValueId: 2, totalTimePlanned: 1.5, tssPlanned: 90 },
-      { workoutId: 'w1', workoutDay: '2026-09-18T00:00:00', title: 'Endurance', workoutTypeValueId: 2, totalTimePlanned: 2, tssActual: 110, ifActual: 0.68 },
+      { workoutId: 'w1', workoutDay: '2026-09-18T00:00:00', title: 'Endurance', workoutTypeValueId: 2, totalTimePlanned: 2, totalTime: 1.9, tssActual: 110, if: 0.68 },
       { workoutId: 'w0', workoutDay: '2026-01-01T00:00:00', title: 'Too old' },
     ],
   };
   assert.deepStrictEqual(mapWorkouts(raw, '2026-09-18', '2026-09-30'), [
     {
       workout_id: 'w1', date: '2026-09-18', title: 'Endurance', type_id: 2,
-      dur_planned_h: 2, dur_actual_h: null, tss_planned: null, tss_actual: 110,
+      dur_planned_h: 2, dur_actual_h: 1.9, tss_planned: null, tss_actual: 110,
       if_actual: 0.68, np: null,
     },
     {

@@ -199,6 +199,8 @@ def _render_athlete(athlete_id: str, manifest: Mapping[str, Any], run_dir: Path)
         demo_hours = demonstrated.get("hours_6wk")
         demo_tss = demonstrated.get("tss_6wk")
         ctl = demonstrated.get("ctl")
+        if isinstance(ctl, (int, float)):
+            ctl = round(ctl)
         rows = [(w.get("week"), w.get("hours"), w.get("tss")) for w in per_week]
         block_table = _table(["week", "hours", "TSS"], rows)
         demo_line = (

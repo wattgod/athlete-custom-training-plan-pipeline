@@ -55,7 +55,7 @@ Verbatim (not renormalized) subset of `GET /fitness/v1/athletes/{id}/settings`:
 | Field | Type | Source |
 |---|---|---|
 | `ftp_watts` | number\|null | `powerZones[0].threshold` |
-| `weight_kg` | number\|null | `weight` (TP stores metric internally; pass through raw, do not re-convert) |
+| `weight_kg` | number\|null | `weight` when present. The live `/settings` response carries no weight field at all (verified 2026-09-18 on a coached athlete), so this is null in practice; the profile keeps its own weight. |
 | `thresholds` | object | **Raw, unmodified** `{ powerZones, heartRateZones }` sub-objects from the settings response, exactly as returned. This is the "thresholds raw" field the spec calls for — never derive zone math from it in this script. |
 
 ## `events[]`
@@ -89,10 +89,10 @@ One row per calendar day in the window (gaps filled with `null` metrics, never d
 | `title` | string | `row.title` |
 | `type_id` | number\|null | `row.workoutTypeValueId` |
 | `dur_planned_h` | number\|null | `row.totalTimePlanned` (TP reports this in hours already) |
-| `dur_actual_h` | number\|null | `row.totalTimeActual` |
+| `dur_actual_h` | number\|null | `row.totalTime` (live v6 field, verified 2026-09-18; `totalTimeActual` accepted as a fallback) |
 | `tss_planned` | number\|null | `row.tssPlanned` |
 | `tss_actual` | number\|null | `row.tssActual` (unverified field name — see "Endpoint proof") |
-| `if_actual` | number\|null | `row.ifActual` (unverified field name) |
+| `if_actual` | number\|null | `row.if` (live v6 field, verified 2026-09-18) |
 | `np` | number\|null | `row.normalizedPowerActual` (unverified field name) |
 
 ## `notes[]`

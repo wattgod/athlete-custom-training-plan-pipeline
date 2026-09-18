@@ -518,3 +518,14 @@ def test_a_block_that_has_not_started_is_never_pulled_earlier(tmp_path):
     assert diff.window["rotate_steps"] == 0
     assert not [c for c in diff.profile_changes if c["path"].startswith("fulfillment.")]
     assert not [c for c in diff.profile_changes if c["path"] == "coached_block.week_types"]
+
+
+def test_same_date_event_with_a_different_spelling_is_not_added_again(tmp_path):
+    athlete_dir = tmp_path / "race-bound-test"
+    _write_profile(athlete_dir, _race_bound_profile())
+    packet = _packet()
+    packet["events"] = [{"id": "e-9", "date": _race_bound_profile()["target_race"]["date"],
+                         "name": "Schwangunk", "priority": None}]
+    diff = refresh(athlete_dir, packet, today="2026-09-18", repo_root=_REPO_ROOT)
+    assert not [c for c in diff.profile_changes if c["path"].endswith("_events[]")]
+    assert "Schwangunk" in diff.history_section

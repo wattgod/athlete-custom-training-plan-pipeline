@@ -325,10 +325,18 @@ def _apply_events(
     history section."""
     a_events = candidate.setdefault("a_events", [])
     b_events = candidate.setdefault("b_events", [])
+    target_race = candidate.get("target_race") or {}
+    known = list(a_events) + list(b_events)
+    if target_race.get("date"):
+        known.append({"date": target_race.get("date"), "name": target_race.get("name")})
     existing_keys = {
-        (str(e.get("date")), str(e.get("name")).strip().lower())
-        for e in (a_events + b_events)
+        (str(e.get("date")), str(e.get("name") or "").strip().lower()) for e in known
     }
+    # One event per date: a TP entry on a date the profile already races is
+    # the same event, however the coach spelled it in TP ("Schwangunk" vs
+    # "Shawangunk Grit", 2026-09-18). The spelling gap is reported, not
+    # written.
+    existing_dates = {str(e.get("date")) for e in known}
 
     seen: List[Dict[str, Any]] = []
     for event in packet.get("events") or []:
@@ -339,6 +347,11 @@ def _apply_events(
         key = (str(date_val), str(name_val).strip().lower())
         if key in existing_keys:
             seen.append({"event": event, "added": False, "target": None})
+            continue
+        if str(date_val) in existing_dates:
+            profile_name = next((e.get("name") for e in known if str(e.get("date")) == str(date_val)), None)
+            seen.append({"event": event, "added": False, "target": None,
+                         "name_mismatch": {"tp": name_val, "profile": profile_name}})
             continue
 
         priority = event.get("priority")

@@ -168,10 +168,12 @@
           title: String(firstDefined(row.title, '')),
           type_id: firstDefined(row.workoutTypeValueId),
           dur_planned_h: firstDefined(row.totalTimePlanned),
-          dur_actual_h: firstDefined(row.totalTimeActual),
+          // Live v6 field names (Ed 2026-09-02 readback, 2026-09-18):
+          // actual hours are `totalTime`, actual IF is `if`.
+          dur_actual_h: firstDefined(row.totalTime, row.totalTimeActual),
           tss_planned: firstDefined(row.tssPlanned),
           tss_actual: firstDefined(row.tssActual),
-          if_actual: firstDefined(row.ifActual, row.IF),
+          if_actual: firstDefined(row['if'], row.ifActual, row.IF),
           np: firstDefined(row.normalizedPowerActual, row.np),
         };
       })
