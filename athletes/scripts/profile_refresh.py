@@ -125,6 +125,23 @@ def _compute_window(profile: Dict[str, Any], today: date) -> Dict[str, Any]:
     target_race = profile.get("target_race") or {}
     race_date_str = target_race.get("date")
     effective_date = _next_monday(today)
+    fulfillment = profile.get("fulfillment") or {}
+    existing_start = None
+    try:
+        if fulfillment.get("effective_date"):
+            existing_start = _parse_date(fulfillment["effective_date"])
+    except (ValueError, TypeError):
+        existing_start = None
+    # A block that has not started yet is never pulled earlier (Forest
+    # 2026-09-18: block 2 opens 09-28, the run's next Monday was 09-21).
+    # The window only rolls FORWARD; rotate_steps = whole weeks elapsed
+    # since the block opened, so a skipped run still rotates the rhythm
+    # the right number of times.
+    if existing_start is not None and existing_start > effective_date:
+        effective_date = existing_start
+    rotate_steps = 0
+    if existing_start is not None and existing_start <= effective_date:
+        rotate_steps = (effective_date - existing_start).days // 7
 
     if race_date_str:
         race_date = _parse_date(race_date_str)
@@ -152,6 +169,7 @@ def _compute_window(profile: Dict[str, Any], today: date) -> Dict[str, Any]:
             "start": effective_date.isoformat(),
             "end": planning_horizon_end.isoformat(),
             "weeks": weeks_purchased,
+            "rotate_steps": rotate_steps,
         }
 
     planning_horizon_end = effective_date + timedelta(days=27)
@@ -163,6 +181,7 @@ def _compute_window(profile: Dict[str, Any], today: date) -> Dict[str, Any]:
         "start": effective_date.isoformat(),
         "end": planning_horizon_end.isoformat(),
         "weeks": weeks_purchased,
+        "rotate_steps": rotate_steps,
     }
 
 
@@ -196,7 +215,9 @@ def _apply_window(
     if window["mode"] == "targetless":
         coached_block = candidate.setdefault("coached_block", {})
         old_week_types = coached_block.get("week_types") or []
-        new_week_types = _rotate_week_types(old_week_types)
+        new_week_types = list(old_week_types)
+        for _ in range(int(window.get("rotate_steps") or 0)):
+            new_week_types = _rotate_week_types(new_week_types)
         if new_week_types and new_week_types != old_week_types:
             changes.append({
                 "path": "coached_block.week_types",

@@ -155,6 +155,7 @@ def test_race_bound_roll_shrinks_weeks_as_the_race_approaches(tmp_path):
         "start": "2026-10-05",
         "end": "2026-11-08",
         "weeks": 5,
+        "rotate_steps": 2,
     }
     changed = {c["path"]: c["new"] for c in diff.profile_changes}
     assert changed["fulfillment.effective_date"] == "2026-10-05"
@@ -193,6 +194,7 @@ def test_targetless_roll_advances_a_week_and_rotates_week_types(tmp_path):
         "start": "2026-10-05",
         "end": "2026-11-01",
         "weeks": 4,
+        "rotate_steps": 1,
     }
     changed = {c["path"]: c["new"] for c in diff.profile_changes}
     assert changed["coached_block.week_types"] == ["load", "load", "recovery", "load"]
@@ -499,3 +501,20 @@ def test_cli_with_write_flag_persists_profile_history_and_diff(tmp_path, monkeyp
     assert history_path.exists()
     assert "### Window" in history_path.read_text()
     assert (history_path.parent / "refresh_diff.json").exists()
+
+
+def test_a_block_that_has_not_started_is_never_pulled_earlier(tmp_path):
+    athlete_dir = tmp_path / "targetless-test"
+    profile = _targetless_profile()
+    profile["fulfillment"]["effective_date"] = "2026-10-12"
+    profile["fulfillment"]["planning_horizon_end"] = "2026-11-08"
+    _write_profile(athlete_dir, profile)
+    packet = _packet(athlete_key="targetless-test", tp_athlete_id=9000002,
+                      settings={"ftp_watts": 300, "weight_kg": 75.0})
+
+    diff = refresh(athlete_dir, packet, today="2026-10-01", repo_root=_REPO_ROOT)
+
+    assert diff.window["start"] == "2026-10-12"
+    assert diff.window["rotate_steps"] == 0
+    assert not [c for c in diff.profile_changes if c["path"].startswith("fulfillment.")]
+    assert not [c for c in diff.profile_changes if c["path"] == "coached_block.week_types"]

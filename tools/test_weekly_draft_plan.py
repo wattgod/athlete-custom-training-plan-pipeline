@@ -241,7 +241,9 @@ def test_holds_stop_the_build(env, stub_heavy_steps, monkeypatch):
 
     manifest = _run(env)
     assert manifest["status"] == "held"
-    assert manifest["refresh_diff"]["holds"] == refresh_diff["holds"]
+    # the loader mirrors code<->type; compare the fields the producer wrote
+    got = [{k: h[k] for k in ("type", "message", "sources")} for h in manifest["refresh_diff"]["holds"]]
+    assert got == refresh_diff["holds"]
     assert called == []  # generate_full_package never ran
 
 

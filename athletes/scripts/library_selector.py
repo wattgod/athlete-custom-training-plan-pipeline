@@ -1360,6 +1360,7 @@ def select(
     index: Optional[Mapping[str, Any]] = None,
     used_items: Optional[dict[Any, dict[str, Any]]] = None,
     lint_exclusions: Optional[dict[Any, dict[str, Any]]] = None,
+    extra_excluded_ids: frozenset = frozenset(),
 ) -> Optional[dict[str, Any]]:
     """Resolve a canonical slot to a curated TP library item, or None (D9).
 
@@ -1379,10 +1380,17 @@ def select(
     excluded from a pool this call touched because it carries a
     curation-consistency lint flag (GG_LIBRARY_LINT=0 disables the
     exclusion; flags are still computed upstream).
+
+    ``extra_excluded_ids`` (knee-safety fix 2026-09-17) is unioned with the
+    lint-excluded set for this call -- e.g. ``seated_only_excluded_ids`` for
+    an athlete whose derived bike_constraints carry 'seated_only'. It also
+    blocks a series from continuing onto an excluded item, the same way a
+    lint-flagged rung can never be advanced onto (T27).
     """
     index = index if index is not None else load_index()
     items = index["items"]
-    excluded_ids = _lint_excluded_ids(index)
+    _lint_ids = _lint_excluded_ids(index)
+    excluded_ids = _lint_ids | extra_excluded_ids
 
     canonical_name = slot["canonical_name"]
     if canonical_name in PINNED_TEST_ITEM_IDS:
@@ -1395,7 +1403,8 @@ def select(
     day_cap_min = slot.get("day_cap_min")
 
     pool = _qualifying_pool(items, library_keys, budget_min, day_cap_min, slot=slot,
-                            excluded_ids=excluded_ids, lint_exclusions=lint_exclusions)
+                            excluded_ids=_lint_ids, extra_excluded_ids=extra_excluded_ids,
+                            lint_exclusions=lint_exclusions)
     if not pool:
         return None
 
@@ -1679,6 +1688,30 @@ def variety_report(bb_plan: Mapping[str, Any], index: Mapping[str, Any],
     }
 
 
+_BANNED_CONCEPT_RE = re.compile(r"fatmax|fat\s*max|fartlek|fasted", re.I)  # mirrors ae_lint.BANNED_NAME_RE
+
+
+def banned_concept_item_ids(index: Mapping[str, Any]) -> frozenset:
+    """Curated items whose name or the first 400 chars of description carry a
+    banned concept (AE-3.11 / AE-6.3: FatMax, fartlek, fasted). ae_lint FAILs
+    the card at payload time; excluding the item at selection keeps the build
+    from stopping on a curated pick (Ari 2026-09-18: "RLP Compressed
+    Endurance - Prep Session V2" mentions fasted riding). Same mechanism as
+    the structure-less set (``extra_excluded_ids``); pinned tests exempt."""
+    if "items" not in index:
+        return frozenset()
+    pinned = set(PINNED_TEST_ITEM_IDS.values())
+    out = []
+    for item in index["items"]:
+        if item["item_id"] in pinned:
+            continue
+        name = str(item.get("name_base") or item.get("name") or "")
+        desc = str(item.get("description") or "")[:400]
+        if _BANNED_CONCEPT_RE.search(name) or _BANNED_CONCEPT_RE.search(desc):
+            out.append(item["item_id"])
+    return frozenset(out)
+
+
 def structureless_item_ids(index: Mapping[str, Any]) -> frozenset:
     """Curated items with no executable structure. They ship as a blank
     graph on the athlete's calendar (sol review 2026-09-17: "Muscle
@@ -1779,6 +1812,7 @@ def refit(
     series_state: Optional[dict[str, Any]] = None,
     index: Optional[Mapping[str, Any]] = None,
     lint_exclusions: Optional[dict[Any, dict[str, Any]]] = None,
+    extra_excluded_ids: frozenset = frozenset(),
 ) -> Optional[dict[str, Any]]:
     """Trim-step resolution: same routing/series constraints, next-shorter fit.
 
@@ -1789,10 +1823,15 @@ def refit(
     when nothing qualifies -- D9's loud fallback.
 
     ``lint_exclusions`` (T27): same threaded collector as ``select``.
+
+    ``extra_excluded_ids`` (knee-safety fix 2026-09-17): same threaded
+    exclusion set as ``select`` -- unioned with the lint-excluded set and
+    recorded under ``reason: "seated_only"`` when it's what excluded an item.
     """
     index = index if index is not None else load_index()
     items = index["items"]
-    excluded_ids = _lint_excluded_ids(index)
+    _lint_ids = _lint_excluded_ids(index)
+    excluded_ids = _lint_ids | extra_excluded_ids
 
     canonical_name = slot["canonical_name"]
     if canonical_name in PINNED_TEST_ITEM_IDS:
@@ -1809,7 +1848,8 @@ def refit(
     day_cap_min = slot.get("day_cap_min")
 
     pool = _qualifying_pool(items, library_keys, budget_min, day_cap_min, slot=slot,
-                            excluded_ids=excluded_ids, lint_exclusions=lint_exclusions)
+                            excluded_ids=_lint_ids, extra_excluded_ids=extra_excluded_ids,
+                            lint_exclusions=lint_exclusions)
     if not pool:
         return None
 

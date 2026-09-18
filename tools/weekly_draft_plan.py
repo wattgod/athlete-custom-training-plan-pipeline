@@ -170,8 +170,15 @@ def _draft_title(profile: Mapping[str, Any]) -> str:
     name = profile.get("name") or profile.get("athlete_id") or "Athlete"
     fulfillment = profile.get("fulfillment") or {}
     weeks = fulfillment.get("weeks_purchased")
-    race = (profile.get("target_race") or {}).get("name")
-    label = race or "Block"
+    target = profile.get("target_race") or {}
+    race = target.get("name")
+    # An unpicked event slot ("TBD -- Oct 24 event slot") is not a race name;
+    # label the draft by the block's phase instead.
+    if not race or str(target.get("status") or "").lower() == "unpicked" or str(race).upper().startswith("TBD"):
+        phase = (profile.get("coached_block") or {}).get("phase")
+        label = str(phase).replace("_", " ").title() if phase else "Block"
+    else:
+        label = race
     n_wk = f"{weeks}wk" if weeks else ""
     tail = " ".join(part for part in (label, n_wk) if part)
     return f"DRAFT — {name} — {tail}" if tail else f"DRAFT — {name}"
@@ -305,12 +312,22 @@ def _run_athlete_layer(
 # --------------------------------------------------------------------------
 
 def _load_refresh_diff(path: Path) -> dict:
+    """Normalise profile_refresh's RefreshDiff.as_dict() onto the keys this
+    module and the review page read. The producer writes ``profile_changes``,
+    ``holds[{code,...}]`` and ``window{start,end,weeks,mode}``; the assumed
+    shape (``writes``, ``holds[{type}]``, ``window_start``) is still accepted.
+    ``demonstrated`` (6-week load) is filled by the caller from the packet."""
     data = _read_json(path)
     if not isinstance(data, dict):
         data = {}
-    data.setdefault("window_start", None)
+    window = data.get("window") if isinstance(data.get("window"), dict) else {}
+    data.setdefault("window_start", window.get("start"))
     data.setdefault("holds", [])
-    data.setdefault("writes", [])
+    for hold in data["holds"]:
+        if isinstance(hold, dict):
+            hold.setdefault("type", hold.get("code", ""))
+            hold.setdefault("code", hold.get("type", ""))
+    data.setdefault("writes", data.get("profile_changes") or [])
     data.setdefault("standing_contradictions", [])
     data.setdefault("demonstrated", {})
     return data
@@ -482,6 +499,21 @@ def run(
     profile = _read_yaml(athlete_dir / "profile.yaml")
     rules = _read_yaml(rules_path)
     refresh_diff = _load_refresh_diff(refresh_diff_path)
+    # 6-week demonstrated load for the review page, straight from the packet.
+    if not refresh_diff.get("demonstrated"):
+        try:
+            sys.path.insert(0, str(repo_root / "athletes" / "scripts"))
+            import weekly_packet as _wp  # type: ignore
+            _load = _wp.load_6wk(packet)
+            _weeks = _load.get("weeks") or []
+            refresh_diff["demonstrated"] = {
+                "hours_6wk": round(sum(w.get("hours_actual") or 0 for w in _weeks) / max(1, len(_weeks)), 2),
+                "tss_6wk": round(sum(w.get("tss_actual") or 0 for w in _weeks) / max(1, len(_weeks)), 1),
+                "ctl": _load.get("ctl_latest"),
+                "weeks": _weeks,
+            }
+        except Exception as exc:  # noqa: BLE001 -- review-only data, never blocks a build
+            notes.append(f"demonstrated load unavailable: {type(exc).__name__}: {exc}")
     code_manifest = build_code_manifest(repo_root)
     inputs_sha256 = _inputs_hash(
         profile=profile, rules=rules, packet=packet, code_manifest=code_manifest,
@@ -552,6 +584,11 @@ def run(
     per_week = _per_week_totals(plan_payload, plan_dates)
     variety = _read_json(athlete_dir / "library_variety.json") or {}
     fallbacks = _read_json(athlete_dir / "library_fallbacks.json") or []
+    # library_fallbacks.json mixes slot fallbacks (no ``reason``) with per-item
+    # exclusion records (``reason`` = lint_excluded / seated_only); only the
+    # slots that rendered synthetic are the coach-facing count.
+    if isinstance(fallbacks, list):
+        fallbacks = [f for f in fallbacks if isinstance(f, dict) and not f.get("reason")]
 
     # 9. manifest + state
     manifest = _build_manifest(

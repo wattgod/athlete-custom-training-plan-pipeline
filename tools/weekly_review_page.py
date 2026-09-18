@@ -98,12 +98,22 @@ def _load_notes(run_dir: Path) -> list[dict]:
 _SENTENCE_RE = re.compile(r"(.+?[.!?])(\s|$)")
 
 
+_SKIP_OPENER_RE = re.compile(r"^(week\s+\d+\s+of\s+\d+|\d+[.)]|[-*])\s*[.:]?\s*$", re.I)
+
+
 def _first_sentence(text: str) -> str:
+    """First sentence that says something: "Week 1 of 7." style openers
+    and bare list markers are skipped."""
     text = (text or "").strip()
     if not text:
         return ""
-    match = _SENTENCE_RE.search(text)
-    return match.group(1).strip() if match else text
+    for raw in re.split(r"(?<=[.!?])\s+|\n+", text):
+        cand = raw.strip().lstrip("-*• ").strip()
+        if not cand or _SKIP_OPENER_RE.match(cand):
+            continue
+        match = _SENTENCE_RE.search(cand)
+        return (match.group(1).strip() if match else cand)
+    return ""
 
 
 def _monday_notes(notes: list[dict]) -> list[dict]:
@@ -116,7 +126,11 @@ def _monday_notes(notes: list[dict]) -> list[dict]:
         if d.weekday() == 0:  # Monday
             dated.append((d, note))
     dated.sort(key=lambda pair: pair[0])
-    return [note for _, note in dated]
+    # Prefer the weekly story notes ("Week 3: Build"); the Day-1 comment
+    # protocol shares the Monday and is not the message of the week. Fall
+    # back to every Monday note when no note is titled that way.
+    weekly = [n for _, n in dated if re.match(r"^\s*week\s+\d+\b", str(n.get("title") or ""), re.I)]
+    return weekly or [note for _, note in dated]
 
 
 def _first_name(name: str | None) -> str:

@@ -600,7 +600,11 @@ def _zwo_description(path):
 
 
 def _force_select_intensity_and_filler_only(slot, series_state=None, index=None, used_items=None,
-                                            lint_exclusions=None):
+                                            lint_exclusions=None, **_kwargs):
+    # ``**_kwargs`` absorbs ``extra_excluded_ids`` (structure-less / banned-
+    # concept / seated-only sets), which resolve_library_selections passes
+    # whenever the exclusion set is non-empty -- it always is on the real
+    # library (2026-09-18).
     """Resolve intensity/filler slots to a fixed curated item; leave
     long_ride slots unresolved so the synthetic-fallback branch (D9) is
     also exercised in the same render pass."""

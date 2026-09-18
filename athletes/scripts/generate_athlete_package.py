@@ -1531,7 +1531,9 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
     )
     # Structure-less curated items never resolve on a real build (2026-09-17,
     # sol review): they ship as a blank graph. Same mechanism as knee-safety.
-    _extra_excluded_ids = frozenset(_extra_excluded_ids) | library_selector.structureless_item_ids(idx)
+    _extra_excluded_ids = (frozenset(_extra_excluded_ids)
+                           | library_selector.structureless_item_ids(idx)
+                           | library_selector.banned_concept_item_ids(idx))
 
     # Variety policy block identity: the engine's block_number advances
     # only at a PHASE change (a 12-week base is one block_number; a 4-week
@@ -1613,9 +1615,16 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
                 # docstring). No slot requests TT-bike position work today.
                 'discipline': discipline,
             }
+            # extra_excluded_ids is passed only when non-empty -- test
+            # doubles across this codebase monkeypatch library_selector.
+            # select with the pre-existing (slot, series_state, index,
+            # used_items, lint_exclusions) signature, and an athlete with no
+            # seated_only constraint must not require every one of those to
+            # also accept the new keyword.
             resolution = library_selector.select(
                 slot, series_state=series_state, index=idx, used_items=used_items,
-                lint_exclusions=lint_exclusions)
+                lint_exclusions=lint_exclusions,
+                **({'extra_excluded_ids': _extra_excluded_ids} if _extra_excluded_ids else {}))
             if resolution is None:
                 fallbacks.append({
                     'plan_week': plan_week,
@@ -1670,6 +1679,12 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
     flags on real generations). Re-fit ONE easy resolved day at a time
     toward the band midpoint using the same selector machinery, never
     touching intensity or synthetic-pinned days.
+
+    ``extra_excluded_ids`` (knee-safety fix 2026-09-17, R1 follow-up 3a):
+    the same ``seated_only_excluded_ids`` set ``resolve_library_selections``
+    threads into its main resolution loop -- without it, a recovery-week
+    rebalance swap could re-introduce a torque/standing item this call
+    excluded elsewhere on the same plan.
     """
     from block_compliance import _preceding_load_average
     import library_selector
@@ -1731,7 +1746,8 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
             }
             replacement = library_selector.select(
                 slot, series_state=series_state, index=index,
-                used_items=used_items, lint_exclusions=lint_exclusions)
+                used_items=used_items, lint_exclusions=lint_exclusions,
+                **({'extra_excluded_ids': extra_excluded_ids} if extra_excluded_ids else {}))
             if (replacement is None or replacement['item_id'] == old['item_id']
                     or (need_more and replacement['tss'] <= old['tss'])
                     or (not need_more and replacement['tss'] >= old['tss'])):
@@ -2268,7 +2284,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 series_state=_sel_state.get('series_state', {}),
                 used_items=_sel_state.get('used_items', {}), index=_tp_index,
                 lint_exclusions={}, discipline=_bb_discipline,
-                extra_excluded_ids=library_selector_module.structureless_item_ids(_tp_index))
+                extra_excluded_ids=(library_selector_module.structureless_item_ids(_tp_index)
+                                    | library_selector_module.banned_concept_item_ids(_tp_index)))
             # Variety rule 5: the spread report describes the plan as shipped,
             # so it is rebuilt and written after the last mutation of
             # day['library_resolution'] (same short-lived athlete_dir as
