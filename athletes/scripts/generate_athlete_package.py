@@ -2285,7 +2285,10 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 used_items=_sel_state.get('used_items', {}), index=_tp_index,
                 lint_exclusions={}, discipline=_bb_discipline,
                 extra_excluded_ids=(library_selector_module.structureless_item_ids(_tp_index)
-                                    | library_selector_module.banned_concept_item_ids(_tp_index)))
+                                    | library_selector_module.banned_concept_item_ids(_tp_index)
+                                    | (library_selector_module.seated_only_excluded_ids(_tp_index)
+                                       if 'seated_only' in ((derived or {}).get('bike_constraints') or [])
+                                       else frozenset())))
             # Variety rule 5: the spread report describes the plan as shipped,
             # so it is rebuilt and written after the last mutation of
             # day['library_resolution'] (same short-lived athlete_dir as

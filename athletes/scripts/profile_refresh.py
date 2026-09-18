@@ -172,10 +172,12 @@ def _compute_window(profile: Dict[str, Any], today: date) -> Dict[str, Any]:
             "rotate_steps": rotate_steps,
         }
 
-    planning_horizon_end = effective_date + timedelta(days=27)
     existing_week_types = (profile.get("coached_block") or {}).get(
         "week_types") or []
     weeks_purchased = len(existing_week_types) if existing_week_types else 4
+    # validate_profile requires (end - start).days == weeks*7 - 1 -- a
+    # 2- or 3-week rhythm with a fixed +27d horizon would hold every week.
+    planning_horizon_end = effective_date + timedelta(days=weeks_purchased * 7 - 1)
     return {
         "mode": "targetless",
         "start": effective_date.isoformat(),
@@ -337,6 +339,17 @@ def _apply_events(
     # "Shawangunk Grit", 2026-09-18). The spelling gap is reported, not
     # written.
     existing_dates = {str(e.get("date")) for e in known}
+    c_events = candidate.get("c_events") if isinstance(candidate.get("c_events"), list) else None
+    # calculate_plan_dates lays a mini-taper overlay on EVERY b_events entry
+    # (no priority filter), so only a genuine A/B lands there. Anything
+    # inside the A-race week is reported, never written (review 2026-09-18).
+    race_week = None
+    if target_race.get("date"):
+        try:
+            rd = _parse_date(target_race["date"])
+            race_week = (rd - timedelta(days=rd.weekday()), rd + timedelta(days=6 - rd.weekday()))
+        except (ValueError, TypeError):
+            race_week = None
 
     seen: List[Dict[str, Any]] = []
     for event in packet.get("events") or []:
@@ -345,6 +358,13 @@ def _apply_events(
         if not date_val or not name_val:
             continue
         key = (str(date_val), str(name_val).strip().lower())
+        try:
+            ev_date = _parse_date(date_val)
+        except (ValueError, TypeError):
+            ev_date = None
+        if race_week and ev_date and race_week[0] <= ev_date <= race_week[1] and str(date_val) not in existing_dates:
+            seen.append({"event": event, "added": False, "target": None, "reason": "inside A-race week"})
+            continue
         if key in existing_keys:
             seen.append({"event": event, "added": False, "target": None})
             continue
@@ -356,13 +376,22 @@ def _apply_events(
 
         priority = event.get("priority")
         flagged = not priority
-        if str(priority or "").upper() == "A":
+        pri = str(priority or "").upper()
+        if pri == "A":
             target_list, target_name = a_events, "a_events"
-        else:
+        elif pri == "B":
             target_list, target_name = b_events, "b_events"
+        else:
+            # C / unset: never a taper overlay. Recorded on c_events when the
+            # profile has that list; otherwise reported only.
+            if c_events is None:
+                seen.append({"event": event, "added": False, "target": None,
+                             "reason": f"priority {priority!r}: reported, not written (no c_events list)"})
+                continue
+            target_list, target_name = c_events, "c_events"
 
         new_entry: Dict[str, Any] = {
-            "name": name_val, "date": date_val, "priority": priority or "B",
+            "name": name_val, "date": date_val, "priority": pri or "C",
         }
         if flagged:
             new_entry["flagged"] = True
@@ -563,6 +592,17 @@ def refresh(
             "message": "; ".join(errors),
             "sources": ["candidate_profile"],
         })
+
+    if changes and not holds:
+        try:
+            apply_changes_to_yaml_text(athlete_dir.joinpath("profile.yaml").read_text(encoding="utf-8"), changes)
+        except KeyError as exc:
+            holds.append({
+                "code": "profile_key_missing",
+                "message": f"profile.yaml has no {exc.args[0] if exc.args else '?'} section to write into; "
+                           "add the section (may be empty) and re-run",
+                "sources": ["profile.yaml", "refresh:profile_changes"],
+            })
 
     if holds:
         changes = []  # a hold blocks the entire write, not just one field

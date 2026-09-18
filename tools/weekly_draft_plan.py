@@ -375,10 +375,15 @@ def _inputs_hash(
     the packet's own ``fetched_at`` and ``source_manifest`` are the
     timestamp-shaped fields this module knows about; a finer per-field
     filter belongs to whichever module owns the packet schema."""
-    packet_fields = {
-        k: v for k, v in packet.items()
-        if k not in ("fetched_at", "source_manifest")
-    }
+    packet_fields = None
+    try:
+        import weekly_packet as _wp  # athletes/scripts on sys.path (see run())
+        packet_fields = _wp.decision_fields(packet)
+    except Exception:  # noqa: BLE001 -- fall back to the coarse filter
+        packet_fields = {
+            k: v for k, v in packet.items()
+            if k not in ("fetched_at", "source_manifest", "as_of", "pmc_daily", "workouts", "notes")
+        }
     payload = {
         "profile": profile,
         "rules": rules,
@@ -482,13 +487,31 @@ def run(
     run_dir = athlete_build_dir / f"weekly-{run_date.isoformat()}"
 
     notes: list[str] = []
+    _scripts = str(repo_root / "athletes" / "scripts")
+    if _scripts not in sys.path:
+        sys.path.insert(0, _scripts)
 
     if not packet_path.exists():
         raise WeeklyDraftError(f"packet not found: {packet_path}")
     packet = json.loads(packet_path.read_text())
 
-    # 1. exclusions
-    _check_exclusions(packet, notes)
+    # 1. exclusions -- a code-excluded athlete is a held manifest (spec B
+    # decision 2), never an exception that drops them off the review page.
+    try:
+        _check_exclusions(packet, notes)
+    except ExcludedAthleteError as exc:
+        profile = _read_yaml(athlete_dir / "profile.yaml") if (athlete_dir / "profile.yaml").exists() else {}
+        state = DraftState.load(state_path)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        manifest = _build_manifest(
+            athlete_id=athlete_id, profile=profile, status="held", plan_id=state.plan_id,
+            refresh_diff={"holds": [{"type": "excluded_athlete", "code": "excluded_athlete",
+                                     "message": str(exc), "sources": ["coaching_loop.exclusions", "packet.tp_athlete_id"]}],
+                          "writes": [], "window_start": None, "demonstrated": {}},
+            inputs_sha256=None, code_manifest=build_code_manifest(repo_root), notes=notes,
+        )
+        _write_json(run_dir / MANIFEST_FILENAME, manifest)
+        return manifest
 
     # 2. profile refresh
     _run_profile_refresh(

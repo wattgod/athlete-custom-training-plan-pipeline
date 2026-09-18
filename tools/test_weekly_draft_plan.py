@@ -269,10 +269,11 @@ def test_plan_id_preserved_across_rebuilds(env, stub_heavy_steps):
 # exclusions
 # --------------------------------------------------------------------------
 
-def test_excluded_athlete_raises(env, stub_heavy_steps):
+def test_excluded_athlete_is_a_held_manifest(env, stub_heavy_steps):
     env["packet_path"].write_text(json.dumps({"tp_athlete_id": 418209}))
-    with pytest.raises(ExcludedAthleteError):
-        _run(env)
+    manifest = _run(env)
+    assert manifest["status"] == "held"
+    assert [h["code"] for h in manifest["refresh_diff"]["holds"]] == ["excluded_athlete"]
 
 
 def test_exclusion_check_skipped_without_numeric_id(env, stub_heavy_steps):

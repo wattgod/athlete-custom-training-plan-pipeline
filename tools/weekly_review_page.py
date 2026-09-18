@@ -98,6 +98,8 @@ def _load_notes(run_dir: Path) -> list[dict]:
 _SENTENCE_RE = re.compile(r"(.+?[.!?])(\s|$)")
 
 
+_ATHLETE_WORDS_RE = re.compile(r"[A-Za-z0-9'’-]+")
+_PHASE_LABEL_RE = re.compile(r"^(base|build|peak|taper|race|recovery|testing)\b[\s,]*(still|again|week)?[.!]?$", re.I)
 _SKIP_OPENER_RE = re.compile(r"^(week\s+\d+\s+of\s+\d+|\d+[.)]|[-*])\s*[.:]?\s*$", re.I)
 
 
@@ -111,6 +113,9 @@ def _first_sentence(text: str) -> str:
         cand = raw.strip().lstrip("-*• ").strip()
         if not cand or _SKIP_OPENER_RE.match(cand):
             continue
+        words = _ATHLETE_WORDS_RE.findall(cand)
+        if len(words) <= 1 or _PHASE_LABEL_RE.match(cand):
+            continue  # phase labels ("Base.", "Base, still.") are not a message
         match = _SENTENCE_RE.search(cand)
         return (match.group(1).strip() if match else cand)
     return ""

@@ -7,7 +7,10 @@ weekly-dynamic-plans.md, Part B, revision 2, for the decisions under test.
 """
 
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))  # collect from the repo root too
 
 import yaml
 
@@ -295,7 +298,7 @@ def test_new_tp_event_added_existing_kept(tmp_path):
     assert event_changes[0]["new"]["name"] == "Synthetic Winter Grind"
 
 
-def test_new_event_with_no_priority_is_flagged_into_b_events(tmp_path):
+def test_new_event_with_no_priority_is_reported_not_written(tmp_path):
     athlete_dir = tmp_path / "race-bound-test"
     _write_profile(athlete_dir, _race_bound_profile())
     packet = _packet(events=[
@@ -306,11 +309,10 @@ def test_new_event_with_no_priority_is_flagged_into_b_events(tmp_path):
     diff = refresh(
         athlete_dir, packet, today="2026-09-29", repo_root=_REPO_ROOT)
 
-    event_changes = [c for c in diff.profile_changes if c["path"].endswith("[]")]
-    assert len(event_changes) == 1
-    assert event_changes[0]["path"] == "b_events[]"
-    assert event_changes[0]["new"]["flagged"] is True
-
+    # An unset priority never reaches b_events (every b_events entry drives a
+    # taper overlay); with no c_events list it is reported only.
+    assert [c for c in diff.profile_changes if c["path"].endswith("[]")] == []
+    assert "Synthetic Unpicked Event" in diff.history_section
 
 def test_commitments_dedupe_by_date_and_title(tmp_path):
     profile = _targetless_profile()
@@ -529,3 +531,30 @@ def test_same_date_event_with_a_different_spelling_is_not_added_again(tmp_path):
     diff = refresh(athlete_dir, packet, today="2026-09-18", repo_root=_REPO_ROOT)
     assert not [c for c in diff.profile_changes if c["path"].endswith("_events[]")]
     assert "Schwangunk" in diff.history_section
+
+
+def test_c_priority_events_never_reach_b_events_and_race_week_is_untouched(tmp_path):
+    athlete_dir = tmp_path / "race-bound-test"
+    _write_profile(athlete_dir, _race_bound_profile())
+    packet = _packet()
+    race = _race_bound_profile()["target_race"]["date"]
+    packet["events"] = [
+        {"id": "c1", "date": "2026-10-03", "name": "Local CX", "priority": "C"},
+        {"id": "x1", "date": race[:8] + "0" + str(int(race[8:]) - 1) if int(race[8:]) > 1 else race, "name": "Shakeout", "priority": "B"},
+    ]
+    diff = refresh(athlete_dir, packet, today="2026-09-18", repo_root=_REPO_ROOT)
+    paths = [c["path"] for c in diff.profile_changes]
+    assert "b_events[]" not in paths
+    assert "Local CX" in diff.history_section
+
+
+def test_missing_profile_section_is_a_hold_not_a_crash(tmp_path):
+    athlete_dir = tmp_path / "race-bound-test"
+    profile = _race_bound_profile()
+    profile.pop("b_events", None)
+    _write_profile(athlete_dir, profile)
+    packet = _packet()
+    packet["events"] = [{"id": "b1", "date": "2026-10-10", "name": "Tune-up Race", "priority": "B"}]
+    diff = refresh(athlete_dir, packet, today="2026-09-18", repo_root=_REPO_ROOT)
+    assert [h["code"] for h in diff.holds] == ["profile_key_missing"]
+    assert diff.profile_changes == []

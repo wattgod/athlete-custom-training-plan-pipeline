@@ -4,6 +4,11 @@ import copy
 
 import pytest
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))  # collect from the repo root too
+
 from weekly_packet import (
     SCHEMA,
     WeeklyPacketError,
