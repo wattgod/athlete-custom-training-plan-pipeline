@@ -213,3 +213,87 @@ Arrowhead build lands. Everyone else needs a profile first (onboarding skill).
 2. weekly_draft_plan + review page + upsert script.
 3. Adversarial review of the code; first manual run on the pilot four,
    DRAFT plans upserted, review page published; then the cron.
+
+### B — revision 2 after adversarial review (2026-09-18, NO-GO folded)
+
+Review findings verified against the code and accepted:
+- `coached_block.window_start/window_end` are read by nothing. The engine's
+  levers are `fulfillment.effective_date` (Monday), `fulfillment.
+  planning_horizon_end` (Sunday), `fulfillment.weeks_purchased` (authoritative
+  plan length), `plan_start.preferred_start`, and for targetless blocks
+  `coached_block.week_types` (2–4 entries, load|recovery only; validated in
+  validate_profile.py and pre_generation_validator.py).
+- The evidence packet has no builder: `export_athlete_context.py` only seals
+  a hand-assembled packet. The Sep 3 packets were a one-off session artefact.
+- A title carrying `<N>wk` mutates weekly; there is no proven list-plans call.
+- `athletes/<id>/` is tracked; source text must not be committed
+  (athlete-context contract). Forest's existing history file stays as is.
+
+Decisions (mine; Matti reverses):
+1. **Window roll = the engine's levers.** Race-bound athlete (target_race.date
+   confirmed): `preferred_start = effective_date = next Monday`,
+   `weeks_purchased = weeks from next Monday through the race week` (plus the
+   programmed post-race week when `planning_horizon_end` already covers it);
+   the race-bound path then re-anchors from the race date. Targetless athlete:
+   `effective_date = next Monday`, `planning_horizon_end = +27 days`,
+   `weeks_purchased = 4`, `week_types` rotated one step (drop the first, append
+   the next type of the athlete's own rhythm inferred from the list) so the
+   meso rhythm carries across rebuilds. The refresh runs validate_profile
+   before it writes; a profile that would not validate is a hold.
+2. **Holds, not annotations.** Any FTP difference between TP settings and the
+   profile (coach-owned number — the refresh never writes FTP), a race date in
+   TP that differs from the profile, fewer than 2 weeks to the race, or an
+   athlete in `coaching_loop.exclusions` → the build is HELD; the review page
+   shows the hold and its two sources. Everything else that is not a whitelist
+   write goes to history + review page.
+3. **Profile writes** (whole whitelist): the window levers above;
+   `a_events`/`b_events` add-only from TP events (priority from TP, else "B"
+   and flagged); `life_calendar.commitments` append (dedupe date+title).
+4. **History is private.** `plan-builds/<id>/coaching_history.md` (outside the
+   repo) holds the dated refresh sections with verbatim self-review replies,
+   comment text and source ids. The repo profile carries only derived fields.
+5. **Packet = `weekly_packet/v1`**, produced by a new read-only browser script
+   `tools/tp_weekly_packet.js` (run by the session via playwriter): TP
+   settings (FTP, weight), events next 180 d, PMC daily 42 d, workouts 42 d
+   (planned/actual duration+TSS), notes + comments since the last run, next
+   14 d planned, plus a `source_manifest`. A python normaliser
+   `athletes/scripts/weekly_packet.py` validates it and derives 6-week
+   hours/TSS/CTL. Drive workbook rows are an optional session-supplied input.
+   Part B extends `athlete-plan-builder`'s revise intent with this thinner
+   contract rather than the 16-section `athlete_context/v1`; every profile
+   write still cites (source_type, source_id, locator). Raised to Matti.
+6. **Title `DRAFT — <Name> — <Race|Block> <N>wk`** (ratified format). The
+   upsert is keyed on `plan_id` stored in `weekly_draft_state.json`; the first
+   run creates the plan and records the id; later runs PUT the title on the
+   same plan. No find-by-title.
+7. **Hash + trigger.** `coaching_loop.canonical_json.canonical_bytes` over
+   (profile.yaml, rules.yaml, packet fields that can change a decision, code
+   manifest from `coaching_loop.code_manifest`). Timestamps, review windows,
+   ids and next-week plans are excluded. The window roll is an explicit
+   trigger outside the hash: rebuild when next Monday > state.window_start;
+   the hash only suppresses a same-window re-run.
+8. **Rules vocabulary** extended to what the three layers need:
+   `replace_text`, `title_strip_regex`, `drop_notes`, `force_optional_dates`,
+   structured `intensity_detector` (power_pct_gte, exclude_units, type_ids,
+   title_regex), `title_allowlist_prefixes`, `drop_rest_on_multi_session_days`,
+   `note_date_remap`. Golden: byte-identical on Forest; byte-identical on
+   Ed/Ari except the race-day description (race_card.py carve-out).
+9. **Runner** stays a Claude session for v1 (TP reads + Drive MCP). The
+   reviewed Playwriter CLI (`tools/tp_phase5_playwriter_cli.mjs`) is the
+   later automation path for the TP half.
+
+Engine gaps raised (not routed around in the engine):
+- `intensity_policy` and `nutrition_policy` sit in the profile and the engine
+  reads neither — rules.yaml is the stop-gap; the fix belongs in the renderer.
+- Race-card tailoring per athlete.
+- Progression continuity across weekly rebuilds: the engine has no input for
+  "what was ridden / which library items were used"; each rebuild starts
+  series at rung 1. Targetless rhythm is preserved via week_types rotation;
+  race-bound phases re-anchor from the race date.
+
+Run 1 note for the review page: Forest/Ed/Ari live calendars already carry
+the same blocks (published Sep 17); the drafts are the "what Motoren would do
+from next Monday" view Matti copies from, not a second copy to reconcile.
+
+Estimate revised: packet script + normaliser 1 d, refresh 1 d, layer 0.5 d,
+orchestrator + review page + upsert 1 d, first run + review 0.5 d.
