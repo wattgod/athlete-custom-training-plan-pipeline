@@ -85,6 +85,10 @@ Rules:
   `'fs'`, `'path'`) are fine.
 - Comments are not stripped (a JS regex literal defeats any stripper), so a load inside a comment still counts and
   fails closed. Delete the comment rather than leaving a dead load in the wrapper.
+- Never write a file (`writeFileSync`, `copyFileSync`, `mkdirSync`, `rename`, `child_process`) in the same `execute`
+  call that loads one; the scan runs before the call, so a copy-then-load would run bytes it never saw. The packet
+  save and the script loads are already separate calls in the runbooks. Every loaded file is scanned, not just `.js`;
+  `.json` payloads must parse as JSON.
 - There is no kernel-directory escape hatch any more. A legacy flow that writes from the wrapper needs the
   `/* GG_BLESSED_TP_WRITE */` marker, which is the coach-visible audit trail for a hand-run write.
 - The guard is a regex tripwire for straightforward and accidental writes, not a defence against deliberate
