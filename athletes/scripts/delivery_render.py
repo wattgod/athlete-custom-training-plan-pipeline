@@ -133,7 +133,7 @@ def append_heat_protocol_explainer_if_missing(description: str, title: Any) -> s
         "Stop if dizzy, nauseous, or confused — cool down and end the "
         "session rather than push through."
     )
-    return (description or "").rstrip() + "\n\n" + explainer
+    return _truncate_athlete_copy((description or "").rstrip() + "\n\n" + explainer)
 
 
 def append_rpe_guide_if_missing(description: str, *, library_item_id: Any, segments: Any) -> str:
@@ -149,7 +149,9 @@ def append_rpe_guide_if_missing(description: str, *, library_item_id: Any, segme
     guide = rpe_guide_line({"segments": segments})
     if not guide:
         return description
-    return (description or "").rstrip() + "\n\n" + guide
+    # Re-apply the athlete-copy cap so the result is a fixed point of
+    # sanitize_athlete_description (validate_canonical_model re-runs it).
+    return _truncate_athlete_copy((description or "").rstrip() + "\n\n" + guide)
 
 
 def load_brand(brand_key: str) -> Dict[str, Any]:
@@ -240,19 +242,52 @@ def _take_athlete_words(value: str, limit: int) -> str:
     return candidate.rstrip(" ,;:—-") + "."
 
 
+# Trailing sections the word cap must never eat: the prescription line and
+# the two compiler-appended decode blocks (AE-3.12 RPE guide, AE-3.13 heat
+# protocol). 2026-09-18: a 170-word curated description plus its appended
+# RPE guide crossed the cap, validate_canonical_model re-sanitized it and
+# the guide vanished -> "description contains compiler-only copy" killed
+# the build. The head is cut to make room; the tail ships whole.
+_PROTECTED_TAIL_RE = re.compile(r"(?ms)^(?:PRESCRIPTION|RPE guide|HEAT PROTOCOL):\s*.*\Z")
+
+
 def _truncate_athlete_copy(value: str) -> str:
     words = _ATHLETE_WORD.findall(value)
     if len(words) <= _ATHLETE_COPY_MAX_WORDS:
         return value
-    match = re.search(r"(?ms)^PRESCRIPTION:\s*.*\Z", value)
+    match = _PROTECTED_TAIL_RE.search(value)
     tail = match.group(0).strip() if match else ""
     tail_words = _ATHLETE_WORD.findall(tail)
     if len(tail_words) >= _ATHLETE_COPY_MAX_WORDS:
         return _take_athlete_words(tail, _ATHLETE_COPY_MAX_WORDS)
     budget = _ATHLETE_COPY_MAX_WORDS - len(tail_words)
     head_source = value[:match.start()].strip() if match else value
-    head = _take_athlete_words(head_source, budget)
+    head = _take_athlete_lines(head_source, budget) if tail else _take_athlete_words(head_source, budget)
     return (head + ("\n\n" + tail if tail else "")).strip()
+
+
+def _take_athlete_lines(value: str, limit: int) -> str:
+    """Keep whole lines while they fit the word budget. Curated copy is
+    line-structured (bullets, phases), so ending on a line boundary never
+    ships half a sentence -- and never needs the "[...]" hard-cut marker,
+    which the apply contract rejects as an internal tag (2026-09-18:
+    "RLP Compressed Endurance" + its appended RPE guide). Falls back to the
+    word cut only when the very first line alone exceeds the budget."""
+    kept: List[str] = []
+    used = 0
+    for line in value.splitlines():
+        words = len(_ATHLETE_WORD.findall(line))
+        if used + words > limit:
+            # The overflowing line is word-cut, never dropped: on paragraph-
+            # shaped curated copy that line IS the main set (review
+            # 2026-09-18: "+ Race Surges 4h09" lost its whole MAIN SET).
+            remaining = limit - used
+            if remaining > 0:
+                kept.append(_take_athlete_words(line, remaining))
+            break
+        kept.append(line)
+        used += words
+    return "\n".join(kept).strip()
 
 
 def sanitize_athlete_title(value: Any) -> str:
@@ -289,7 +324,9 @@ def sanitize_athlete_description(value: Any) -> str:
     """
     text = _INTERNAL_RETAINED_TOKEN.sub("", str(value or ""))
     text = re.sub(
-        r"^\s*\[(?:FUEL|LONG-RIDE FUEL|RACE FUEL):\s*(.*?)\]\s*$",
+        # Any "<TIER> FUEL:" label: compiler tiers (HIGH / LONG-RIDE / RACE)
+        # and the curated copy's own "[MODERATE FUEL: ...]" (4 library items).
+        r"^\s*\[(?:[A-Z][A-Z -]*)?FUEL:\s*(.*?)\]\s*$",
         r"FUEL:\n\1", text, flags=re.I | re.M,
     )
     lines: List[str] = []

@@ -41,6 +41,10 @@ ENGINE_SECRET = 'test-engine-secret'
 VALID_WEEK_TYPES = {'load', 'recovery', 'medium', 'race', 'testing'}
 VALID_DAYS = {'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'}
 VALID_FUEL_TAGS = {'high', 'moderate', 'practice', 'none'}
+# Cards that legitimately carry zero minutes. 'Race Day' is the undated
+# race-week slot (a dated race becomes 'Race Day — {name}' with a real
+# duration); 'Rest Day' is AE-6.5c's no-blank-days card.
+ZERO_LOAD_CARDS = {'Rest Day', 'Race Day'}
 VALID_PHASES = ['base', 'build', 'stabilize', 'peak', 'taper', 'race',
                 'recovery', 'transition']
 
@@ -136,7 +140,18 @@ class TestHappyPath:
                 assert wo['day'] in VALID_DAYS
                 assert isinstance(wo['coachName'], str) and wo['coachName']
                 assert isinstance(wo['durationMinutes'], int)
-                assert wo['durationMinutes'] > 0
+                # A Rest Day is a real card at zero minutes — AE-6.5c ("no
+                # blank days") requires every day to carry one, and Endure
+                # takes it (block-tool-schema.ts `durationMinutes:
+                # z.number()`, and a 0-minute card in its own integration
+                # fixture). The exemption is keyed to the rest sentinel, NOT
+                # to estimatedTss == 0: get_workout_tss returns 0 for a name
+                # missing from the library, so a TSS-keyed exemption would
+                # let a broken library lookup ship as a legitimate card.
+                if wo['coachName'] in ZERO_LOAD_CARDS:
+                    assert wo['durationMinutes'] == 0, wo['coachName']
+                else:
+                    assert wo['durationMinutes'] > 0, wo['coachName']
                 assert isinstance(wo['estimatedTss'], int)
                 assert wo['estimatedTss'] >= 0
                 assert wo['fuelTag'] in VALID_FUEL_TAGS
@@ -473,16 +488,33 @@ class TestInvalidRequests:
 # =============================================================================
 
 class TestComplianceGate:
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "2026-09-19: after the AE-2.7 60-min floor + weekday-target growth "
+            "and the variety policy landed, a 378-config sweep (hours 3-15, "
+            "experience 0-5, base/build/peak, 2-3 weeks, ages 30-60) found NO "
+            "request that trips a CRITICAL rule through /engine/block -- the "
+            "4h beginner build block now passes R03. Kept strict so it flips "
+            "loud when a marginal config exists again; the 422 branch itself is "
+            "pinned by test_422_branch_unit."),
+    )
     def test_marginal_config_returns_422(self, client):
-        """Known marginal config from the domain sweep: 4h/week beginner in a
-        build block with partial day caps trips the R03 recovery-ratio
-        boundary (86% vs 85% ceiling)."""
+        """Known marginal config from the domain sweep: a 4h/week beginner in
+        a 3-week build block trips the R03 recovery-ratio boundary (67% of
+        load average vs the 65% ceiling).
+
+        Boundary-sensitive by design — it pins the gate end-to-end through
+        HTTP, so re-tuning a recovery-band rule can move the config out of
+        violation. It last did: the original version added partial day caps
+        and cited an 86%-vs-85% ceiling, and the AE-1.x recovery-band
+        ratification (2026-08-26) made that same request compliant, leaving
+        the assertion failing for days. If it fails again, re-sweep for a
+        currently-failing config rather than loosening the assertion — the
+        422 branch itself is pinned independently by test_422_branch_unit.
+        """
         body = _payload()
         body['athlete'].update({'hours_per_week': 4, 'experience_years': 0})
-        body['athlete']['availability'] = {
-            'mon': {'available': True, 'max_duration_min': 60},
-            'sat': {'available': True, 'max_duration_min': 300},
-        }
         resp = _post(client, body)
         assert resp.status_code == 422
         data = resp.get_json()
@@ -1512,3 +1544,125 @@ class TestWeekDescriptors:
         out = descriptors_from_request('stabilize', [
             {'number': 1, 'type': 'load', 'races': []}])
         assert out[0]['phase'] == 'maintenance'
+
+    def test_descriptors_carry_race_day_from_the_race_date(self):
+        """The race-week template needs the weekday the race actually falls
+        on. Without it _build_race_week defaults to Saturday, and a Sunday
+        race leaves the template's RACE_DAY placeholder stranded on Saturday
+        while the real card lands on Sunday."""
+        from engine_adapter import descriptors_from_request
+        out = descriptors_from_request(
+            'race',
+            [{'number': 1, 'type': 'taper', 'races': []},
+             {'number': 2, 'type': 'race',
+              'races': [{'name': 'Unbound 200', 'date': '2026-07-19',
+                         'priority': 'A'}]}],
+            '2026-07-06')
+        assert 'race_day' not in out[0]  # race-free weeks stay unchanged
+        assert out[1]['race_day'] == 'Sun'
+
+        # An A-race owns the week's shape over a B-race in the same week.
+        out = descriptors_from_request(
+            'race',
+            [{'number': 1, 'type': 'race',
+              'races': [{'name': 'Warmup Crit', 'date': '2026-07-11',
+                         'priority': 'B'},
+                        {'name': 'The Big One', 'date': '2026-07-12',
+                         'priority': 'A'}]}],
+            '2026-07-06')
+        assert out[0]['race_day'] == 'Sun'
+
+        # No start_date (no calendar to place races against) → omitted, and
+        # the caller keeps the pre-race byte-identical shape.
+        out = descriptors_from_request(
+            'race',
+            [{'number': 1, 'type': 'race',
+              'races': [{'name': 'X', 'date': '2026-07-12', 'priority': 'A'}]}])
+        assert out == [{'plan_week': 1, 'phase': 'race', 'week_type': 'race'}]
+
+    def test_sunday_race_puts_openers_on_saturday_and_leaks_no_placeholder(
+            self, client):
+        """Regression: the race-week template wrote its own 'RACE_DAY' slot on
+        its default Saturday and _apply_race_overlays skipped any day already
+        role='race' — so the athlete got a 0-minute card literally named
+        'RACE_DAY' and, when the race WAS on Saturday, no named race card at
+        all."""
+        desc = [{'number': 1, 'type': 'taper'},
+                {'number': 2, 'type': 'race',
+                 'races': [{'name': 'Unbound 200', 'date': '2026-07-19',
+                            'priority': 'A'}]}]
+        data = _post(client, self._body(phase='race', weeks=2,
+                                        descriptors=desc)).get_json()
+        race_week = data['weeks'][1]
+        by_day = {wo['day']: wo for wo in race_week['workouts']}
+        assert by_day['sun']['coachName'] == 'Race Day — Unbound 200'
+        assert by_day['sat']['coachName'] == 'Openers'
+        names = [wo['coachName'] for wk in data['weeks']
+                 for wo in wk['workouts']]
+        assert 'RACE_DAY' not in names, names
+
+    def test_monday_race_gets_no_opener_after_the_race(self, client):
+        """A Monday race has no day before it inside its own Mon-Sun week.
+        The template used to compute the opener with a modulo that wrapped
+        to Sunday, so the athlete got openers AFTER the race and a dead
+        week in between — and compliance passed it, having no rule about
+        opener chronology."""
+        desc = [{'number': 1, 'type': 'taper'},
+                {'number': 2, 'type': 'race',
+                 'races': [{'name': 'Test Race', 'date': '2026-07-13',
+                            'priority': 'A'}]}]
+        data = _post(client, self._body(phase='race', weeks=2,
+                                        descriptors=desc)).get_json()
+        by_day = {wo['day']: wo for wo in data['weeks'][1]['workouts']}
+        assert by_day['mon']['coachName'] == 'Race Day — Test Race'
+        assert by_day['sun']['coachName'] != 'Openers'
+        assert 'Openers' not in {wo['coachName']
+                                 for wo in data['weeks'][1]['workouts']}
+
+    def test_race_week_without_a_dated_race_leaks_no_placeholder(self, client):
+        """A race week can legitimately carry no dated race: phase='race'
+        with no descriptors, or a race-typed descriptor with an empty races
+        list. The template's slot survives to the response in both cases —
+        it must not surface as the raw token."""
+        plain = _post(client, _payload(block={
+            'phase': 'race', 'weeks': 2,
+            'start_date': '2026-07-06'})).get_json()
+        desc = [{'number': 1, 'type': 'taper'},
+                {'number': 2, 'type': 'race', 'races': []}]
+        empty = _post(client, self._body(phase='race', weeks=2,
+                                         descriptors=desc)).get_json()
+        for data, label in ((plain, 'no descriptors'), (empty, 'empty races')):
+            names = [wo['coachName'] for wk in data['weeks']
+                     for wo in wk['workouts']]
+            assert 'RACE_DAY' not in names, (label, names)
+            assert 'Race Day' in names, (label, names)
+
+    def test_an_a_race_outranks_a_same_day_b_race(self, client):
+        """Two races on one date: only one card fits, and it has to be the
+        A-race the week was shaped around. Sorting on date-then-name alone
+        handed the day to whichever name sorted first."""
+        desc = [{'number': 1, 'type': 'taper'},
+                {'number': 2, 'type': 'race',
+                 'races': [{'name': 'Alpha Sprint', 'date': '2026-07-18',
+                            'priority': 'B'},
+                           {'name': 'Zulu Classic', 'date': '2026-07-18',
+                            'priority': 'A'}]}]
+        data = _post(client, self._body(phase='race', weeks=2,
+                                        descriptors=desc)).get_json()
+        by_day = {wo['day']: wo for wo in data['weeks'][1]['workouts']}
+        assert by_day['sat']['coachName'] == 'Race Day — Zulu Classic'
+
+    def test_saturday_race_replaces_the_template_placeholder(self, client):
+        """The other half of the same bug: when the race falls on the
+        template's own default day, the placeholder must be REPLACED by the
+        named card, not left to block it."""
+        desc = [{'number': 1, 'type': 'taper'},
+                {'number': 2, 'type': 'race',
+                 'races': [{'name': 'Sweep Race', 'date': '2026-07-18',
+                            'priority': 'B'}]}]
+        data = _post(client, self._body(phase='race', weeks=2,
+                                        descriptors=desc)).get_json()
+        names = [wo['coachName'] for wk in data['weeks']
+                 for wo in wk['workouts']]
+        assert 'Race Day — Sweep Race' in names, names
+        assert 'RACE_DAY' not in names, names

@@ -1,0 +1,80 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Anaerobic Test</name>
+  <description>FUEL:
+Normal meal ~2h before. One bottle, 40-50g carbs. Done.
+
+Warm up over 10-15 minutes bringing intensity from Z1 to top of Z2.
+-
+Easy 5m Z1; spin high cadence (>100rpm)
+
+-
+Complete 1x10 sec ALL OUT sprint from a rolling start. You want to hit this just like you're sprinting for the world championship. Do it out of the saddle, do it hard and SMASH. Don't hold back.
+-
+Easy 5m Z1; spin high cadence (>100rpm)
+-
+1 minute ALL OUT; Keep cadence OVER 100rpm if you can
+-
+Easy 5m Z1; spin high cadence (>100rpm)
+-
+20x30sec ALL OUT, 30sec Z1 EASY spin
+-
+Easy 5m Z1; spin high cadence (>100rpm)
+-
+1 minute ALL OUT; Keep cadence OVER 100rpm if you can
+-
+10m Z1/2 Cool down</description>
+  <sportType>bike</sportType>
+  <workout>
+    <FreeRide Duration="600"/>
+    <FreeRide Duration="300"/>
+    <FreeRide Duration="10"/>
+    <FreeRide Duration="300"/>
+    <FreeRide Duration="60"/>
+    <FreeRide Duration="300"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="30"/>
+    <FreeRide Duration="300"/>
+    <FreeRide Duration="60"/>
+    <FreeRide Duration="600"/>
+  </workout>
+</workout_file>

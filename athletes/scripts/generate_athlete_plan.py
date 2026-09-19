@@ -111,24 +111,25 @@ def generate_athlete_plan(athlete_id: str) -> Dict:
     Returns generation result dict.
     """
     if not UNIFIED_AVAILABLE:
-        print("⚠️  Unified generator not available - creating placeholder plan")
-        # Create placeholder plan config
-        output_dir = get_athlete_current_plan_dir(athlete_id)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        placeholder = {
-            "status": "pending_generation",
-            "athlete_id": athlete_id,
-            "created": datetime.now().isoformat(),
-            "note": "Full plan generation requires unified generator from gravel-landing-page-project"
-        }
-        
-        with open(output_dir / "plan_config.yaml", 'w') as f:
-            yaml.dump(placeholder, f, default_flow_style=False)
-        
-        print(f"✅ Placeholder plan created at {output_dir}")
-        return {"status": "placeholder", "path": str(output_dir)}
-    
+        # FAIL, don't fake it. This used to write a `plan_config.yaml`
+        # containing only {status: pending_generation} and then print
+        # "Placeholder plan created" followed by "Plan generation complete!"
+        # -- a success message for a run that produced no plan. An operator
+        # (human or agent) reading that reasonably concludes a plan exists.
+        # `unified_plan_generator` lives in gravel-landing-page-project and
+        # is not present in this repo, so this branch is the ONLY branch that
+        # ever executes here; the misleading success was the default outcome.
+        raise RuntimeError(
+            "generate_athlete_plan.py is not a working entrypoint in this "
+            "repo: it requires `unified_plan_generator` from "
+            "gravel-landing-page-project, which is not installed. It "
+            "previously wrote a stub plan_config.yaml and reported success.\n"
+            "\n"
+            "The canonical generator is:\n"
+            "    python3 athletes/scripts/GENERATE_PACKAGE.py <athlete_id>\n"
+            "which enforces the quality gates and writes tp_manifest.json."
+        )
+
     # Load data
     profile = load_profile(athlete_id)
     derived = load_derived(athlete_id)
@@ -216,14 +217,28 @@ def generate_athlete_plan(athlete_id: str) -> Dict:
 
 def main():
     """Main entry point."""
-    if len(sys.argv) < 2:
+    # `--help` used to fall through as an athlete_id, so `--help` created
+    # athletes/--help/plans/current/plan_config.yaml on disk. A help flag
+    # must never write anything.
+    if len(sys.argv) < 2 or sys.argv[1] in ('-h', '--help', 'help'):
         print("Usage: python generate_athlete_plan.py <athlete_id>")
         print("\nExample:")
         print("  python generate_athlete_plan.py john-doe")
-        sys.exit(1)
-    
+        print("\nNOTE: this entrypoint is non-functional in this repo (it "
+              "needs unified_plan_generator from gravel-landing-page-project).")
+        print("Use instead:")
+        print("  python3 athletes/scripts/GENERATE_PACKAGE.py <athlete_id>")
+        sys.exit(0 if len(sys.argv) > 1 else 1)
+
     athlete_id = sys.argv[1]
-    
+
+    # Anything starting with '-' is a flag, not an athlete. Treating it as an
+    # athlete_id is how a typo'd flag became a directory named '--help'.
+    if athlete_id.startswith('-'):
+        print(f"❌ Unknown option: {athlete_id}")
+        print("Usage: python generate_athlete_plan.py <athlete_id>")
+        sys.exit(2)
+
     try:
         result = generate_athlete_plan(athlete_id)
         print("\n✅ Plan generation complete!")

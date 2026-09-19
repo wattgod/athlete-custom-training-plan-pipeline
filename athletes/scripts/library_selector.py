@@ -27,6 +27,7 @@ import re
 from typing import Any, Mapping, Optional, Sequence
 
 from tp_library_snapshot import load_index
+from tp_structure_to_zwo import _target_bounds_pct
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +242,12 @@ def _slot_identity(slot: Mapping[str, Any]) -> Any:
     """
     series_key = slot.get("series_key")
     if series_key:
-        return series_key
+        # Variety rule 4: a series RESTART in the same block (rule 3) must
+        # not re-draw the block's opening index.
+        plan_week = slot.get("plan_week")
+        if plan_week is None or not _variety_policy_enabled():
+            return series_key
+        return (series_key, plan_week)
     return (
         slot.get("canonical_name"),
         slot.get("role"),
@@ -270,25 +276,51 @@ def _rotate_index(pool_len: int, *seed_parts: Any) -> int:
 # ---------------------------------------------------------------------------
 
 def _duration_bounds(budget_min: float, day_cap_min: Optional[float],
-                     canonical_name: Optional[str] = None) -> tuple[float, float]:
-    lo = 0.85 * budget_min
-    hi = 1.15 * budget_min
+                     canonical_name: Optional[str] = None,
+                     session_floor_min: float = 0,
+                     floor_extended_min: float = 0,
+                     role: Optional[str] = None) -> tuple[float, float]:
+    # ``budget_min`` may already include the block-builder's AE-2.7 growth
+    # (``floor_extended_min``). The LOWER bound is computed from the
+    # un-extended duration so a curated item that clears the floor still
+    # qualifies (a 62-min rung-2 item against a 35-min slot grown to 105);
+    # the UPPER bound keeps the grown budget so ranking, which prefers the
+    # longest qualified item, can reach the weekday target.
+    base_budget = max(budget_min - (floor_extended_min or 0), 0)
+    lo = 0.85 * base_budget
+    # An INTENSITY slot keeps its dose: the extension is Z2 padding, never
+    # licence to pick a longer, harder curated set (that is how a 19-21 min
+    # T@VO2 item gets ranked ahead of the 12-min one -- AE-3.1). Endurance,
+    # filler and cadence slots may reach up to the grown budget.
+    hi = 1.15 * (base_budget if role == 'intensity' else budget_min)
     # Cadence/skills slots get a wider window: the curated torque pool
     # skews longer than the ~50min weekday cadence budget, and the tight
     # window exhausted the pool into three identical synthetic fallbacks.
     # Drill sessions tolerate duration flex better than interval doses.
     if canonical_name and 'cadence' in canonical_name.lower():
-        lo = 0.70 * budget_min
-        hi = 1.30 * budget_min
+        lo = 0.70 * base_budget
+        hi = 1.30 * (base_budget if role == 'intensity' else budget_min)
     if day_cap_min is not None:
         hi = min(hi, day_cap_min)
+    # AE-2.7 (amended 2026-09-17): a curated item under the session floor is
+    # never a fit, however close it sits to a small budget. The block-builder
+    # has already grown the budget to the floor; this keeps the 0.85 / 0.70
+    # windows from reaching back under it (60 -> 42..51-min items). Applied
+    # last so neither the cadence widening nor a day cap can undo it.
+    if session_floor_min:
+        lo = max(lo, float(session_floor_min))
+        hi = max(hi, lo)
     return lo, hi
+
+
+_TEST_ITEM_NAME_RE = re.compile(r"\b(test|assessment)\b", re.I)
 
 
 def _qualifying_pool(
     items: Sequence[Mapping[str, Any]], library_keys: Sequence[str], budget_min: float, day_cap_min: Optional[float],
     *, slot: Optional[Mapping[str, Any]] = None,
     excluded_ids: frozenset = frozenset(), lint_exclusions: Optional[dict[Any, dict[str, Any]]] = None,
+    extra_excluded_ids: frozenset = frozenset(),
 ) -> list[Mapping[str, Any]]:
     """``slot`` is optional and keyword-only so existing positional callers
     (including the realism sweep and unit tests) are unaffected; passing it
@@ -297,11 +329,19 @@ def _qualifying_pool(
 
     ``excluded_ids``/``lint_exclusions`` (T27) drop items carrying a
     curation-consistency lint flag and, when a collector is passed, record a
-    loud per-item exclusion reason."""
+    loud per-item exclusion reason.
+
+    ``extra_excluded_ids`` (knee-safety fix 2026-09-17) drops additional
+    items a caller excludes for a reason other than curation lint --
+    currently ``seated_only_excluded_ids`` -- and records those under
+    ``reason: "seated_only"`` in the same collector."""
     if not library_keys:
         return []
     lo, hi = _duration_bounds(budget_min, day_cap_min,
-                              (slot or {}).get('canonical_name'))
+                              (slot or {}).get('canonical_name'),
+                              float((slot or {}).get('session_floor_min') or 0),
+                              float((slot or {}).get('floor_extended_min') or 0),
+                              (slot or {}).get('role'))
     key_set = set(library_keys)
     pool = [
         item
@@ -311,8 +351,19 @@ def _qualifying_pool(
         and lo <= item["duration_min"] <= hi
     ]
     pool = _record_lint_exclusions(pool, excluded_ids, lint_exclusions, slot)
+    pool = _record_lint_exclusions(pool, extra_excluded_ids, lint_exclusions, slot, reason="seated_only")
     if slot is not None:
-        pool = [item for item in pool if not _is_internal_only(item) and _passes_role_ceiling(item, slot)]
+        _allow_heat = bool(slot.get("allow_heat"))
+        # A test / assessment item is never a training session: it only
+        # resolves for the pinned test canonicals (2026-09-17: a 3-min
+        # Power Test landed on a Friday endurance filler the day before a
+        # dress rehearsal).
+        if slot.get("canonical_name") not in PINNED_TEST_ITEM_IDS:
+            pool = [item for item in pool if not _TEST_ITEM_NAME_RE.search(
+                str(item.get("name_base") or item.get("name") or ""))]
+        pool = [item for item in pool
+                if not _is_internal_only(item, allow_opt_in=_allow_heat)
+                and _passes_role_ceiling(item, slot)]
         pool = [item for item in pool if not _is_off_discipline(
             item, slot.get("discipline"),
             wants_position_work=bool(slot.get("wants_position_work")))]
@@ -332,6 +383,8 @@ def _qualifying_pool(
 # AE-2.8 (ratified 2026-08-23): endurance IF band tightened to .60-.70 --
 # the old .78 filler ceiling admitted items above the band's own top edge
 # onto easy days. Load-week and recovery-week filler ceilings now match.
+_ENDURANCE_TSS_PER_HOUR_CEILING = 50.0  # AE-2.8, mirrors post_render_validator
+_VALIDATOR_LONG_RIDE_MIN_MINUTES = 180  # post_render_validator._is_long_ride: >= 3 h
 _FILLER_IF_CEILING = 0.72  # ratified Q-B: .78 -> .72
 _FILLER_IF_CEILING_RECOVERY = 0.70
 _FILLER_POWER_CEILING_PCT = 115.0
@@ -401,10 +454,34 @@ _INTERNAL_ONLY_NAMES = {"the happy ending"}
 # items stay archived in the coach's TP library until retired at the source.
 _PURGED_CONCEPT_NAMES = ("fatmax", "fat max", "fartlek", "fasted")
 
+# Opt-in concepts: real, correct workouts that must never be selected on
+# their own initiative. Same shape as the purge above and added for the same
+# reason -- archetype_registry.OPT_IN_ARCHETYPES does not reach curated
+# selection, exactly as RETIRED_ARCHETYPES did not.
+#
+# Heat: Judd Pulley's generated block drew curated item 14356302 ("Heat
+# Acclimation Protocol") twice for an October race in northern Wisconsin,
+# because selection is date-blind and heat items sit in the ordinary
+# Endurance pool. Suppressing by month would be wrong -- training through
+# winter for a hot spring race is precisely when heat work belongs -- so the
+# trigger has to be the RACE's heat demand. Until selection can read race
+# climate, the honest default is off and the coach turns it on.
+# (Matti ruling 2026-08-29.)
+_OPT_IN_CONCEPT_NAMES = ("heat acclimation", "heat training")
 
-def _is_internal_only(item: Mapping[str, Any]) -> bool:
+
+def _is_internal_only(item: Mapping[str, Any],
+                      allow_opt_in: bool = False) -> bool:
+    """Is this curated item barred from selection?
+
+    ``allow_opt_in`` admits _OPT_IN_CONCEPT_NAMES for a slot that explicitly
+    asked for them (slot key ``allow_heat``). It does NOT relax the internal-
+    only or purged lists -- those are never selectable at any price.
+    """
     name = (item.get("name_base") or item.get("name_raw") or "").lower()
     if any(blocked in name for blocked in _INTERNAL_ONLY_NAMES):
+        return True
+    if not allow_opt_in and any(o in name for o in _OPT_IN_CONCEPT_NAMES):
         return True
     return any(purged in name for purged in _PURGED_CONCEPT_NAMES)
 
@@ -519,7 +596,8 @@ def _lint_excluded_ids(index: Mapping[str, Any]) -> frozenset:
     return frozenset(item["item_id"] for item in index["items"] if _lint_flags(item))
 
 
-def _lint_exclusion_record(item: Mapping[str, Any], slot: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+def _lint_exclusion_record(item: Mapping[str, Any], slot: Optional[Mapping[str, Any]],
+                           reason: str = "lint_excluded") -> dict[str, Any]:
     record: dict[str, Any] = {
         "item_id": item["item_id"],
         "library_key": item["library_key"],
@@ -528,7 +606,7 @@ def _lint_exclusion_record(item: Mapping[str, Any], slot: Optional[Mapping[str, 
         "lint_duration_claim": item.get("lint_duration_claim"),
         "lint_rpe_conflict": item.get("lint_rpe_conflict"),
         "lint_bookend_intensity": item.get("lint_bookend_intensity"),
-        "reason": "lint_excluded",
+        "reason": reason,
     }
     if slot is not None:
         record["canonical_name"] = slot.get("canonical_name")
@@ -544,6 +622,7 @@ def _record_lint_exclusions(
     excluded_ids: frozenset,
     lint_exclusions: Optional[dict[Any, dict[str, Any]]],
     slot: Optional[Mapping[str, Any]],
+    reason: str = "lint_excluded",
 ) -> list[Mapping[str, Any]]:
     """Drop lint-excluded items from ``pool``; record a loud, deduplicated
     exclusion entry per item_id into ``lint_exclusions`` (D9-style report,
@@ -556,7 +635,7 @@ def _record_lint_exclusions(
     for item in pool:
         if item["item_id"] in excluded_ids:
             if lint_exclusions is not None and item["item_id"] not in lint_exclusions:
-                lint_exclusions[item["item_id"]] = _lint_exclusion_record(item, slot)
+                lint_exclusions[item["item_id"]] = _lint_exclusion_record(item, slot, reason=reason)
             continue
         kept.append(item)
     return kept
@@ -593,6 +672,9 @@ _TAPER_GATED_WEEK_TYPES = ("taper", "race")
 # clamps synthetic Road v1 VO2 levels, but a curated TP item can replace that
 # synthetic structure downstream. The same physiological ceiling applies to
 # gravel: discipline cannot be a loophole around the athlete-safety contract.
+# Same pattern ae_lint.VO2_NAME_RE uses to decide which sessions AE-3.1 binds
+# (copied, not imported: ae_lint imports nothing from here and must stay a leaf).
+_LINT_VO2_NAME_RE = re.compile(r"vo2|30/30|30-30|40/20|ronnestad|billat|hard\s*start", re.I)
 _VO2_WORK_PCT_FLOOR = 106.0
 _VO2_WORK_SECONDS_MIN = 5 * 60
 _VO2_WORK_SECONDS_MAX = 18 * 60
@@ -616,10 +698,44 @@ _BASE_LONG_RIDE_IF_CEILING = 0.68  # ratified Q-B: .76 -> .68
 _BASE_LONG_RIDE_MAX_HARD_REP_SECONDS = 120
 
 
+# DEFECT FIX (race-week library audit, 2026-08-26,
+# docs/evidence/2026-08-26-race-week-library-audit.md): both ceiling
+# functions below used to compare a leaf target's raw minValue/maxValue
+# straight against the 92.0 floor. For a percentOfFtp-metric structure
+# that's correct (targets are already %FTP points); for an RPE-metric
+# structure the raw target is a 1-10 RPE integer, which can never reach 92
+# -- these two functions silently read 0s of hard work / 0s worst-rep for
+# ANY RPE-metric item, no matter how hard it actually is. Two curated
+# "Power Test" items (14416937/14416939, both single ALL-OUT RPE9-10 reps)
+# exploited exactly this gap to slip past the taper/race ceiling. Fixed by
+# decoding through tp_structure_to_zwo's _target_bounds_pct -- the SAME
+# _RPE_TO_PCT_FTP table the renderer and _has_ae_3_14_violation already use
+# (AE 9c) -- rather than authoring a second RPE->%FTP mapping here.
+def _target_hard_pct(target: Mapping[str, Any], *, rpe: bool) -> float:
+    """%FTP-equivalent value to compare against _HARD_WORK_PCT_FLOOR.
+
+    Mirrors the pre-existing raw-%FTP behavior of preferring the target's
+    upper bound (maxValue, falling back to minValue) -- for an RPE-metric
+    target that upper bound is the decoded high %FTP for the target's own
+    maxValue RPE point (_target_bounds_pct's high side), never the raw RPE
+    integer."""
+    if not rpe:
+        return float(target.get("maxValue") or target.get("minValue") or 0)
+    if target.get("minValue") is None:
+        return 0.0
+    _, high_pct = _target_bounds_pct(target, rpe=True)
+    return high_pct
+
+
+def _structure_is_rpe(structure: Mapping[str, Any]) -> bool:
+    return str(structure.get("primaryIntensityMetric") or "percentOfFtp").lower() == "rpe"
+
+
 def _hard_work_seconds(structure: Any) -> float:
     total = 0.0
     if not isinstance(structure, Mapping):
         return total
+    is_rpe = _structure_is_rpe(structure)
     for step in structure.get("structure") or []:
         reps = ((step.get("length") or {}).get("value") or 1)
         for sub in step.get("steps") or []:
@@ -627,7 +743,7 @@ def _hard_work_seconds(structure: Any) -> float:
                            if t.get("unit") != "roundOrStridePerMinute"), None)
             if not target:
                 continue
-            pct = target.get("maxValue") or target.get("minValue") or 0
+            pct = _target_hard_pct(target, rpe=is_rpe)
             if pct >= _HARD_WORK_PCT_FLOOR:
                 total += reps * ((sub.get("length") or {}).get("value") or 0)
     return total
@@ -664,13 +780,14 @@ def _max_hard_rep_seconds(structure: Any) -> float:
     longest = 0.0
     if not isinstance(structure, Mapping):
         return longest
+    is_rpe = _structure_is_rpe(structure)
     for step in structure.get("structure") or []:
         for sub in step.get("steps") or []:
             target = next((t for t in sub.get("targets") or []
                            if t.get("unit") != "roundOrStridePerMinute"), None)
             if not target:
                 continue
-            pct = target.get("maxValue") or target.get("minValue") or 0
+            pct = _target_hard_pct(target, rpe=is_rpe)
             if pct >= _HARD_WORK_PCT_FLOOR:
                 longest = max(longest, float((sub.get("length") or {}).get("value") or 0))
     return longest
@@ -773,10 +890,50 @@ def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bo
         # structured workout, so reject the mislabeled curated item instead
         # of delivering four visually identical endurance segments.
         return False
-    if (str(slot.get("discipline") or "").lower() in _CYCLING_DISCIPLINES
-            and slot.get("canonical_name") in _VO2_CANONICAL_TYPES):
-        vo2_seconds = _vo2_work_seconds(item.get("structure"))
-        if not (_VO2_WORK_SECONDS_MIN <= vo2_seconds <= _VO2_WORK_SECONDS_MAX):
+    # AE-3.1 at selection time, every discipline (2026-09-17). This was
+    # road-only "until the legacy gravel catalog has its own inventory";
+    # the AE-2.7 60-min floor made the gap visible on gravel: the curated
+    # VO2 items that clear an hour are mostly the 20-24-min doses, so an
+    # ungated gravel VO2 slot now picked an AE-3.1 FAIL every time. A VO2
+    # slot must carry a 5-18 min T@VO2 dose; no slot may carry more than the
+    # 18-min ceiling. A gravel slot with no compliant curated item falls
+    # back to the synthetic renderer (D9), which is bounded.
+    _structure = item.get("structure")
+    if isinstance(_structure, Mapping) and _structure.get("structure"):
+        vo2_seconds = _vo2_work_seconds(_structure)
+        _item_name = str(item.get("name_base") or item.get("name") or "")
+        # Mirror ae_lint exactly: the AE-3.1 window binds a VO2 slot AND any
+        # item whose NAME reads as a VO2 session (ae_lint.VO2_NAME_RE); an
+        # item named for VO2 with a 2.5-min dose is a lint FAIL wherever it
+        # lands. Everything else only has the 18-min ceiling.
+        if slot.get("canonical_name") in _VO2_CANONICAL_TYPES or _LINT_VO2_NAME_RE.search(_item_name):
+            if not (_VO2_WORK_SECONDS_MIN <= vo2_seconds <= _VO2_WORK_SECONDS_MAX):
+                return False
+        elif vo2_seconds > _VO2_WORK_SECONDS_MAX:
+            return False
+    # AE-2.8 at selection time (2026-09-19): an endurance-type slot never
+    # draws an item whose own planned rate exceeds the 50 TSS/h ceiling the
+    # post-render validator enforces (ENDURANCE_TSS_RATE_HIGH). The whole
+    # "Z2 + Sprints" family sits at 51-52 TSS/h; the variety rotation
+    # started drawing it and every pick came back as a review blocker.
+    _role = slot.get("role")
+    _short_long_ride = (_role == "long_ride"
+                        and float(slot.get("budget_min") or 0) < _VALIDATOR_LONG_RIDE_MIN_MINUTES)
+    if (slot.get("canonical_name") in _ENDURANCE_TYPES
+            and (_role == "filler" or _short_long_ride)):
+        # Mirrors post_render_validator._is_endurance / _is_long_ride: a
+        # session is a long ride there only at >= 3 h (or a long-ride
+        # title); shorter "long rides" (taper / recovery weeks) are
+        # endurance sessions and AE-2.8 binds them (athlete-m golden: a
+        # 1.8 h taper-week "Z2 + Sprints" at 50.9 TSS/h was the blocker).
+        # Build/peak durability long rides (>= 3 h) stay unceilinged --
+        # the house signature. An endurance canonical in an intensity slot
+        # is judged by the intensity rules instead.
+        # TSS/h = IF^2 x 100 (TSS definition), so the ceiling is IF <= .707;
+        # the planned-IF form is the item's own authored intensity and does
+        # not depend on how a fixture happened to pair tss with duration.
+        _if = item.get("if_planned")
+        if _if is not None and (float(_if) ** 2) * 100.0 > _ENDURANCE_TSS_PER_HOUR_CEILING + 0.05:
             return False
     if (str(slot.get("phase") or "").lower() == "base"
             and _is_long_ride_role(slot.get("role"))):
@@ -866,12 +1023,16 @@ def _apply_level(pool: list[Mapping[str, Any]], level: int) -> list[Mapping[str,
     return banded or pool
 
 
-def _rank(pool: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
-    """Dimension-rich outranks flat (D6); item_id breaks ties deterministically."""
-    return sorted(
-        pool,
-        key=lambda item: (-item["dimension_score"], -(item.get("if_planned") or 0.0), item["item_id"]),
-    )
+def _rank(pool: Sequence[Mapping[str, Any]], depth_fn=None) -> list[Mapping[str, Any]]:
+    """Dimension-rich outranks flat (D6); item_id breaks ties deterministically.
+
+    ``depth_fn`` (variety rule 2) adds a leading tier: min(ladder depth, 2),
+    so at an intensity series start a 2+-rung opener outranks a 1-rung
+    opener outranks a singleton, and D6 orders within each tier."""
+    def _key(item):
+        tier = -min(int(depth_fn(item)), 2) if depth_fn is not None else 0
+        return (tier, -item["dimension_score"], -(item.get("if_planned") or 0.0), item["item_id"])
+    return sorted(pool, key=_key)
 
 
 def _to_resolution(item: Mapping[str, Any]) -> dict[str, Any]:
@@ -909,6 +1070,169 @@ def _family_key(item: Mapping[str, Any]) -> str:
 # already guarantees distinct items week to week); this cap only ever
 # constrains the first pick of a new series/slot.
 _PLAN_WIDE_REUSE_CAP = 2
+
+# Variety policy (Matti, 2026-09-18: "are we using and open to enough workout
+# varieties and workout progressions?"; spec docs/specs/2026-09-18-variety-
+# and-weekly-dynamic-plans.md part A). Evidence from the three 2026-09-17
+# builds: 1,464 curated items, 40 distinct used; Descending-Cadence Ladder
+# 4x on one athlete, plain Endurance 7x.
+#   1. Block spread -- no curated item twice in a block (hard, like the
+#      same-week ban); no FAMILY twice in a week (soft: preferred subset,
+#      falls back to the full pool so small libraries still resolve).
+#   2. Progression first -- an intensity series START ranks items that open
+#      a 2+-rung floor-qualified ladder above 1-rung openers and singletons.
+#   3. Series length -- a series runs at most 3 rungs (judgment call: one
+#      AE-4.1 plus-one per load week of a 3-load-week block; AE-4.1 itself
+#      only says plus-one, one lever, never unchanged a third time); a
+#      filler pair at most 2. Past the cap the slot starts a NEW series,
+#      preferring a different family, instead of grinding a 4th rung of the
+#      same easy-day workout.
+#   4. Filler rotation -- an Endurance-type filler prefers a different
+#      routed library per (week, filler ordinal): with-work -> skills -> Z2,
+#      so easy days are not all the same shape. Cadence Work keeps its own
+#      canonical slot (AE-3.7 once a week) and is not part of this cycle.
+#      Tempo stays out of the easy-day rotation: the ratified filler IF
+#      ceiling (Q-B, .72) excludes it, and the ceiling is not relaxed here.
+#   5. Family start cap -- a family may be freshly STARTED at most twice
+#      per plan (series continuations are exempt, they are the progression).
+#      Soft: preferred subset, full pool when every family is at the cap.
+#      Ed 2026-09-18 rebuild: Descending-Cadence Ladder freshly drawn in 4
+#      different blocks by the same level band before this rule.
+# GG_LIBRARY_VARIETY=0 switches the whole policy off (same shape as
+# GG_LIBRARY_SELECTION / GG_LIBRARY_LINT) so a build can be graded
+# before/after on one athlete.
+_SERIES_MAX_RUNGS = 3
+_SERIES_MAX_RUNGS_FILLER = 2
+_PLAN_WIDE_FAMILY_START_CAP = 2
+_FAMILY_WEEKS_KEY = "__family_weeks__"
+_FAMILY_STARTS_KEY = "__family_starts__"
+_FAMILY_BLOCKS_KEY = "__family_blocks__"
+# series_state sentinel (a str key can never collide with a series_key tuple):
+# series closed by the rung cap, kept so variety_report still counts them.
+_CLOSED_SERIES_KEY = "__closed_series__"
+_FILLER_ROTATION_ORDER = ("endurance_with_work", "skills", "endurance_z2_long", "endurance_z2_short")
+
+
+def _trace(*parts: Any) -> None:
+    """GG_LIBRARY_TRACE=1: one stderr line per selection decision; any other
+    value is treated as a file path to append to (survives subprocess
+    capture in the pipeline orchestrator)."""
+    flag = os.environ.get("GG_LIBRARY_TRACE")
+    if not flag:
+        return
+    line = " ".join(str(p) for p in ("[library_selector]", *parts))
+    if flag == "1":
+        import sys
+        print(line, file=sys.stderr)
+    else:
+        try:
+            with open(flag, "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+        except OSError:
+            pass
+
+
+def _variety_policy_enabled() -> bool:
+    return os.environ.get("GG_LIBRARY_VARIETY", "1") != "0"
+
+
+def _series_max_rungs(slot: Mapping[str, Any]) -> int:
+    return _SERIES_MAX_RUNGS_FILLER if slot.get("role") == "filler" else _SERIES_MAX_RUNGS
+
+
+def _family_week_free_subset(
+    pool: Sequence[Mapping[str, Any]], slot: Mapping[str, Any], used_items: Mapping[Any, Any],
+) -> list[Mapping[str, Any]]:
+    """Variety rule 1 (soft half): prefer families not yet placed THIS
+    plan_week. Returns ``pool`` unchanged when every candidate's family is
+    already on the week -- a hard exclusion here would starve small
+    libraries (cf. the R3 note above)."""
+    plan_week = slot.get("plan_week")
+    if plan_week is None:
+        return list(pool)
+    family_weeks = used_items.get(_FAMILY_WEEKS_KEY) or {}
+    free = [item for item in pool if plan_week not in family_weeks.get(_family_key(item), ())]
+    return free or list(pool)
+
+
+def _family_block_free_subset(
+    pool: Sequence[Mapping[str, Any]], slot: Mapping[str, Any], used_items: Mapping[Any, Any],
+) -> list[Mapping[str, Any]]:
+    """Variety rule 1 (soft, block level): a FRESH pick prefers a family not
+    yet placed in this block. A series continuation is the legitimate way a
+    family recurs inside a block; a second fresh start of the same family
+    (Ari 2026-09-18: Descending-Cadence Ladder Fri/Fri as a pair, then a
+    fresh Wed start of the same family in week 3) is what this avoids."""
+    block_id = slot.get("block_id")
+    if block_id is None:
+        return list(pool)
+    family_blocks = used_items.get(_FAMILY_BLOCKS_KEY) or {}
+    free = [item for item in pool if block_id not in family_blocks.get(_family_key(item), ())]
+    return free or list(pool)
+
+
+def _family_under_start_cap_subset(
+    pool: Sequence[Mapping[str, Any]], used_items: Mapping[Any, Any],
+) -> list[Mapping[str, Any]]:
+    """Variety rule 5: prefer families freshly started fewer than
+    ``_PLAN_WIDE_FAMILY_START_CAP`` times so far in the plan."""
+    starts = used_items.get(_FAMILY_STARTS_KEY) or {}
+    under = [item for item in pool if starts.get(_family_key(item), 0) < _PLAN_WIDE_FAMILY_START_CAP]
+    return under or list(pool)
+
+
+def _preferred_filler_subset(
+    pool: Sequence[Mapping[str, Any]], slot: Mapping[str, Any],
+) -> list[Mapping[str, Any]]:
+    """Variety rule 4: an Endurance-type filler slot prefers ONE routed
+    library, rotating by (plan_week + filler_ordinal). Soft -- the full pool
+    stands when the preferred library has no qualifying candidate."""
+    if slot.get("role") != "filler" or slot.get("filler_ordinal") is None:
+        return list(pool)
+    if slot.get("canonical_name") not in _ENDURANCE_TYPES:
+        return list(pool)
+    routed = resolve_library_keys(slot)
+    cycle = [key for key in _FILLER_ROTATION_ORDER if key in routed]
+    if len(cycle) < 2:
+        return list(pool)
+    turn = int(slot.get("plan_week") or 0) + int(slot.get("filler_ordinal") or 0)
+    preferred = cycle[turn % len(cycle)]
+    sub = [item for item in pool if item["library_key"] == preferred]
+    return sub or list(pool)
+
+
+def _ladder_depth_above_floor(item: Mapping[str, Any], index: Mapping[str, Any],
+                              floor_min: float, cap_min: Optional[float] = None,
+                              slot: Optional[Mapping[str, Any]] = None,
+                              excluded_ids: frozenset = frozenset()) -> int:
+    """Number of higher rungs in ``item``'s family the series could actually
+    advance onto: clears the session floor and the stated day cap, passes
+    the slot's role/AE-3.1 ceiling, and is not excluded. 0 for a singleton
+    or a ladder top. Variety rule 2 ranks by min(depth, 2) at a series
+    start. (First cut counted duration only and ranked "Follow the wheel"
+    over a Billat 30-30 ladder on Forest's capped Wednesday; its next rung
+    failed the dose gate and the series fell to a synthetic render.)"""
+    family = index["families"].get(_family_key(item))
+    if not family or len(family["members"]) == 1:
+        return 0
+    ladder = sorted(family["ladder"], key=lambda entry: entry["rung"])
+    current = next((entry["rung"] for entry in ladder if entry["item_id"] == item["item_id"]), None)
+    depth = 0
+    for entry in ladder:
+        if current is not None and entry["rung"] <= current:
+            continue
+        if entry["item_id"] in excluded_ids:
+            continue
+        nxt = _find_item(index, entry["item_id"])
+        if nxt is None:
+            continue
+        duration = nxt.get("duration_min") or 0
+        if duration < floor_min or (cap_min is not None and duration > cap_min):
+            continue
+        if slot is not None and not _passes_role_ceiling(nxt, slot):
+            continue
+        depth += 1
+    return depth
 
 # FIX 7 (Aug 17 2026 adversarial grade): a recovery week once drew BOTH
 # "Heat Acclimation Protocol" (Mon) and "Base - + Heat Training" (Sun long
@@ -948,6 +1272,19 @@ def _filter_used_items(
         item for item in pool
         if plan_week not in used_items.get(item["item_id"], {}).get("weeks", ())
     ]
+    # Variety rule 1: no curated item twice in a block. Hard for intensity /
+    # long-ride slots (a loud synthetic fallback beats a repeated key
+    # session). For a FILLER slot it softens to "prefer" when the duration
+    # window holds nothing else: one repeated easy hour is a better day than
+    # a synthetic render of it (review 2026-09-18: Ed W3 Fri, Ari W3 Wed).
+    block_id = slot.get("block_id")
+    if block_id is not None and _variety_policy_enabled():
+        block_free = [
+            item for item in same_week_free
+            if block_id not in used_items.get(item["item_id"], {}).get("blocks", ())
+        ]
+        if block_free or slot.get("role") != "filler":
+            same_week_free = block_free
     plan_wide_free = [
         item for item in same_week_free
         if used_items.get(item["item_id"], {}).get("count", 0) < _PLAN_WIDE_REUSE_CAP
@@ -1021,9 +1358,19 @@ def _record_family_if(used_items: dict[Any, Any], item: Mapping[str, Any]) -> No
 def _record_used_item(
     used_items: dict[Any, dict[str, Any]], item_id: Any, plan_week: Any,
     *, is_heat: bool = False, week_type: Optional[str] = None,
+    block_id: Any = None, family_key: Optional[str] = None, fresh: bool = False,
 ) -> None:
     entry = used_items.setdefault(item_id, {"count": 0, "weeks": set()})
     entry["count"] += 1
+    if block_id is not None:
+        entry.setdefault("blocks", set()).add(block_id)
+    if family_key is not None and plan_week is not None:
+        used_items.setdefault(_FAMILY_WEEKS_KEY, {}).setdefault(family_key, set()).add(plan_week)
+    if family_key is not None and block_id is not None:
+        used_items.setdefault(_FAMILY_BLOCKS_KEY, {}).setdefault(family_key, set()).add(block_id)
+    if family_key is not None and fresh:
+        starts = used_items.setdefault(_FAMILY_STARTS_KEY, {})
+        starts[family_key] = starts.get(family_key, 0) + 1
     if plan_week is not None:
         entry["weeks"].add(plan_week)
         # FIX 7: record a recovery week's heat-tagged pick so the NEXT
@@ -1061,6 +1408,7 @@ def select(
     index: Optional[Mapping[str, Any]] = None,
     used_items: Optional[dict[Any, dict[str, Any]]] = None,
     lint_exclusions: Optional[dict[Any, dict[str, Any]]] = None,
+    extra_excluded_ids: frozenset = frozenset(),
 ) -> Optional[dict[str, Any]]:
     """Resolve a canonical slot to a curated TP library item, or None (D9).
 
@@ -1080,10 +1428,17 @@ def select(
     excluded from a pool this call touched because it carries a
     curation-consistency lint flag (GG_LIBRARY_LINT=0 disables the
     exclusion; flags are still computed upstream).
+
+    ``extra_excluded_ids`` (knee-safety fix 2026-09-17) is unioned with the
+    lint-excluded set for this call -- e.g. ``seated_only_excluded_ids`` for
+    an athlete whose derived bike_constraints carry 'seated_only'. It also
+    blocks a series from continuing onto an excluded item, the same way a
+    lint-flagged rung can never be advanced onto (T27).
     """
     index = index if index is not None else load_index()
     items = index["items"]
-    excluded_ids = _lint_excluded_ids(index)
+    _lint_ids = _lint_excluded_ids(index)
+    excluded_ids = _lint_ids | extra_excluded_ids
 
     canonical_name = slot["canonical_name"]
     if canonical_name in PINNED_TEST_ITEM_IDS:
@@ -1096,17 +1451,37 @@ def select(
     day_cap_min = slot.get("day_cap_min")
 
     pool = _qualifying_pool(items, library_keys, budget_min, day_cap_min, slot=slot,
-                            excluded_ids=excluded_ids, lint_exclusions=lint_exclusions)
+                            excluded_ids=_lint_ids, extra_excluded_ids=extra_excluded_ids,
+                            lint_exclusions=lint_exclusions)
     if not pool:
         return None
 
     series_key = slot.get("series_key")
+    # Variety rule 3: a series that has already placed its full run of
+    # rungs (3, or 2 for a filler pair) closes here; the slot starts a new
+    # series, preferring a different family.
+    avoid_family: Optional[str] = None
+    _variety = _variety_policy_enabled()
+    if _variety and series_state is not None and series_key and series_key in series_state:
+        _state = series_state[series_key]
+        if int(_state.get("placed") or 1) >= _series_max_rungs(slot):
+            avoid_family = _state.get("family_key")
+            series_state.setdefault(_CLOSED_SERIES_KEY, []).append(
+                {"series_key": series_key, **_state})
+            del series_state[series_key]
     if series_state is not None and series_key and series_key in series_state:
         resolution = _select_series_continuation(slot, series_state, index, pool, excluded_ids)
+        _trace("continue", slot.get("plan_week"), slot.get("day"), canonical_name, slot.get("role"),
+               "budget=", slot.get("budget_min"), "cap=", slot.get("day_cap_min"), "floor=", slot.get("session_floor_min"),
+               "ext=", slot.get("floor_extended_min"),
+               "state=", {k: series_state.get(series_key, {}).get(k) for k in ("family_key", "rung", "placed")},
+               "pool=", len(pool), "pool_durs=", sorted({int(i.get("duration_min") or 0) for i in pool})[:8],
+               "->", resolution and (resolution["item_id"], resolution.get("duration_min")))
         if resolution is not None:
             if used_items is not None:
                 _record_used_item(used_items, resolution["item_id"], slot.get("plan_week"),
-                                  is_heat=_is_heat_tagged(resolution), week_type=slot.get("week_type"))
+                                  is_heat=_is_heat_tagged(resolution), week_type=slot.get("week_type"),
+                                  block_id=slot.get("block_id"), family_key=_family_key(resolution))
             return resolution
         # Series continuation had nothing to progress to (e.g. ladder top,
         # or no qualifying candidate) -- loud fallback, per D9.
@@ -1117,11 +1492,34 @@ def select(
         candidate_pool = _filter_used_items(pool, slot, used_items)
         if not candidate_pool:
             return None
+        if _variety:
+            candidate_pool = _family_week_free_subset(candidate_pool, slot, used_items)
+            candidate_pool = _family_block_free_subset(candidate_pool, slot, used_items)
+            candidate_pool = _family_under_start_cap_subset(candidate_pool, used_items)
+    if avoid_family:
+        _other_family = [item for item in candidate_pool if _family_key(item) != avoid_family]
+        if _other_family:
+            candidate_pool = _other_family
+    if _variety:
+        candidate_pool = _preferred_filler_subset(candidate_pool, slot)
 
     # AE-1.17's road-taper dose preference outranks ordinary level banding:
     # taper already cuts session duration and AE-1.12 caps every candidate,
     # while a low-IF percentile band can contain only the under-dosed items.
     candidate_pool = _road_taper_intensity_subset(candidate_pool, slot)
+    # AE-2.7 (amended 2026-09-17): never START a family series on a rung
+    # whose next rung is under the session floor -- the continuation would
+    # fail closed against a day cap and leave a "(1 of 2)" orphan.
+    if series_key and slot.get("session_floor_min"):
+        # Variety rule 2 tightens this check (day cap, role ceiling,
+        # exclusions); with the policy off it is the pre-policy duration-only
+        # check so GG_LIBRARY_VARIETY=0 is a true before/after.
+        _floor_kw = {"slot": slot, "excluded_ids": excluded_ids} if _variety else {}
+        floor_ok = [item for item in candidate_pool
+                    if _family_can_continue_above_floor(item, index, float(slot["session_floor_min"]),
+                                                        **_floor_kw)]
+        if floor_ok:
+            candidate_pool = floor_ok
     level = int(slot.get("level") or 1)
     leveled_pool = _apply_level(candidate_pool, level)
     if used_items is not None:
@@ -1136,16 +1534,31 @@ def select(
             coherent_full = _family_coherent_subset(candidate_pool, slot, used_items)
             if coherent_full:
                 leveled_pool = coherent_full
-    ranked = _rank(leveled_pool)
+    # Variety rule 2: an intensity series START ranks ladder openers
+    # (2+ floor-qualified rungs above) ahead of 1-rung openers and
+    # singletons; dimension richness (D6) still orders within a tier.
+    _depth_fn = None
+    if _variety and series_key and slot.get("role") == "intensity":
+        _floor = float(slot.get("session_floor_min") or 0)
+        _cap = slot.get("day_cap_min")
+        _depth_fn = lambda item: _ladder_depth_above_floor(  # noqa: E731
+            item, index, _floor, _cap, slot=slot, excluded_ids=excluded_ids)
+    ranked = _rank(leveled_pool, depth_fn=_depth_fn)
     if not ranked:
         return None
 
     idx = _rotate_index(len(ranked), slot.get("athlete_seed"), _slot_identity(slot))
     chosen = ranked[idx]
+    _trace("fresh", slot.get("plan_week"), slot.get("day"), canonical_name, slot.get("role"),
+           "budget=", slot.get("budget_min"), "cap=", slot.get("day_cap_min"), "floor=", slot.get("session_floor_min"),
+           "ext=", slot.get("floor_extended_min"), "block=", slot.get("block_id"), "pool=", len(pool),
+           "cand=", len(candidate_pool), "ranked=", len(ranked), "->", chosen["item_id"], chosen["name_base"],
+           chosen.get("duration_min"))
 
     if used_items is not None:
         _record_used_item(used_items, chosen["item_id"], slot.get("plan_week"),
-                          is_heat=_is_heat_tagged(chosen), week_type=slot.get("week_type"))
+                          is_heat=_is_heat_tagged(chosen), week_type=slot.get("week_type"),
+                          block_id=slot.get("block_id"), family_key=_family_key(chosen), fresh=True)
         _record_family_if(used_items, chosen)
     if series_state is not None and series_key:
         _record_series_state(series_state, series_key, chosen, index)
@@ -1179,7 +1592,25 @@ def _select_series_continuation(
         # small duration drift. A real athlete cap is hard, however: never
         # advance to an out-of-pool rung just to preserve the series.
         in_pool = [entry for entry in candidates if entry["item_id"] in qualifying_ids]
-        next_entry = (in_pool or candidates) if slot.get("day_cap_min") is None else in_pool
+        if slot.get("day_cap_min") is None:
+            next_entry = in_pool or candidates
+        else:
+            # AE-2.7 (amended 2026-09-17): under a day cap the hard upper
+            # bound is the cap, not the budget window's +15%. The LOWER bound
+            # stays the window's (2026-09-19): "floor" alone let a 240-min
+            # long-ride series continue onto a 60-min rung (R06 fail on three
+            # golden orders).
+            _cap = float(slot["day_cap_min"]); _floor = float(slot.get("session_floor_min") or 0)
+            _lo, _ = _duration_bounds(
+                float(slot.get("budget_min") or 0), slot.get("day_cap_min"), slot.get("canonical_name"),
+                session_floor_min=_floor, floor_extended_min=float(slot.get("floor_extended_min") or 0),
+                role=slot.get("role"))
+            def _fits(entry):
+                it = _find_item(index, entry["item_id"])
+                d = (it or {}).get("duration_min") or 0
+                return (it is not None and d <= _cap and d >= max(_floor, _lo)
+                        and _passes_role_ceiling(it, slot))
+            next_entry = in_pool or ([e for e in candidates if _fits(e)] if _floor else [])
         if next_entry:
             chosen_id = next_entry[0]["item_id"]
             chosen_item = _find_item(index, chosen_id)
@@ -1218,13 +1649,25 @@ def _select_singleton_continuation(
         # R2: still honors the role/week-type ceiling -- duration drift is
         # an acceptable coherence trade, a recovery-week sprint item is not.
         # T27: never continue onto a lint-excluded item either.
-        if slot.get("day_cap_min") is not None:
-            return None
+        # AE-2.7 (amended 2026-09-17): with a day cap, the hard constraints
+        # are the cap itself and the session floor -- not the +-15% window
+        # around a budget the floor may just have moved. Continue within
+        # [floor, cap]; fail closed only when nothing in the library fits.
+        cap = slot.get("day_cap_min")
+        floor = float(slot.get("session_floor_min") or 0)
+        _lo, _ = _duration_bounds(
+            float(slot.get("budget_min") or 0), cap, slot.get("canonical_name"),
+            session_floor_min=floor, floor_extended_min=float(slot.get("floor_extended_min") or 0),
+            role=slot.get("role"))
         all_in_library = [
             item for item in index["items"]
             if item["library_key"] == library_key and item["item_id"] not in excluded_ids
             and _passes_role_ceiling(item, slot)
+            and (cap is None or (item.get("duration_min") or 0) <= cap)
+            and (item.get("duration_min") or 0) >= max(floor, _lo)
         ]
+        if cap is not None and not floor:
+            return None
         if last_if is not None:
             higher = [
                 item for item in all_in_library if item.get("if_planned") is not None and item["if_planned"] > last_if
@@ -1241,6 +1684,154 @@ def _select_singleton_continuation(
     return _to_resolution(chosen_item)
 
 
+def variety_report(bb_plan: Mapping[str, Any], index: Mapping[str, Any],
+                   series_state: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
+    """Variety rule 5: how spread a resolved plan is, for the coach and the
+    reviewer. Reads ``day['library_resolution']`` off the block-builder
+    plan after ``resolve_library_selections``; pure, never raises for a
+    plan with no resolutions."""
+    by_id = {item["item_id"]: item for item in index.get("items", [])}
+    pool_size: dict[str, int] = {}
+    for item in index.get("items", []):
+        pool_size[item["library_key"]] = pool_size.get(item["library_key"], 0) + 1
+    placements: list[dict[str, Any]] = []
+    for week in bb_plan.get("weeks", []):
+        plan_week = week.get("plan_week", week.get("week_num"))
+        for day in week.get("days", []):
+            res = day.get("library_resolution")
+            if not res:
+                continue
+            item = by_id.get(res["item_id"], res)
+            family_key = (_family_key(item) if "library_key" in item and "name_base" in item
+                          else f"{res.get('library_key')}||{res.get('name_base')}")
+            placements.append({
+                "plan_week": plan_week,
+                "day": day.get("day"),
+                "role": day.get("role"),
+                "item_id": res["item_id"],
+                "name": res.get("name_base"),
+                "library_key": res.get("library_key"),
+                "family_key": family_key,
+            })
+    item_weeks: dict[Any, list] = {}
+    family_weeks: dict[str, list] = {}
+    used_by_key: dict[str, set] = {}
+    for p in placements:
+        item_weeks.setdefault(p["item_id"], []).append(p["plan_week"])
+        family_weeks.setdefault(p["family_key"], []).append(p["plan_week"])
+        used_by_key.setdefault(p["library_key"], set()).add(p["item_id"])
+    series = []
+    _open = [(k, v) for k, v in (series_state or {}).items() if isinstance(k, tuple)]
+    _closed = [(c.get("series_key"), c) for c in (series_state or {}).get(_CLOSED_SERIES_KEY, [])]
+    for key, state in _open + _closed:
+        placed = int(state.get("placed") or 1)
+        if placed >= 2:
+            series.append({"series_key": list(key) if isinstance(key, tuple) else key,
+                           "family": state.get("family_key"), "rungs": placed})
+    repeated_items = [
+        {"item_id": iid, "name": next(p["name"] for p in placements if p["item_id"] == iid),
+         "weeks": sorted(w for w in weeks if w is not None)}
+        for iid, weeks in item_weeks.items() if len(weeks) > 1
+    ]
+    same_week_families = sorted({
+        f"{fam}@{w}" for fam, weeks in family_weeks.items()
+        for w in set(weeks) if weeks.count(w) > 1
+    })
+    return {
+        "sessions_resolved": len(placements),
+        "distinct_items": len(item_weeks),
+        "distinct_families": len(family_weeks),
+        "series": sorted(series, key=lambda s: str(s["series_key"])),
+        "series_sessions": sum(s["rungs"] for s in series),
+        "repeated_items": sorted(repeated_items, key=lambda r: str(r["item_id"])),
+        "same_week_family_repeats": same_week_families,
+        "pool_utilisation": {
+            key: {"used": len(used), "pool": pool_size.get(key, 0)}
+            for key, used in sorted(used_by_key.items())
+        },
+    }
+
+
+_BANNED_CONCEPT_RE = re.compile(r"fatmax|fat\s*max|fartlek|fasted", re.I)  # mirrors ae_lint.BANNED_NAME_RE
+
+
+def banned_concept_item_ids(index: Mapping[str, Any]) -> frozenset:
+    """Curated items whose name or the first 400 chars of description carry a
+    banned concept (AE-3.11 / AE-6.3: FatMax, fartlek, fasted). ae_lint FAILs
+    the card at payload time; excluding the item at selection keeps the build
+    from stopping on a curated pick (Ari 2026-09-18: "RLP Compressed
+    Endurance - Prep Session V2" mentions fasted riding). Same mechanism as
+    the structure-less set (``extra_excluded_ids``); pinned tests exempt."""
+    if "items" not in index:
+        return frozenset()
+    pinned = set(PINNED_TEST_ITEM_IDS.values())
+    out = []
+    for item in index["items"]:
+        if item["item_id"] in pinned:
+            continue
+        name = str(item.get("name_base") or item.get("name") or "")
+        desc = str(item.get("description") or "")[:400]
+        if _BANNED_CONCEPT_RE.search(name) or _BANNED_CONCEPT_RE.search(desc):
+            out.append(item["item_id"])
+    return frozenset(out)
+
+
+def structureless_item_ids(index: Mapping[str, Any]) -> frozenset:
+    """Curated items with no executable structure. They ship as a blank
+    graph on the athlete's calendar (sol review 2026-09-17: "Muscle
+    Recruitment Progressions - Trainer" twice per athlete), so a real plan
+    build excludes them the same way the knee-safety set is excluded
+    (``extra_excluded_ids``). Pinned tests are exempt (assessments are
+    legitimately RPE/free)."""
+    if "items" not in index:
+        return frozenset()
+    pinned = set(PINNED_TEST_ITEM_IDS.values())
+    # A missing / null / empty-object structure counts. (Unit fixtures use
+    # ``{"structure": []}`` -- a Mapping with the key present -- and stay
+    # eligible; the live blank-graph items carry no ``structure`` key at all.)
+    def _blank(st):
+        if not isinstance(st, Mapping):
+            return True
+        # a real TP object (has a polyline) with no steps is a blank graph;
+        # a bare fixture {"structure": []} has no polyline and is left alone
+        return not st.get("structure") and "polyline" in st
+    return frozenset(
+        item["item_id"] for item in index["items"]
+        if item["item_id"] not in pinned and _blank(item.get("structure")))
+
+
+def _family_can_continue_above_floor(item: Mapping[str, Any], index: Mapping[str, Any],
+                                     floor_min: float, slot: Optional[Mapping[str, Any]] = None,
+                                     excluded_ids: frozenset = frozenset()) -> bool:
+    """True when ``item`` belongs to a multi-rung family whose ladder has a
+    higher rung clearing ``floor_min``. A singleton is NOT series-safe: its
+    continuation is a nearest-higher-IF jump to a differently named item,
+    which the floor makes likely once the short rungs are gone (the
+    "(1 of 2)" orphan). Callers fall back to the full pool when no family
+    qualifies, so singleton-only libraries still resolve."""
+    family = index["families"].get(_family_key(item))
+    if not family or len(family["members"]) == 1:
+        return False
+    ladder = sorted(family["ladder"], key=lambda entry: entry["rung"])
+    current = next((entry["rung"] for entry in ladder if entry["item_id"] == item["item_id"]), None)
+    if current is None:
+        return True
+    cap_min = (slot or {}).get("day_cap_min")
+    for entry in ladder:
+        if entry["rung"] <= current or entry["item_id"] in excluded_ids:
+            continue
+        nxt = _find_item(index, entry["item_id"])
+        if nxt is None:
+            continue
+        duration = nxt.get("duration_min") or 0
+        if duration < floor_min or (cap_min is not None and duration > cap_min):
+            continue
+        if slot is not None and not _passes_role_ceiling(nxt, slot):
+            continue
+        return True
+    return False
+
+
 def _record_series_state(
     series_state: dict[str, Any], series_key: str, item: Mapping[str, Any], index: Mapping[str, Any]
 ) -> None:
@@ -1253,6 +1844,11 @@ def _record_series_state(
             if rung_entry["item_id"] == item["item_id"]:
                 rung = rung_entry["rung"]
                 break
+    prev = series_state.get(series_key) or {}
+    if prev.get("item_id") == item["item_id"]:
+        placed = int(prev.get("placed") or 1)  # a refit of the same placement
+    else:
+        placed = int(prev.get("placed") or 0) + 1
     series_state[series_key] = {
         "family_key": family_key,
         "library_key": item["library_key"],
@@ -1260,6 +1856,7 @@ def _record_series_state(
         "rung": rung,
         "if_planned": item.get("if_planned"),
         "singleton": singleton,
+        "placed": placed,
     }
 
 
@@ -1279,6 +1876,7 @@ def refit(
     series_state: Optional[dict[str, Any]] = None,
     index: Optional[Mapping[str, Any]] = None,
     lint_exclusions: Optional[dict[Any, dict[str, Any]]] = None,
+    extra_excluded_ids: frozenset = frozenset(),
 ) -> Optional[dict[str, Any]]:
     """Trim-step resolution: same routing/series constraints, next-shorter fit.
 
@@ -1289,10 +1887,15 @@ def refit(
     when nothing qualifies -- D9's loud fallback.
 
     ``lint_exclusions`` (T27): same threaded collector as ``select``.
+
+    ``extra_excluded_ids`` (knee-safety fix 2026-09-17): same threaded
+    exclusion set as ``select`` -- unioned with the lint-excluded set and
+    recorded under ``reason: "seated_only"`` when it's what excluded an item.
     """
     index = index if index is not None else load_index()
     items = index["items"]
-    excluded_ids = _lint_excluded_ids(index)
+    _lint_ids = _lint_excluded_ids(index)
+    excluded_ids = _lint_ids | extra_excluded_ids
 
     canonical_name = slot["canonical_name"]
     if canonical_name in PINNED_TEST_ITEM_IDS:
@@ -1309,7 +1912,8 @@ def refit(
     day_cap_min = slot.get("day_cap_min")
 
     pool = _qualifying_pool(items, library_keys, budget_min, day_cap_min, slot=slot,
-                            excluded_ids=excluded_ids, lint_exclusions=lint_exclusions)
+                            excluded_ids=_lint_ids, extra_excluded_ids=extra_excluded_ids,
+                            lint_exclusions=lint_exclusions)
     if not pool:
         return None
 

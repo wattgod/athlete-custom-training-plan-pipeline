@@ -433,7 +433,7 @@ def _audible_line(unit: DemandUnit, n_units: int, dress_rehearsal: bool) -> str:
         "The spine of this ride is the point."
     )
     if dress_rehearsal:
-        line += "\nFueling practice continues at race rate no matter what you audible."
+        line += "\nFueling practice continues at race rate no matter what you audible -- I mean that."
     return line
 
 
@@ -469,8 +469,8 @@ def act_sim_description(index: int, total: int, facts: RaceFacts,
         (f"THE UNIT: {_fmt_unit(unit, ftp)} — this is the crux demand of "
          f"the race: {clause}."),
         (f"THE SHAPE: {n_units} units across {z2_hours}hr of Z2 — Act "
-         f"{index} of {total}. Each act packs them tighter; race day is "
-         "the only day you do the full count."),
+         f"{index} of {total}. Each act packs them tighter; I've built it "
+         "so race day is the only day you do the full count."),
     ]
     if facts.high_altitude:
         sections.append(_altitude_line())

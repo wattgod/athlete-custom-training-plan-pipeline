@@ -1,0 +1,33 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Tempo w/ cadence changes</name>
+  <description>FUEL:
+Normal meal ~2h before. One bottle, 40-50g carbs. Done.
+
+WARM-UP:
+• 10min easy spin, building 55-65% FTP.
+
+MAIN SET:
+• 3 sets of 3x [2min @85-89% FTP (low cadence) + 1min @85-89% FTP (high cadence)], with 5min easy spin @50-60% FTP between sets.
+• Focus on smooth transitions between cadences - same power target, different leg speed. Note where your pedal stroke changes or breaks down.
+
+COOL-DOWN:
+• 10min easy @40-50% FTP.
+
+EXECUTION:
+• These efforts build your aerobic engine and your ability to produce power comfortably across a wide cadence range - a key skill as gradient, wind, and group pace force cadence changes.
+
+RPE guide: 87% FTP -> RPE 5-6; 55% FTP -> RPE 3</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.55" PowerHigh="0.65"/>
+    <IntervalsT Repeat="3" OnDuration="120" OnPower="0.87" CadenceLow="55" CadenceHigh="65" OffDuration="60" OffPower="0.87"/>
+    <SteadyState Duration="300" Power="0.55"/>
+    <IntervalsT Repeat="3" OnDuration="120" OnPower="0.87" CadenceLow="55" CadenceHigh="65" OffDuration="60" OffPower="0.87"/>
+    <SteadyState Duration="300" Power="0.55"/>
+    <IntervalsT Repeat="3" OnDuration="120" OnPower="0.87" CadenceLow="55" CadenceHigh="65" OffDuration="60" OffPower="0.87"/>
+    <SteadyState Duration="300" Power="0.55"/>
+    <Cooldown Duration="600" PowerLow="0.50" PowerHigh="0.40"/>
+  </workout>
+</workout_file>

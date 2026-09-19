@@ -10,6 +10,7 @@ course catalogues, or make network calls.
 from __future__ import annotations
 
 import copy
+import hashlib
 import math
 import re
 from datetime import date, datetime, timedelta
@@ -158,12 +159,26 @@ def _email(brand: Dict[str, Any]) -> str:
                or (brand.get("email") or {}).get("from_email") or "")
 
 
-def _load_week_copy() -> Dict[str, str]:
+def _load_week_copy() -> Dict[str, List[str]]:
+    """Each week type maps to a LIST of variations (entry [0] is Matti's
+    canonical text, never edited); see athletes/config/block_notes.yaml."""
     try:
         with _BLOCK_NOTES_PATH.open(encoding="utf-8") as handle:
             return yaml.safe_load(handle) or {}
     except (OSError, yaml.YAMLError) as exc:
         raise RuntimeError(f"Could not load block notes: {exc}") from exc
+
+
+def _rotate_block_note(variations: List[str], athlete_seed: Any, ordinal: int) -> str:
+    """Pick one block-notes variation, deterministic on (athlete_seed,
+    ordinal) -- mirrors rest_day_cards._rotate so the same athlete doesn't
+    read the same wall twice in a row and two athletes don't converge on
+    the same one. `ordinal` is the plan's week number (AE-6.5b: rotation
+    applies everywhere rest-day rotation does)."""
+    if not variations:
+        return ""
+    offset = int(hashlib.sha256(str(athlete_seed).encode("utf-8")).hexdigest(), 16)
+    return variations[(offset + int(ordinal or 0)) % len(variations)]
 
 
 def _week_start(week: Any) -> Optional[date]:
@@ -916,7 +931,9 @@ def _weekly_briefing(plan_ir: Any, candidate: Dict[str, Any], fueling: Any,
     if seen_types is not None and week_type in seen_types and short_copy_key in _SHORT_WEEK_COPY:
         descriptor = _SHORT_WEEK_COPY[short_copy_key]
     else:
-        descriptor = source.get(week_type, source.get("medium", ""))
+        variations = source.get(week_type) or source.get("medium") or []
+        athlete_seed = _get(_get(plan_ir, "athlete") or {}, "id") or _first_name(plan_ir)
+        descriptor = _rotate_block_note(variations, athlete_seed, week_number)
         if seen_types is not None:
             seen_types.add(week_type)
     quality = _quality_sessions(week)

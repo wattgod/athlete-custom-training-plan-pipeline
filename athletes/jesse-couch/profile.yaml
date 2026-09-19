@@ -1,0 +1,633 @@
+# Athlete Profile: Jesse Couch
+# Built 2026-08-29 by manual archive build (no intake_to_plan.py run — this is a
+# retrospective profile assembled from Gmail evidence, not a fresh questionnaire).
+# Source: Gmail archive (gravelgodcoaching@gmail.com <-> jesseanthonycouch@gmail.com,
+# 2026-06-09 through 2026-08-29) + TrainingPeaks email notifications + repo
+# known_races.py (checked, no match). See communications.md for full email dump
+# and open_questions.md for every field below marked null/UNKNOWN.
+
+name: Jesse Couch
+tp_display_name: Couch Jess          # TrainingPeaks shows him as "Couch Jess" — used in every TP notification subject line
+email: jesseanthonycouch@gmail.com
+athlete_id: jesse-couch               # directory slug (this profile). Pipeline token seen in order emails: jesse_couch
+tp_athlete_id: 1177325                # confirmed via TP "Analyze Workout" deep links in every workout-notification email (query param athlete=1177325)
+order_id: cs_live_a1Rh64ACwrI3DU2RVNiWHav5CAaLl1s3eu7jdTsV5rd2zgNSvjAoilS4Vj   # source: "[GG] FAILED: Jesse Couch — Borderlands AZ State Championships", 2026-06-09 15:31 UTC
+delivery_platform: trainingpeaks
+fulfillment:
+  order_id: cs_live_a1Rh64ACwrI3DU2RVNiWHav5CAaLl1s3eu7jdTsV5rd2zgNSvjAoilS4Vj
+  delivery_platform: trainingpeaks
+  order_created_at: '2026-06-09'
+  tier: custom                        # source: order/failure email, "Tier: custom"
+  weeks_purchased: null               # UNKNOWN — not stated anywhere in the archive; open_questions.md
+  athlete_timezone: null              # UNKNOWN — athlete lives in Italy (CET/CEST) but no explicit TZ field seen
+  generation_revision: null           # UNKNOWN
+  effective_date: null                # UNKNOWN
+  planning_horizon_end: null          # UNKNOWN
+  publication_horizon_weeks: null     # UNKNOWN
+  pipeline_history:
+    # Both pipeline runs recorded in Gmail FAILED before a plan was ever hand-delivered.
+    - order: cs_live_a1Rh64ACwrI3DU2RVNiWHav5CAaLl1s3eu7jdTsV5rd2zgNSvjAoilS4Vj
+      status: FAILED
+      error: "Check Railway logs for details. (no ERROR body captured in this email)"
+      at: '2026-06-09T15:31:43Z'
+    - order: test_20260609202213
+      status: FAILED
+      error: "Pipeline timed out after 300s"
+      at: '2026-06-09T20:27:14Z'
+    - note: >
+        Athlete confirmed receiving "the training program" on TrainingPeaks by 2026-06-11
+        but never received the PDF training guide. Coach hand-sent
+        "Jesse-Couch-Training-Guide.pdf" as an email attachment on 2026-06-12
+        (message 19ebd615b6a00650). Unknown from the archive whether the calendar
+        itself was machine-generated on a later successful retry or hand-built —
+        flagged in open_questions.md.
+    - note: >
+        Coach's 2026-08-26/27 email ("Re: Check In" thread, messages 1a03f12b305466a2
+        and 1a0414d61a60c387) states the fall block "was still running on my previous
+        engine" and got "the full rebuild" on 2026-08-26. Repo CLAUDE.md documents a
+        June 2026 block-builder overhaul explicitly named the "Jesse Couch incident" —
+        this athlete's plan is the one that motivated that engine fix. See
+        coaching_history.md.
+
+sex: null                              # UNKNOWN — never stated by the athlete in the archive; see open_questions.md
+height_cm: null                        # UNKNOWN
+weight_kg: 68.7                        # DERIVED: 151.5 lb / 2.20462 = 68.72 kg, rounded 68.7. Source: "I have been weighing
+                                        # 151.5 for two months" — email 2026-08-26 (1a03fa01690b8664). This is the athlete's
+                                        # own stated STABLE weight, used here in preference to the intake baseline below.
+weight_kg_history:                     # not a house-schema field; kept for coach context, all values evidence-sourced
+  - value_kg: 69.9
+    value_lb: null
+    at: '2026-06-09'
+    source: "order/pipeline-fail email, 'Weight 69.9 kg' (intake baseline)"
+  - value_lb: 151.5
+    value_kg: 68.7
+    at: '2026-06-26..2026-08-26'       # "stable... for two months" as of 2026-08-26
+    source: "email 2026-08-26, 1a03fa01690b8664"
+  - value_lb: 153.0
+    value_kg: 69.4
+    at: '2026-08-29 (pre-ride)'
+    source: "email 2026-08-29, Weight/Food Update"
+  - value_lb: 152.3
+    value_kg: 69.1
+    at: '2026-08-29 (post 4h ride)'
+    source: "email 2026-08-29, Weight/Food Update"
+
+primary_goal: specific_race
+target_race:
+  name: Borderlands AZ State Championships    # verbatim as used in every coach/order email
+  race_id: null
+  date: '2026-11-14'
+  distance_miles: null                 # UNKNOWN — not stated anywhere in the archive
+  elevation_ft: null                   # UNKNOWN
+  goal_type: null                      # UNKNOWN — no explicit "finish"/"podium"/"compete" framing for THIS race in the archive
+  goal: null                           # UNKNOWN
+  goal_description: null               # UNKNOWN — see open_questions.md
+  generic_profile: true
+  generic_demands: null                # UNKNOWN — not computed; this profile was not run through generate_full_package.py
+  race_match:
+    method: none                       # checked athletes/scripts/known_races.py: no "Borderlands" or "El Tour"/"Tucson" entry
+    score: null
+    matched_slug: null
+    near_misses: []
+  coach_verified: false
+  generic_discipline: gravel
+brand: gravelgod
+road_category: null
+discipline_default: gravel
+
+a_events:
+  - name: Borderlands AZ State Championships
+    date: '2026-11-14'
+    distance_miles: null
+    goal: null
+    priority: A
+
+b_events:
+  - name: El Tour de Tucson             # coach's email says only "El Tour Nov 21"; full name is the task's supplied anchor,
+                                         # not independently spelled out in the Gmail archive — see open_questions.md
+    date: '2026-11-21'
+    distance_miles: null
+    goal: compete                       # source: "El Tour Nov 21 the B-race ridden on residual fitness" — email 2026-08-26 (1a03f12b305466a2)
+    priority: B
+
+c_events:
+  - name: "Czech doubleheader (unnamed enduro-format gravel races)"   # exact race names never appear in the archive
+    date: '2026-09-05..2026-09-06'      # per task-supplied anchor; Gmail evidence only bounds this loosely (see note)
+    distance_miles: null
+    goal: training                      # source: coach 2026-08-22 email, "treat as hard training days, not events worth
+                                         # a full taper"; confirmed again 2026-08-27 rebuild email
+    priority: C
+    note: >
+      Athlete's own recap (email 2026-08-29, "What Went Well + Race Plan") describes
+      an enduro format: 75 km with 4 unmarked timed sections, ridden as Zone 2 between
+      sections. He reports 11.5 hours of pedaling total (both days) and treats each
+      timed section as a ~30 min time trial. Exact Sept 5-6 dates and any exact race
+      name are not independently confirmed in the Gmail archive — flagged in
+      open_questions.md.
+
+secondary_races: []
+racing:
+  has_goals: true
+  race_list: |-
+    Borderlands AZ State Championships (2026-11-14, priority A)
+    El Tour de Tucson (2026-11-21, priority B, ridden on residual fitness)
+    Czech doubleheader (2026-09-05/06, priority C, raced as training)
+  success_metrics: null                # UNKNOWN — no explicit "what does success look like" statement in the archive
+  obstacles: null                      # UNKNOWN
+  training_goals: >
+    Athlete's own stated operating point: "I ride great when I am doing about 700 TSS
+    a week and 12ish hours." (email 2026-08-26, 1a03fa01690b8664)
+  goals_notes: ''
+
+training_history:
+  summary: >
+    "I have worked out either at the Gym or on my Bike for more than 45 years."
+    (email 2026-08-26). Former competitive weightlifter before cycling.
+  years_cycling: null                  # UNKNOWN — the 45-year figure is total exercise history (gym + bike), not cycling-specific
+  years_structured: null               # UNKNOWN
+  strength_background: >
+    "I was a World Class Weightlifter in the 1980's. I won the Bench Press and the
+    Squats at the USA National Championships. When I finally tore too many body parts
+    I turned to bike riding." (email 2026-08-26, 1a03fa01690b8664)
+  highest_weekly_hours: null           # UNKNOWN precise historical max; European peers he races against do 16-18 hrs/wk (his report)
+  current_weekly_hours: null           # intake said 12-15 hrs/wk (2026-06-09); no later self-report of actual weekly hours
+  strengths: null
+  weaknesses: null
+
+fitness_markers:
+  ftp_watts: 270                       # last CONFIRMED TP threshold value in the archive. See ftp_history below — the
+                                        # August retest is known to be materially higher but its wattage was never captured
+                                        # in Gmail (see open_questions.md — THIS IS THE TOP OPEN ITEM).
+  ftp_estimated: false
+  power_basis: measured
+  ftp_date: '2026-06-23'
+  weight_kg: 68.7
+  height_cm: null
+  sex: null
+  w_kg: null                           # not computed — current FTP is stale/unknown (see ftp_history); computing W/kg on a
+                                        # known-outdated FTP would misstate current fitness
+  resting_hr: null
+  max_hr: null
+  lthr: null
+  training_metric: power
+  control_metric: power
+  control_basis: ftp
+  requested_metric: power
+  field_testing_allowed: true
+  ftp_history:
+    - value_w: 275
+      at: '2026-06-09'
+      source: "order/pipeline-fail email — athlete-reported intake FTP"
+      note: "Intake baseline, pre-plan. Never reconciled against the TP-measured value below."
+    - value_w: 260
+      at: null
+      source: "TP 'Threshold notification for Couch Jess', 2026-06-23 — listed as 'Previous Value'"
+      note: "Presumably the coach's manually-entered starting anchor in TP, distinct from the 275W intake figure."
+    - value_w: 270
+      at: '2026-06-23'
+      source: "TP 'Threshold notification for Couch Jess', 2026-06-23 — 'New Threshold Power Value: 270'"
+      note: >
+        Corresponds to TP workout 'The Assessment - Functional Threshold' completed
+        2026-06-23 (NP 226W over a 20min effort at the end of a 5-10-5-10-20-10 protocol,
+        TSS 96). Athlete's own comment on that workout: "Either Age finally caught me or
+        I have great room for improvement. The good news is my leg power balance
+        finally went 50/50." (thread 19ef3561de5601e2)
+    - value_w: null
+      at: '2026-08-17 (approx, "this past Monday" per 2026-08-20 email)'
+      source: "Athlete self-report only — email 2026-08-21 (1a022a3f0c129430): 'My Functional
+        Threshold Test this past Monday was up a fair amount since June... that 5 minute
+        \"all out\" protocol really takes the zing out of your attitude.'"
+      note: >
+        NO WATTAGE NUMBER EXISTS IN THE GMAIL ARCHIVE FOR THIS RETEST. No TP "Threshold
+        notification" email was sent for it — most likely because the athlete's TP
+        account was disconnected from the coach's account at the time (see his own
+        2026-08-21 email: "The account is connected" implies it had just been
+        reconnected). This is the single highest-priority open item — see
+        open_questions.md.
+  reanchor:
+    required: true
+    week: null
+    test: ftp_field_test
+    action: >
+      Get the actual mid-August retest wattage from TrainingPeaks directly (not
+      recoverable from Gmail) before using FTP for zone-setting. See open_questions.md.
+
+recent_training:
+  last_12_weeks: consistent            # inferred from the steady cadence of TP workout-notification emails June-Aug; not a direct quote
+  current_phase: build                 # per coach's 2026-08-26/27 rebuild email context (fall block, load weeks 620-700 TSS)
+  coming_off_injury: false             # as of Aug 2026 — 2025 injuries are historical, see injury_history below
+  days_since_last_ride: null
+
+weekly_availability:
+  total_hours_available: null          # UNKNOWN current; intake said 12-15 hrs/wk (2026-06-09)
+  cycling_hours_target: null           # coach's 2026-08-26/27 rebuild targets 11-13 hrs/wk load weeks, ~350-370 TSS recovery weeks
+  strength_sessions_max: null
+  notes: >
+    Athlete's self-identified sweet spot: "about 700 TSS a week and 12ish hours"
+    (email 2026-08-26). Coach's Aug 26/27 rebuild converged to load weeks of
+    620-700 TSS at 11-13 hours, recovery weeks ~350-370 TSS (not 200 as before).
+  volume_warning: null
+
+preferred_days: null                   # UNKNOWN — no day-by-day availability grid appears anywhere in the archive
+
+availability_roles: null                # UNKNOWN — no self-reported weekly availability grid exists in the Gmail
+                                         # archive (unlike Steve Wagner's intake questionnaire, this profile has no
+                                         # equivalent day-by-day submission to derive long_ride_days/interval_days/
+                                         # off_days from). See open_questions.md.
+
+recurring_sessions:
+  - name: "Old Man Shootout"
+    frequency: weekly (Saturdays)
+    type: group_ride
+    protected: true
+    verified: true
+    source: >
+      Re-verified 2026-08-29 directly against calendar_baseline_v3.json (TP
+      calendar snapshot 2026-08-29) — this was NOT sourced from the
+      coordinator's assertion alone. It appears as a titled `ws[]` (workout)
+      entry, every occurrence a Saturday: 2026-10-03 ("Old Man Shootout - Ride
+      Your Own Race", workoutId 3922524027), 2026-10-10 ("...Protected Group
+      Ride", 3922524046), 2026-10-24 ("...Dress-Rehearsal Terrain", 3922524101),
+      2026-10-31 ("...Last Hard Effort Before Taper", 3922524114), 2026-11-07
+      ("...Controlled Effort, Not a Race", 3922524129). No occurrence on
+      2026-10-17 (High School Reunion day — explicitly given as a rest/optional
+      day in the 2026-10-12 calendar note instead). The 2026-09-28 calendar note
+      ("JESSE · TRAVEL RESET") states "Saturday is the first Old Man Shootout of
+      the fall," matching the 2026-10-03 first occurrence. No occurrence appears
+      before Oct or after Nov 7 in this snapshot (the block ends before
+      Borderlands race week, 2026-11-14). Explicitly named "your protected long
+      day" in the 2026-10-05 calendar note ("JESSE · PEAK RE-ENTRY") and
+      "anchor long ride for the week" in multiple workout descriptions.
+      Cadence and protection status are therefore confirmed, not just asserted.
+
+calendar_protection:
+  requested: true
+  referenced_dates:
+    - '2026-10-03'
+    - '2026-10-10'
+    - '2026-10-24'
+    - '2026-10-31'
+    - '2026-11-07'
+  notes: >
+    "Old Man Shootout" weekly (Saturday) group ride, treated as the protected
+    long-ride anchor across the Sept-Nov build phase — see recurring_sessions
+    above for full source verification (calendar_baseline_v3.json). Skipped
+    2026-10-17 for the High School Reunion (see travel_dates); does not resume
+    after 2026-11-07 in this snapshot (taper into Borderlands 2026-11-14 and B
+    priority El Tour de Tucson 2026-11-21 begin instead).
+
+availability_review_issues:
+  - issue: >
+      2026-08-26 volume pushback: the v2 rebuild cut both Zone 2 intensity and
+      quantity simultaneously, which the athlete diagnosed as backwards ("if Z2
+      Intensity goes down, my quantity should go up"). Resolved in the 2026-08-27
+      v3 rebuild (620-700 TSS / 11-13h load weeks). Not a day-of-week availability
+      conflict — recorded here because it is the closest thing to an "availability
+      review issue" this archive documents; see coaching_history.md for the full
+      timeline.
+
+travel_dates:
+  # All 9 entries independently re-verified by me on 2026-08-29 directly against
+  # the primary source: `~/Library/Application Support/GravelGod/
+  # TrainingPeaksPublisher/plan-builds/jesse-couch/calendar_baseline_v3.json`
+  # (308542 bytes, written 2026-08-29 08:40; athleteId 1177325 matches this
+  # profile's tp_athlete_id). This file lives under ~/Library, which Spotlight
+  # does not index by default — that's why my first filesystem search (repo,
+  # worktrees, Downloads, home directory to depth 6, `mdfind`) missed it; a
+  # direct path check found it immediately once the coordinator supplied the
+  # exact path. Every date/title/description pair below is a verbatim read of
+  # the `ns` (calendar notes) array, cross-checked against the coordinator's
+  # 2026-08-29 message and matching exactly on all 9. See open_questions.md
+  # item 18 for the earlier unverified state and how it was closed out.
+  - date: '2026-09-03'
+    label: "Travel to Czech"
+    verified: true
+    tp_note_id: 90047968
+    tp_description: ''
+    source: "calendar_baseline_v3.json (TP calendar snapshot 2026-08-29), ns[] note id 90047968"
+  - date: '2026-09-08'
+    label: "Travel to Home"
+    verified: true
+    tp_note_id: 95172571
+    tp_description: "2 hour flight"
+    source: >
+      calendar_baseline_v3.json (TP calendar snapshot 2026-08-29), ns[] note id
+      95172571. Also independently confirmed in the Gmail archive:
+      "My flight back to Italy is on Tuesday September 8. I was showing it on
+      the 8th but you moved it to Monday." (email 2026-08-27, 1a0439687740b5a8).
+      Per the athlete, this date is explicitly NOT to be treated as reduced-load
+      travel — he lives in Italy.
+  - date: '2026-09-30'
+    label: "Fly to DFW"
+    verified: true
+    tp_note_id: 90222268
+    tp_description: ''
+    source: "calendar_baseline_v3.json (TP calendar snapshot 2026-08-29), ns[] note id 90222268"
+  - date: '2026-10-01'
+    label: "Fly to Tucson"
+    verified: true
+    tp_note_id: 90222282
+    tp_description: ''
+    source: "calendar_baseline_v3.json (TP calendar snapshot 2026-08-29), ns[] note id 90222282"
+  - date: '2026-10-16'
+    label: "Fly to CA"
+    verified: true
+    tp_note_id: 90047954
+    tp_description: "In the afternoon"
+    source: "calendar_baseline_v3.json (TP calendar snapshot 2026-08-29), ns[] note id 90047954"
+  - date: '2026-10-17'
+    label: "High School Reunion"
+    verified: true
+    tp_note_id: 90222299
+    tp_description: "In the evening"
+    source: >
+      calendar_baseline_v3.json (TP calendar snapshot 2026-08-29), ns[] note id
+      90222299. Also independently confirmed in the Gmail archive: "I also
+      showed a ride on October 17th, the day of my reunion. I will definitely
+      ride 3 ish hours that day with some friends from high school. The reunion
+      is in the evening and I am not a golfer. I keep a bike there."
+      (email 2026-08-27, 1a0439687740b5a8)
+  - date: '2026-10-18'
+    label: "Back to AZ"
+    verified: true
+    tp_note_id: 90047997
+    tp_description: ''
+    source: "calendar_baseline_v3.json (TP calendar snapshot 2026-08-29), ns[] note id 90047997"
+  - date: '2026-11-03'
+    label: "FLY TO LA to pick up Danielle and Pia"
+    verified: true
+    tp_note_id: 93518174
+    tp_description: ''
+    source: >
+      calendar_baseline_v3.json (TP calendar snapshot 2026-08-29), ns[] note id
+      93518174 — title is verbatim athlete-authored calendar-note text, not
+      invented or coordinator-invented. "Danielle" and "Pia" do not appear
+      anywhere in the Gmail archive; the note itself gives no relationship
+      context. Names are athlete-authored and now source-confirmed, but who
+      they are remains unstated — kept flagged in open_questions.md.
+  - date: '2026-11-04'
+    label: "DRIVE TO TUCSON"
+    verified: true
+    tp_note_id: 93518213
+    tp_description: ''
+    source: "calendar_baseline_v3.json (TP calendar snapshot 2026-08-29), ns[] note id 93518213"
+
+travel_dates_notes: >
+    General context that IS independently evidenced (email 2026-08-26,
+    1a03fa01690b8664): athlete states travel does not compromise his training —
+    flew 4 flights/week for 10 years pre-retirement, rode through 5
+    Italy-California round trips in one year during his mother's illness (still
+    raced UCI Gravel Worlds that year), and treats riding as jet-lag recovery
+    ("If I could not ride, I would go for a run"). Do not default any of the
+    above dates to a reduced-load "travel week" template without checking with
+    him first — that is the opposite of his stated preference.
+
+schedule_constraints:
+  work_schedule: null
+  work_hours: null
+  travel_frequency: extensive_but_not_limiting
+  family_commitments: null
+  seasonal_changes: null
+  notes: >
+    "I live in Italy, I have for 8 years. I have access to several bikes and a gym
+    membership." (email 2026-08-26). Athlete explicitly states travel does not
+    compromise his training: "before retiring to Italy I flew 4 flights a week for
+    10 years. I had bikes spread out across the Country so I could ride... If I
+    could not ride, I would go for a run." He also flew Italy-California 5x in one
+    year while his mother was dying and still raced UCI Gravel Worlds that year.
+    Sept 7 week is explicitly NOT a travel week despite a 2-hour Czech-to-Italy
+    flight on it ("I live there. I'm home."). Oct 17 shows a planned ~3hr ride
+    around a US high-school reunion (bike kept in the US). All: emails 2026-08-26
+    and 2026-08-27.
+
+cycling_equipment:
+  smart_trainer: null              # UNKNOWN — no indoor-training reference of any kind appears in the archive;
+                                    # every workout described (TP notifications + his own emails) is outdoors.
+  power_meter_bike: true           # every TP workout-notification email carries Power/NP/IF data
+  hr_monitor: true                 # "My HR seems to start launching" (2026-06-23); Pw:Hr decoupling tracked
+                                    # explicitly in his own race recap (2026-08-29, "Pw:Hr is hovering around 5%")
+  indoor_setup: none               # inferred — no indoor ride ever appears in 47 archived communications
+  bike_computer: null              # UNKNOWN — brand/model never stated
+  multiple_bikes: true
+  bikes_note: >
+    "I have access to several bikes and a gym membership" (Italy, email
+    2026-08-26). Separately keeps a bike in the US for his Oct 17 reunion ride:
+    "I keep a bike there" (email 2026-08-27).
+  fueling_carry_setup:
+    bottles: "2x 950ml (Hot Sport Drink)"
+    hydration_pack: "2L, worn on the back, electrolytes added"
+    gel_flasks: "4x flasks, 2 gels each (one 45g + one 30g NRGY Gel per flask)"
+    source: "emails 2026-08-21, 2026-08-22, 2026-08-27 — see nutrition section above"
+
+strength_equipment:
+  - pull_up_bar
+  - dip_bar
+  - bodyweight_only
+  - gym_membership_italy
+
+strength_equipment_notes: >
+    Current routine is 100% bodyweight, no added load: "3 sets of 12, no
+    assistance needed... Pull ups, Push ups, Bar dips, Sit ups, Bridge, Shrugs,
+    Arm curls." (email 2026-08-27, 1a0439687740b5a8). Has a gym membership in
+    Italy (email 2026-08-26) but no evidence he currently uses machines/barbells
+    there — his 1980s competitive weightlifting background (USA Nationals bench
+    press + squat champion) is historical, not his current practice.
+
+training_environment:
+  primary_location: home
+  gym_type: gym_membership          # has a membership (Italy) but current practice is bodyweight-only, see strength_equipment
+  outdoor_riding_access: good       # rides 100% outdoors across the entire archive; multi-hour rides logged weekly
+  indoor_riding_tolerance: null     # UNKNOWN — never tested; no indoor ride appears anywhere in the archive
+  climate: >
+    Italian summer heat, ~30C/86F average on long rides (email 2026-08-21: "the
+    temperature averaged 30 celsius, roughly 86f... I am definitely adapting
+    though as it did not seem terrible"). Heat-driven HR drift was flagged as
+    early as his first testing week (email 2026-06-23).
+  home_base: >
+    Lives in Italy, 8 years as of 2026-08-26 ("I live in Italy, I have for 8
+    years"). Treated as home, not a travel destination — see schedule_constraints
+    and travel_dates notes above.
+  secondary_locations: >
+    Keeps a bike in the US (California, per the Oct 17 reunion ride, email
+    2026-08-27) and historically maintained "bikes spread out across the
+    Country" during a pre-retirement decade of weekly US travel (email
+    2026-08-26).
+
+injury_history:
+  current_injuries: []
+  past_injuries:
+    - description: broken shoulder
+      at: '2025-11'
+      source: "email 2026-08-21 (1a022a3f0c129430), 'Last year was rough (broken shoulder in November...)'"
+    - description: "crash into a ditch (\"Summersalt\")"
+      at: '2025-08'
+      source: "email 2026-08-21, same sentence"
+    - description: "hit by a Fiat"
+      at: '2025-04'
+      source: "email 2026-08-21, same sentence"
+    - description: "black ice crash, day 1 of the year"
+      at: '2025-01-01 (approx)'
+      source: "email 2026-08-21, 'day 1 of the year started with Black Ice'"
+    - description: >
+        Despite the above, still won 2 CX races and a gravel race in 2025; CTL
+        deliberately tapered to ~100 pre-CX-season, was ~72 as of 2026-08-26.
+      source: "email 2026-08-26 (1a03fa01690b8664)"
+
+strength:
+  currently_training: true
+  routine: >
+    Self-directed, athlete's own long-standing routine, kept independent of the
+    coach's plan: "3 sets of 12, no assistance needed... Pull ups, Push ups, Bar
+    dips, Sit ups, Bridge, Shrugs, Arm curls." (email 2026-08-27, 1a0439687740b5a8)
+  include_in_plan: true
+  sessions_per_week: null              # observed ~2x/wk "Upper" TP entries (Wed pattern) but no explicit statement
+  lower_body: >
+    Removed lower-body gym work in favor of Zone 2 riding "a few weeks" before
+    2026-08-21 ("legs are getting sore a lot less, recovery seems much faster");
+    coach confirmed keeping lower-body OUT of the plan on 2026-08-22 and again in
+    the 2026-08-26/27 rebuild.
+  mobility_rating: null
+
+nutrition:
+  training_fuel: >
+    Hot Sport Drink (Activlab, Poland) — 2 scoops/bottle = 64g carb + 400mg sodium
+    per 950ml bottle, athlete adds another 800mg sodium per bottle. NRGY Gel 45
+    (4Endurance/NduranZ, Slovenia) — 45g and 30g carb variants, ~560mg sodium per
+    "flask" (2 gels). 2L hydration pack with added electrolytes (1,100mg sodium).
+    Source: emails 2026-08-21, 2026-08-22, 2026-08-27 (ingredient screenshot).
+  measured_intake_examples:
+    - at: '2026-08-22 (Metabolism 3 Assessment, 4.5h)'
+      carbs_g_total: 428
+      carbs_g_per_hour: 95
+      carbs_g_per_hour_first_4h: 107
+      sodium_mg_total: 5740          # coach's corrected math, email 2026-08-24 (1a034ac481405371); athlete's own tally was 5,290
+      source: "emails 2026-08-22 (1a029e644701fbb3) and 2026-08-24 (1a034ac481405371)"
+    - at: '2026-08-29 (4h endurance + 4x1min)'
+      carbs_g_total: 420
+      carbs_g_per_hour: 105
+      fluid_l: 3.7
+      source: "email 2026-08-29, Weight/Food Update"
+  baseline_established: >
+    75 g carb/hour tolerated with zero problems on standard long endurance rides
+    (self-report, email 2026-07-26); a single 90 g/hour attempt caused bloating
+    (same email). Coach's ruling (2026-08-20): stay at 75 g/hour baseline for
+    normal rides, test 80-85 g/hour specifically for November race-day efforts.
+    The 2026-08-22/24 measurement showed he had actually been running ~95-107
+    g/hour all along without realizing it (see measured_intake_examples) —
+    "measurement before adjustment" is the coach's standing rule as of 2026-08-24.
+  sodium_analysis: PENDING            # see open_questions.md — coach has not yet closed the loop after the 2026-08-27 screenshot
+  restrictions: null
+  notes: null
+
+personal:
+  identity_notes: >
+    "I like and enjoy riding bikes. I have worked out either at the Gym or on my
+    Bike for more than 45 years. If I can't do one or the other I will eat too
+    much and drink too much. Exercise is my medicine." Former USA Nationals
+    weightlifting champion (bench press + squat), 1980s, before switching to
+    cycling after repeated injuries. "I am a fanatic at whatever I do." Races
+    against ex-pro and ex-World-Champion elites in Europe and reports competing
+    well despite starting most seasons under-trained after off-season injuries.
+    Source: email 2026-08-26 (1a03fa01690b8664).
+  important_people: >
+    Mother's terminal illness (year unspecified, prior to this archive): flew
+    Italy-California 5 times in 12 months, still qualified and raced UCI Gravel
+    Worlds that year ("my worst showing at World's but I rode well" — stopped
+    racing when another rider crashed and was seriously injured). Source: email
+    2026-08-26.
+  anything_else: >
+    Wants to continue coaching relationship past November: "I will need help
+    after the November events, as I intend to do some UCI Gravel events again
+    next year." Offered to send the coach additional funds unprompted
+    (2026-08-22, 1a027b68b3c03519); coach declined and redirected toward an
+    optional ongoing-coaching upsell (2026-08-22, 1a028223a1cdaa8a).
+
+coaching_style:
+  communication_frequency: null        # coach sends ad hoc "Check In" prompts (Jun 22, Aug 20); athlete's replies are long and detailed
+  feedback_detail: high                # athlete volunteers numbered, itemized answers unprompted (product brands, exact grams, exact mg)
+  accountability_need: null
+  autonomy_preference: null
+  communication_style: >
+    Structured/itemized — answers coach's numbered questions with matching numbered
+    answers; frequently follows up same-day with a second email covering something
+    forgotten (e.g., 2026-08-21 carb follow-up 49 min after his first reply).
+
+devices:
+  training_log: true
+  platforms: [trainingpeaks]
+  devices: [power_meter, hr_strap]
+
+platforms:
+  primary: trainingpeaks
+  secondary: null
+
+communication:
+  preferred_method: email
+  timezone: Europe/Rome (inferred from "I live in Italy, I have for 8 years" — not an explicit TZ statement)
+
+plan_start:
+  preferred_start: null
+  notes: "Order placed 2026-06-09; first workout-notification email 2026-06-10."
+
+discipline: gravel
+
+_derived:
+  # Class legend (per athlete-onboarding skill): athlete_reported | calculated |
+  # coach_judgment | unresolved. Every entry below cites its email source.
+  - id: WEIGHT_KG_CURRENT
+    field: weight_kg
+    class: calculated
+    basis: "151.5 lb / 2.20462 lb/kg, athlete's own 2-month-stable self-report"
+    inputs: {reported_weight_lb: 151.5}
+    source: "email 2026-08-26 (1a03fa01690b8664)"
+    sensitivity: sensitive
+  - id: WEIGHT_KG_INTAKE
+    field: weight_kg_history[0]
+    class: athlete_reported
+    basis: "intake questionnaire value surfaced in the 2026-06-09 pipeline-failure email"
+    inputs: {reported_weight_kg: 69.9}
+    source: "email 19eae115ee385a1f, 2026-06-09"
+    sensitivity: sensitive
+  - id: FTP_WATTS_CURRENT
+    field: fitness_markers.ftp_watts
+    class: unresolved
+    basis: >
+      Last TP-confirmed numeric threshold value (270W, 2026-06-23) is known to be
+      stale — athlete reports a materially higher retest around 2026-08-17 but no
+      email in the archive carries the resulting wattage. Do not treat 270W as
+      current without confirming in TrainingPeaks directly.
+    source: "TP threshold notification 2026-06-23; athlete email 2026-08-21 flags the later, uncaptured retest"
+    sensitivity: sensitive
+  - id: AGE_COACH_STATED
+    field: health_factors.age
+    class: coach_judgment
+    basis: >
+      Coach's 2026-06-12 email states "Since you're 60" while discussing strength
+      training. The athlete never confirms this figure anywhere in the archive, and
+      its original source (presumably an intake questionnaire) is not in the Gmail
+      archive. Treat as unresolved provenance, not a confirmed fact.
+    inputs: {coach_stated_age: 60}
+    source: "email 19ebd615b6a00650, 2026-06-12"
+    sensitivity: sensitive
+  - id: SEX
+    field: sex
+    class: unresolved
+    basis: "Never stated by the athlete or the coach anywhere in the archive."
+    source: null
+    sensitivity: sensitive
+  - id: RACE_MATCH
+    field: target_race.race_match
+    class: calculated
+    basis: "Checked athletes/scripts/known_races.py for 'Borderlands' and 'El Tour'/'Tucson' — no entries found."
+    inputs: {candidate_a: "Borderlands AZ State Championships", candidate_b: "El Tour de Tucson"}
+    sensitivity: internal
+  - id: TRAVEL_NOT_LIMITING
+    field: schedule_constraints.travel_frequency
+    class: athlete_reported
+    basis: >
+      Athlete explicitly frames travel as compatible with training ("Getting on
+      the bike helps relieve the stress of travel... If I could not ride, I would
+      go for a run") and states Italy is home, not a travel destination, contra
+      any assumption that a Czech-to-Italy flight week needs travel handling.
+    source: "email 2026-08-26 (1a03fa01690b8664)"
+    sensitivity: personal

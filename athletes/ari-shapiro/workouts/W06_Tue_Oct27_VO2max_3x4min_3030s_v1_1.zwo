@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>VO2max 3x4min 30/30s v1</name>
+  <description>FUEL:
+Normal meal ~2h before. One bottle, 40-50g carbs. Done.
+
+3x 4x (30sec @ 150% / 30sec @ 60%) w/5min reco
+--
+30/30s target both your Anaerobic and VO2 Max power. These over/under efforts allow to recover from the high-power surges, while also stressing your VO2 Max system due to the short recoveries. The intensity of this session is very high, but each interval will go by quickly.
+
+RPE guide: 150% FTP -> RPE 8-9; 90% FTP -> RPE 6-7; 80% FTP -> RPE 5-6; 70% FTP -> RPE 3; 60% FTP -> RPE 3; 55% FTP -> RPE 3; 45% FTP -> RPE 3</description>
+  <sportType>bike</sportType>
+  <workout>
+    <SteadyState Duration="600" Power="0.60"/>
+    <SteadyState Duration="180" Power="0.70"/>
+    <SteadyState Duration="180" Power="0.80"/>
+    <SteadyState Duration="180" Power="0.90"/>
+    <SteadyState Duration="300" Power="0.55"/>
+    <IntervalsT Repeat="4" OnDuration="30" OnPower="1.50" OffDuration="30" OffPower="0.60"/>
+    <SteadyState Duration="300" Power="0.55"/>
+    <IntervalsT Repeat="4" OnDuration="30" OnPower="1.50" OffDuration="30" OffPower="0.60"/>
+    <SteadyState Duration="300" Power="0.55"/>
+    <IntervalsT Repeat="4" OnDuration="30" OnPower="1.50" OffDuration="30" OffPower="0.60"/>
+    <SteadyState Duration="180" Power="0.45"/>
+    <Cooldown Duration="660" PowerLow="0.50" PowerHigh="0.50"/>
+  </workout>
+</workout_file>

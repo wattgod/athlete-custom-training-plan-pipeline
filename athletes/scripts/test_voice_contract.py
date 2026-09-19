@@ -9,12 +9,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import rest_day_cards as R
+import story_notes
 from story_notes import (
     COMMENT_PROTOCOL_BODY, COMMENT_PROTOCOL_TITLE,
     SELF_REVIEW_BODY, SELF_REVIEW_TITLE,
     render_preview_race_copy, render_preview_strength_copy,
     render_preview_workout_copy, render_story_notes, _word_count,
 )
+from ae_lint import lint_voice
 from voice_lint import lint_notes, lint_rest_cards, load_rules
 
 RULES = load_rules()
@@ -230,6 +232,75 @@ def test_lint_catches_template_and_slop():
     assert any("banned pattern" in f for f in findings)
 
 
+# ---------------------------------------------------------------------------
+# AE-9.11 -- first-person coach voice (Matti, 2026-08-29). Every
+# rewritten template body -- rest-day cards and every story_notes phrase
+# list -- must pass ae_lint.lint_voice with zero findings: no "you"/"your"
+# instruction with no first-person coach marker, no coach-internal leak.
+# Fed through lint_voice's `notes` path (title/description shape) exactly
+# as ae_lint sees real TP calendar-note payloads.
+# ---------------------------------------------------------------------------
+
+def _assert_no_voice_findings(label, texts):
+    notes = [{"title": label, "noteDate": "2026-09-01", "description": t} for t in texts]
+    findings = lint_voice([], notes)
+    assert findings == [], f"{label}: {findings}"
+
+
+def test_rest_day_card_bodies_pass_ae_9_11():
+    bodies = ([b for _, b in R.STANDARD] + [b for _, b in R.RECOVERY_WEEK]
+              + [R.RACE_WEEK[1], R.DAY_BEFORE_RACE[1], R.DAY_AFTER_RACE[1], R.PRE_PLAN[1]]
+              + [R.pre_plan_body(5), R.pre_plan_body(1)])
+    _assert_no_voice_findings("Rest Day", bodies)
+
+
+def test_story_notes_family_rules_pass_ae_9_11():
+    texts = [t.format(name="Ronnestad 30-15", day="Thursday", race="Big Sugar Gravel")
+             for _pattern, _key, templates in story_notes._FAMILY_RULES
+             for t in templates]
+    _assert_no_voice_findings("Week 1: Base", texts)
+
+
+def test_story_notes_notice_and_asides_pass_ae_9_11():
+    texts = [t for values in story_notes._NOTICE.values() for t in values]
+    texts += story_notes._ASIDES
+    _assert_no_voice_findings("Week 1: Base", texts)
+
+
+def test_story_notes_midweek_lists_pass_ae_9_11():
+    _assert_no_voice_findings("Week 1: Midweek", story_notes._MIDWEEK_LOAD_FEEL)
+    _assert_no_voice_findings("Week 1: Fuel The Long Ride", story_notes._MIDWEEK_LONG_RIDE_FUEL)
+
+
+def test_workout_descriptions_pass_ae_9_11():
+    from generate_athlete_package import WORKOUT_DESCRIPTIONS
+    texts = [f"{tpl['purpose']} {tpl['execution']}" for tpl in WORKOUT_DESCRIPTIONS.values()]
+    _assert_no_voice_findings("Endurance Ride", texts)
+
+
+def test_strength_sequencing_note_passes_ae_9_11():
+    _assert_no_voice_findings("Mobility and Stability", [
+        "Today also carries your hard ride, so I want it sequenced right. "
+        "Ride first; lift at least 4 hours later — or move this lift to "
+        "tomorrow if the day is tight."])
+
+
+def test_race_day_pacing_strategies_pass_ae_9_11():
+    from generate_athlete_package import _race_day_ceiling_paragraph, _race_day_pacing_strategy
+    texts = [
+        _race_day_pacing_strategy("finish", 9.0),
+        _race_day_pacing_strategy("podium", 3.0),
+        _race_day_ceiling_paragraph("Final Rehearsal", 240, 9.3),
+    ]
+    _assert_no_voice_findings("Race Day", texts)
+
+
+def test_act_race_sim_shape_line_passes_ae_9_11():
+    from act_race_sim import RaceFacts, act_sim_description
+    facts = RaceFacts(distance_miles=100, elevation_ft=8000)  # moderate climbing band
+    text = act_sim_description(1, 1, facts, duration_min=180, dress_rehearsal=True,
+                                race_rate_g_per_hour=60, ftp=250)
+    _assert_no_voice_findings("Race Simulation", [text])
 def test_preview_uses_real_rendered_purpose_and_canonical_family_voice():
     description = """WARM-UP:
 - 10min easy

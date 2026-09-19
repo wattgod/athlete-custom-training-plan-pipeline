@@ -631,3 +631,24 @@ def test_cadence_target_never_counts_toward_hard_effort():
 
 def test_empty_structure_is_not_hard():
     assert not structure_has_hard_effort(_wrap([]))
+
+
+def test_range_warmup_never_ramps_above_the_block_it_leads_into():
+    # Real curated shape ("Endurance Tempo", 2026-09-19): warm up 0-87% into a
+    # 76-87% block that renders at its midpoint 81%. The ramp tops at 81.
+    structure = _wrap([
+        {'type': 'step', 'length': {'value': 1, 'unit': 'repetition'}, 'steps': [
+            {'name': 'Warm up', 'length': {'value': 900, 'unit': 'second'},
+             'targets': [{'minValue': 0, 'maxValue': 87}], 'intensityClass': 'warmUp'},
+            {'name': 'Tempo', 'length': {'value': 1800, 'unit': 'second'},
+             'targets': [{'minValue': 76, 'maxValue': 87}], 'intensityClass': 'active'},
+            {'name': 'Cool down', 'length': {'value': 900, 'unit': 'second'},
+             'targets': [{'minValue': 0, 'maxValue': 75}], 'intensityClass': 'coolDown'},
+        ]},
+    ])
+    result = convert_structure(structure)
+    xml = result['blocks_xml']
+    assert 'PowerHigh="0.81"' in xml.split('<SteadyState')[0]  # the warm-up ramp
+    assert '<SteadyState Duration="1800" Power="0.81"' in xml
+    ok, detail = verify_round_trip(structure)
+    assert ok, detail

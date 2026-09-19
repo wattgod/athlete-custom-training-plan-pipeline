@@ -1,6 +1,11 @@
 {
   "week": {
-    "coach_note": "Week 6 of 6. Build. The intensity is specific now and the long rides have a purpose I have chosen. This is where the race gets made.\n\nVO2 Bookend Tuesday. The short recoveries are the trick: you never fully recover, so the oxygen system stays pinned without the legs blowing up.\n\nWatch the easy days. If they creep up in pace, the hard days will start falling short.",
+    "phase": "build",
+    "type": "load",
+    "target_minutes": 447,
+    "target_tss": 389,
+    "coach_note": "Week 6 of 6. Build. The intensity is specific now and the long rides have a purpose I have chosen. This is where the race gets made.\n\nVO2 Bookend Tuesday. The short recoveries are the trick: I don't let you fully recover, so the oxygen system stays pinned without the legs blowing up.\n\nWatch the easy days. If they creep up in pace, the hard days will start falling short.",
+    "weekly_self_review": "Tell me:\n1. What went well and why?\n2. What went badly and why?\n3. ONE thing you can DO next week that's:\n a) In your control\n b) Not too big of a lift\n c) Impactful\n\nPlease complete this at the end of every week and put your answers in the comments on this note. It will greatly improve you as an athlete and help me coach you better.",
     "comment_protocol": "As a reminder, do your workout comments going forward like this:\n\n1. Workout Readiness - (e.g. 6/10; couldn't fall asleep bc of stress)\n2. Workout Execution - (e.g. 5/10; skipped last set after going too hard in the first set)\n3. Nutrition - (e.g. 5/10; didn't eat during my hard 2 hour interval ride, but did eat before and after)\n4. Misc - (e.g. lower back acting up again)\n\n1-3: Rate out of 10 (10 is the best); add details if possible; e.g., \"I ate two 50g carbohydrate bars\" or \"Felt sluggish to start\" etc.\nMisc: Have at it, or don't.",
     "days": [
       {
@@ -11,14 +16,18 @@
         "day": "tue",
         "sessions": [
           {
-            "coach_note": "VO2 Bookend Tuesday. The short recoveries are the trick: you never fully recover, so the oxygen system stays pinned without the legs blowing up.",
+            "kind": "bike",
+            "title": "VO2 Bookend",
+            "purpose": "VO2max development. Maximum aerobic power—the engine that drives race-winning attacks.",
             "duration_minutes": 87,
+            "tss": 78,
+            "intensity_label": "VO2max",
             "fuel_tag": "moderate",
             "fueling_guidance": "FUEL: Normal meal ~2h before. One bottle, 40-50g carbs. Done.",
-            "intensity_label": "VO2max",
-            "kind": "bike",
-            "purpose": "VO2max development. Maximum aerobic power\u2014the engine that drives race-winning attacks.",
+            "coach_note": "VO2 Bookend Tuesday. The short recoveries are the trick: I don't let you fully recover, so the oxygen system stays pinned without the legs blowing up.",
             "structure": {
+              "primary_length_metric": "duration",
+              "primary_intensity_metric": "percentOfFtp",
               "polyline": [
                 [
                   0.0,
@@ -101,73 +110,69 @@
                   0.0
                 ]
               ],
-              "primary_intensity_metric": "percentOfFtp",
-              "primary_length_metric": "duration",
               "steps": [
                 {
-                  "intensity_target_max": 0.7,
-                  "intensity_target_min": 0.5,
-                  "label": "Warmup",
+                  "type": "warmup",
                   "length_seconds": 900,
-                  "type": "warmup"
-                },
-                {
-                  "cadence_rpm": 95,
-                  "intensity_target_min": 1.1,
-                  "label": "Work",
-                  "length_seconds": 240,
-                  "type": "interval"
-                },
-                {
-                  "intensity_target_min": 0.55,
-                  "label": "Recovery",
-                  "length_seconds": 180,
-                  "type": "recovery"
-                },
-                {
-                  "cadence_rpm": 95,
-                  "intensity_target_min": 0.55,
-                  "label": "Steady State",
-                  "length_seconds": 300,
-                  "type": "interval"
-                },
-                {
-                  "cadence_rpm": 95,
-                  "intensity_target_min": 0.7,
-                  "label": "Steady State",
-                  "length_seconds": 4800,
-                  "type": "interval"
-                },
-                {
-                  "cadence_rpm": 95,
-                  "intensity_target_min": 0.55,
-                  "label": "Steady State",
-                  "length_seconds": 300,
-                  "type": "interval"
-                },
-                {
-                  "cadence_rpm": 95,
-                  "intensity_target_min": 1.1,
-                  "label": "Work",
-                  "length_seconds": 240,
-                  "type": "interval"
-                },
-                {
-                  "intensity_target_min": 0.55,
-                  "label": "Recovery",
-                  "length_seconds": 180,
-                  "type": "recovery"
-                },
-                {
+                  "label": "Warmup",
                   "intensity_target_min": 0.5,
-                  "label": "Cooldown",
+                  "intensity_target_max": 0.7
+                },
+                {
+                  "type": "interval",
+                  "length_seconds": 240,
+                  "label": "Work",
+                  "intensity_target_min": 1.1,
+                  "cadence_rpm": 95
+                },
+                {
+                  "type": "recovery",
+                  "length_seconds": 180,
+                  "label": "Recovery",
+                  "intensity_target_min": 0.55
+                },
+                {
+                  "type": "interval",
+                  "length_seconds": 300,
+                  "label": "Steady State",
+                  "intensity_target_min": 0.55,
+                  "cadence_rpm": 95
+                },
+                {
+                  "type": "interval",
+                  "length_seconds": 4800,
+                  "label": "Steady State",
+                  "intensity_target_min": 0.7,
+                  "cadence_rpm": 95
+                },
+                {
+                  "type": "interval",
+                  "length_seconds": 300,
+                  "label": "Steady State",
+                  "intensity_target_min": 0.55,
+                  "cadence_rpm": 95
+                },
+                {
+                  "type": "interval",
+                  "length_seconds": 240,
+                  "label": "Work",
+                  "intensity_target_min": 1.1,
+                  "cadence_rpm": 95
+                },
+                {
+                  "type": "recovery",
+                  "length_seconds": 180,
+                  "label": "Recovery",
+                  "intensity_target_min": 0.55
+                },
+                {
+                  "type": "cooldown",
                   "length_seconds": 600,
-                  "type": "cooldown"
+                  "label": "Cooldown",
+                  "intensity_target_min": 0.5
                 }
               ]
-            },
-            "title": "VO2 Bookend",
-            "tss": 78
+            }
           }
         ]
       },
@@ -179,14 +184,18 @@
         "day": "thu",
         "sessions": [
           {
-            "coach_note": "Blended VO2max and G Spot Thursday. The short recoveries are the trick: you never fully recover, so the oxygen system stays pinned without the legs blowing up.",
+            "kind": "bike",
+            "title": "Blended VO2max and G Spot",
+            "purpose": "Race-specific power changes. Move cleanly between the prescribed zones and let each recovery step come all the way down.",
             "duration_minutes": 85,
+            "tss": 97,
+            "intensity_label": "VO2max",
             "fuel_tag": "moderate",
             "fueling_guidance": "FUEL: Normal meal ~2h before. One bottle, 40-50g carbs. Done.",
-            "intensity_label": "VO2max",
-            "kind": "bike",
-            "purpose": "Race-specific power changes. Move cleanly between the prescribed zones and let each recovery step come all the way down.",
+            "coach_note": "Blended VO2max and G Spot Thursday. The short recoveries are the trick: I don't let you fully recover, so the oxygen system stays pinned without the legs blowing up.",
             "structure": {
+              "primary_length_metric": "duration",
+              "primary_intensity_metric": "percentOfFtp",
               "polyline": [
                 [
                   0.0,
@@ -501,263 +510,259 @@
                   0.0
                 ]
               ],
-              "primary_intensity_metric": "percentOfFtp",
-              "primary_length_metric": "duration",
               "steps": [
                 {
-                  "intensity_target_max": 0.7,
-                  "intensity_target_min": 0.5,
-                  "label": "Warmup",
+                  "type": "warmup",
                   "length_seconds": 900,
-                  "type": "warmup"
+                  "label": "Warmup",
+                  "intensity_target_min": 0.5,
+                  "intensity_target_max": 0.7
                 },
                 {
-                  "cadence_rpm": 100,
+                  "type": "interval",
+                  "length_seconds": 300,
+                  "label": "Steady State",
                   "intensity_target_min": 0.85,
-                  "label": "Steady State",
-                  "length_seconds": 300,
-                  "type": "interval"
+                  "cadence_rpm": 100
                 },
                 {
-                  "cadence_rpm": 95,
-                  "intensity_target_min": 1.25,
+                  "type": "interval",
+                  "length_seconds": 30,
                   "label": "Work",
-                  "length_seconds": 30,
-                  "type": "interval"
-                },
-                {
-                  "intensity_target_min": 0.5,
-                  "label": "Recovery",
-                  "length_seconds": 30,
-                  "type": "recovery"
-                },
-                {
-                  "cadence_rpm": 95,
                   "intensity_target_min": 1.25,
-                  "label": "Work",
-                  "length_seconds": 30,
-                  "type": "interval"
+                  "cadence_rpm": 95
                 },
                 {
-                  "intensity_target_min": 0.5,
+                  "type": "recovery",
+                  "length_seconds": 30,
                   "label": "Recovery",
-                  "length_seconds": 30,
-                  "type": "recovery"
+                  "intensity_target_min": 0.5
                 },
                 {
-                  "cadence_rpm": 95,
+                  "type": "interval",
+                  "length_seconds": 30,
+                  "label": "Work",
                   "intensity_target_min": 1.25,
-                  "label": "Work",
-                  "length_seconds": 30,
-                  "type": "interval"
+                  "cadence_rpm": 95
                 },
                 {
-                  "intensity_target_min": 0.5,
+                  "type": "recovery",
+                  "length_seconds": 30,
                   "label": "Recovery",
-                  "length_seconds": 30,
-                  "type": "recovery"
+                  "intensity_target_min": 0.5
                 },
                 {
-                  "cadence_rpm": 95,
+                  "type": "interval",
+                  "length_seconds": 30,
+                  "label": "Work",
                   "intensity_target_min": 1.25,
-                  "label": "Work",
-                  "length_seconds": 30,
-                  "type": "interval"
+                  "cadence_rpm": 95
                 },
                 {
-                  "intensity_target_min": 0.5,
+                  "type": "recovery",
+                  "length_seconds": 30,
                   "label": "Recovery",
-                  "length_seconds": 30,
-                  "type": "recovery"
+                  "intensity_target_min": 0.5
                 },
                 {
-                  "cadence_rpm": 95,
+                  "type": "interval",
+                  "length_seconds": 30,
+                  "label": "Work",
                   "intensity_target_min": 1.25,
-                  "label": "Work",
-                  "length_seconds": 30,
-                  "type": "interval"
+                  "cadence_rpm": 95
                 },
                 {
-                  "intensity_target_min": 0.5,
+                  "type": "recovery",
+                  "length_seconds": 30,
                   "label": "Recovery",
-                  "length_seconds": 30,
-                  "type": "recovery"
+                  "intensity_target_min": 0.5
                 },
                 {
-                  "cadence_rpm": 95,
-                  "intensity_target_min": 0.9,
-                  "label": "Steady State",
+                  "type": "interval",
+                  "length_seconds": 30,
+                  "label": "Work",
+                  "intensity_target_min": 1.25,
+                  "cadence_rpm": 95
+                },
+                {
+                  "type": "recovery",
+                  "length_seconds": 30,
+                  "label": "Recovery",
+                  "intensity_target_min": 0.5
+                },
+                {
+                  "type": "interval",
                   "length_seconds": 600,
-                  "type": "interval"
+                  "label": "Steady State",
+                  "intensity_target_min": 0.9,
+                  "cadence_rpm": 95
                 },
                 {
-                  "cadence_rpm": 95,
+                  "type": "interval",
+                  "length_seconds": 300,
+                  "label": "Steady State",
                   "intensity_target_min": 0.55,
-                  "label": "Steady State",
-                  "length_seconds": 300,
-                  "type": "interval"
+                  "cadence_rpm": 95
                 },
                 {
-                  "cadence_rpm": 95,
-                  "intensity_target_min": 1.25,
+                  "type": "interval",
+                  "length_seconds": 30,
                   "label": "Work",
-                  "length_seconds": 30,
-                  "type": "interval"
-                },
-                {
-                  "intensity_target_min": 0.5,
-                  "label": "Recovery",
-                  "length_seconds": 30,
-                  "type": "recovery"
-                },
-                {
-                  "cadence_rpm": 95,
                   "intensity_target_min": 1.25,
-                  "label": "Work",
-                  "length_seconds": 30,
-                  "type": "interval"
+                  "cadence_rpm": 95
                 },
                 {
-                  "intensity_target_min": 0.5,
+                  "type": "recovery",
+                  "length_seconds": 30,
                   "label": "Recovery",
-                  "length_seconds": 30,
-                  "type": "recovery"
+                  "intensity_target_min": 0.5
                 },
                 {
-                  "cadence_rpm": 95,
+                  "type": "interval",
+                  "length_seconds": 30,
+                  "label": "Work",
                   "intensity_target_min": 1.25,
-                  "label": "Work",
-                  "length_seconds": 30,
-                  "type": "interval"
+                  "cadence_rpm": 95
                 },
                 {
-                  "intensity_target_min": 0.5,
+                  "type": "recovery",
+                  "length_seconds": 30,
                   "label": "Recovery",
-                  "length_seconds": 30,
-                  "type": "recovery"
+                  "intensity_target_min": 0.5
                 },
                 {
-                  "cadence_rpm": 95,
+                  "type": "interval",
+                  "length_seconds": 30,
+                  "label": "Work",
                   "intensity_target_min": 1.25,
-                  "label": "Work",
-                  "length_seconds": 30,
-                  "type": "interval"
+                  "cadence_rpm": 95
                 },
                 {
-                  "intensity_target_min": 0.5,
+                  "type": "recovery",
+                  "length_seconds": 30,
                   "label": "Recovery",
-                  "length_seconds": 30,
-                  "type": "recovery"
+                  "intensity_target_min": 0.5
                 },
                 {
-                  "cadence_rpm": 95,
+                  "type": "interval",
+                  "length_seconds": 30,
+                  "label": "Work",
                   "intensity_target_min": 1.25,
-                  "label": "Work",
-                  "length_seconds": 30,
-                  "type": "interval"
+                  "cadence_rpm": 95
                 },
                 {
-                  "intensity_target_min": 0.5,
+                  "type": "recovery",
+                  "length_seconds": 30,
                   "label": "Recovery",
-                  "length_seconds": 30,
-                  "type": "recovery"
+                  "intensity_target_min": 0.5
                 },
                 {
-                  "cadence_rpm": 95,
-                  "intensity_target_min": 0.9,
-                  "label": "Steady State",
+                  "type": "interval",
+                  "length_seconds": 30,
+                  "label": "Work",
+                  "intensity_target_min": 1.25,
+                  "cadence_rpm": 95
+                },
+                {
+                  "type": "recovery",
+                  "length_seconds": 30,
+                  "label": "Recovery",
+                  "intensity_target_min": 0.5
+                },
+                {
+                  "type": "interval",
                   "length_seconds": 600,
-                  "type": "interval"
+                  "label": "Steady State",
+                  "intensity_target_min": 0.9,
+                  "cadence_rpm": 95
                 },
                 {
-                  "cadence_rpm": 95,
+                  "type": "interval",
+                  "length_seconds": 300,
+                  "label": "Steady State",
                   "intensity_target_min": 0.55,
-                  "label": "Steady State",
-                  "length_seconds": 300,
-                  "type": "interval"
+                  "cadence_rpm": 95
                 },
                 {
-                  "cadence_rpm": 95,
-                  "intensity_target_min": 1.25,
+                  "type": "interval",
+                  "length_seconds": 30,
                   "label": "Work",
-                  "length_seconds": 30,
-                  "type": "interval"
-                },
-                {
-                  "intensity_target_min": 0.5,
-                  "label": "Recovery",
-                  "length_seconds": 30,
-                  "type": "recovery"
-                },
-                {
-                  "cadence_rpm": 95,
                   "intensity_target_min": 1.25,
-                  "label": "Work",
-                  "length_seconds": 30,
-                  "type": "interval"
+                  "cadence_rpm": 95
                 },
                 {
-                  "intensity_target_min": 0.5,
+                  "type": "recovery",
+                  "length_seconds": 30,
                   "label": "Recovery",
-                  "length_seconds": 30,
-                  "type": "recovery"
+                  "intensity_target_min": 0.5
                 },
                 {
-                  "cadence_rpm": 95,
+                  "type": "interval",
+                  "length_seconds": 30,
+                  "label": "Work",
                   "intensity_target_min": 1.25,
-                  "label": "Work",
-                  "length_seconds": 30,
-                  "type": "interval"
+                  "cadence_rpm": 95
                 },
                 {
-                  "intensity_target_min": 0.5,
+                  "type": "recovery",
+                  "length_seconds": 30,
                   "label": "Recovery",
-                  "length_seconds": 30,
-                  "type": "recovery"
+                  "intensity_target_min": 0.5
                 },
                 {
-                  "cadence_rpm": 95,
+                  "type": "interval",
+                  "length_seconds": 30,
+                  "label": "Work",
                   "intensity_target_min": 1.25,
-                  "label": "Work",
-                  "length_seconds": 30,
-                  "type": "interval"
+                  "cadence_rpm": 95
                 },
                 {
-                  "intensity_target_min": 0.5,
+                  "type": "recovery",
+                  "length_seconds": 30,
                   "label": "Recovery",
-                  "length_seconds": 30,
-                  "type": "recovery"
+                  "intensity_target_min": 0.5
                 },
                 {
-                  "cadence_rpm": 95,
+                  "type": "interval",
+                  "length_seconds": 30,
+                  "label": "Work",
                   "intensity_target_min": 1.25,
-                  "label": "Work",
-                  "length_seconds": 30,
-                  "type": "interval"
+                  "cadence_rpm": 95
                 },
                 {
-                  "intensity_target_min": 0.5,
+                  "type": "recovery",
+                  "length_seconds": 30,
                   "label": "Recovery",
-                  "length_seconds": 30,
-                  "type": "recovery"
+                  "intensity_target_min": 0.5
                 },
                 {
-                  "cadence_rpm": 95,
-                  "intensity_target_min": 0.9,
-                  "label": "Steady State",
+                  "type": "interval",
+                  "length_seconds": 30,
+                  "label": "Work",
+                  "intensity_target_min": 1.25,
+                  "cadence_rpm": 95
+                },
+                {
+                  "type": "recovery",
+                  "length_seconds": 30,
+                  "label": "Recovery",
+                  "intensity_target_min": 0.5
+                },
+                {
+                  "type": "interval",
                   "length_seconds": 600,
-                  "type": "interval"
+                  "label": "Steady State",
+                  "intensity_target_min": 0.9,
+                  "cadence_rpm": 95
                 },
                 {
-                  "intensity_target_min": 0.5,
+                  "type": "cooldown",
+                  "length_seconds": 600,
                   "label": "Cooldown",
-                  "length_seconds": 600,
-                  "type": "cooldown"
+                  "intensity_target_min": 0.5
                 }
               ]
-            },
-            "title": "Blended VO2max and G Spot",
-            "tss": 97
+            }
           }
         ]
       },
@@ -769,14 +774,18 @@
         "day": "sat",
         "sessions": [
           {
-            "coach_note": "Endurance Saturday is the long one. Boring on purpose. Fuel from the first twenty minutes, not when you get hungry.",
+            "kind": "bike",
+            "title": "Endurance",
+            "purpose": "Aerobic base building. Easy riding builds mitochondrial density and fat oxidation — the foundation everything else rests on. Level 4: Endurance. Refine the execution without adding strain.",
             "duration_minutes": 160,
+            "tss": 128,
+            "intensity_label": "Endurance",
             "fuel_tag": "practice",
             "fueling_guidance": "LONG-RIDE FUEL: Target 55g carbs/hr. Practice this prescription.",
-            "intensity_label": "Endurance",
-            "kind": "bike",
-            "purpose": "Aerobic base building. Easy riding builds mitochondrial density and fat oxidation \u2014 the foundation everything else rests on. Level 4: Endurance. Refine the execution without adding strain.",
+            "coach_note": "Endurance Saturday is the long one. Boring on purpose. I want fuel from the first twenty minutes, not when you get hungry.",
             "structure": {
+              "primary_length_metric": "duration",
+              "primary_intensity_metric": "percentOfFtp",
               "polyline": [
                 [
                   0.0,
@@ -811,32 +820,28 @@
                   0.0
                 ]
               ],
-              "primary_intensity_metric": "percentOfFtp",
-              "primary_length_metric": "duration",
               "steps": [
                 {
-                  "intensity_target_max": 0.65,
-                  "intensity_target_min": 0.5,
+                  "type": "warmup",
+                  "length_seconds": 600,
                   "label": "Warmup",
-                  "length_seconds": 600,
-                  "type": "warmup"
+                  "intensity_target_min": 0.5,
+                  "intensity_target_max": 0.65
                 },
                 {
-                  "intensity_target_min": 0.7,
-                  "label": "Steady State",
+                  "type": "interval",
                   "length_seconds": 8400,
-                  "type": "interval"
+                  "label": "Steady State",
+                  "intensity_target_min": 0.7
                 },
                 {
-                  "intensity_target_min": 0.45,
-                  "label": "Cooldown",
+                  "type": "cooldown",
                   "length_seconds": 600,
-                  "type": "cooldown"
+                  "label": "Cooldown",
+                  "intensity_target_min": 0.45
                 }
               ]
-            },
-            "title": "Endurance",
-            "tss": 128
+            }
           }
         ]
       },
@@ -844,14 +849,18 @@
         "day": "sun",
         "sessions": [
           {
-            "coach_note": "Endurance \u2014 Sunday Sunday is the long one. Boring on purpose. Fuel from the first twenty minutes, not when you get hungry.",
+            "kind": "bike",
+            "title": "Endurance — Sunday",
+            "purpose": "Aerobic base building. Easy riding builds mitochondrial density and fat oxidation — the foundation everything else rests on. Level 1: Endurance. Refine the execution without adding strain.",
             "duration_minutes": 70,
+            "tss": 55,
+            "intensity_label": "Endurance",
             "fuel_tag": "none",
             "fueling_guidance": "Water and normal fueling; no in-ride carbohydrate target needed.",
-            "intensity_label": "Endurance",
-            "kind": "bike",
-            "purpose": "Aerobic base building. Easy riding builds mitochondrial density and fat oxidation \u2014 the foundation everything else rests on. Level 1: Endurance. Refine the execution without adding strain.",
+            "coach_note": "Endurance — Sunday Sunday is the long one. Boring on purpose. I want fuel from the first twenty minutes, not when you get hungry.",
             "structure": {
+              "primary_length_metric": "duration",
+              "primary_intensity_metric": "percentOfFtp",
               "polyline": [
                 [
                   0.0,
@@ -886,84 +895,75 @@
                   0.0
                 ]
               ],
-              "primary_intensity_metric": "percentOfFtp",
-              "primary_length_metric": "duration",
               "steps": [
                 {
-                  "intensity_target_max": 0.65,
-                  "intensity_target_min": 0.5,
+                  "type": "warmup",
+                  "length_seconds": 600,
                   "label": "Warmup",
-                  "length_seconds": 600,
-                  "type": "warmup"
+                  "intensity_target_min": 0.5,
+                  "intensity_target_max": 0.65
                 },
                 {
-                  "intensity_target_min": 0.68,
-                  "label": "Steady State",
+                  "type": "interval",
                   "length_seconds": 3000,
-                  "type": "interval"
+                  "label": "Steady State",
+                  "intensity_target_min": 0.68
                 },
                 {
-                  "intensity_target_min": 0.45,
-                  "label": "Cooldown",
+                  "type": "cooldown",
                   "length_seconds": 600,
-                  "type": "cooldown"
+                  "label": "Cooldown",
+                  "intensity_target_min": 0.45
                 }
               ]
-            },
-            "title": "Endurance \u2014 Sunday",
-            "tss": 55
+            }
           },
           {
-            "coach_note": "Max Strength A Sunday. I want two clean reps left in reserve. This supports the riding for Unbound Gravel 200; if it starts competing with it, stop.",
+            "kind": "strength",
+            "title": "Max Strength A",
+            "purpose": "Build force with controlled, non-grinding compound lifts.",
             "duration_minutes": 45,
+            "tss": 31,
+            "intensity_label": "Strength",
             "fuel_tag": "moderate",
             "fueling_guidance": "Eat normally beforehand. Pair protein with carbohydrate within the hour after.",
-            "intensity_label": "Strength",
-            "kind": "strength",
-            "purpose": "Build force with controlled, non-grinding compound lifts.",
+            "coach_note": "Max Strength A Sunday. I want two clean reps left in reserve. This supports the riding for Unbound Gravel 200; if it starts competing with it, stop.",
             "strength": {
+              "focus": "Build force with controlled, non-grinding compound lifts",
               "exercises": [
                 {
-                  "cue": "RPE7 \u2014 leave 2 reps in reserve",
                   "name": "Back Squat",
+                  "sets": 4,
                   "reps": "6",
                   "rest_seconds": 150,
-                  "sets": 4
+                  "cue": "RPE7 — leave 2 reps in reserve"
                 },
                 {
-                  "cue": "RPE7 \u2014 leave 2 reps in reserve",
                   "name": "Romanian Deadlift",
+                  "sets": 3,
                   "reps": "8",
                   "rest_seconds": 120,
-                  "sets": 3
+                  "cue": "RPE7 — leave 2 reps in reserve"
                 },
                 {
-                  "cue": "RPE7 \u2014 leave 2 reps in reserve",
                   "name": "Barbell Hip Thrust",
+                  "sets": 3,
                   "reps": "8",
                   "rest_seconds": 90,
-                  "sets": 3
+                  "cue": "RPE7 — leave 2 reps in reserve"
                 },
                 {
-                  "cue": "moderate effort \u2014 leave 2 reps in reserve",
                   "name": "Pallof Press",
+                  "sets": 3,
                   "reps": "10 each",
                   "rest_seconds": 60,
-                  "sets": 3
+                  "cue": "moderate effort — leave 2 reps in reserve"
                 }
-              ],
-              "focus": "Build force with controlled, non-grinding compound lifts"
-            },
-            "title": "Max Strength A",
-            "tss": 31
+              ]
+            }
           }
         ]
       }
-    ],
-    "phase": "build",
-    "target_minutes": 447,
-    "target_tss": 389,
-    "type": "load",
-    "weekly_self_review": "Tell me:\n1. What went well and why?\n2. What went badly and why?\n3. ONE thing you can DO next week that's:\n a) In your control\n b) Not too big of a lift\n c) Impactful\n\nPlease complete this at the end of every week and put your answers in the comments on this note. It will greatly improve you as an athlete and help me coach you better."
+    ]
   }
 }

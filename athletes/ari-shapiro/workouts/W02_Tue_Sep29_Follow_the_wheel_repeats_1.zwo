@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Follow the wheel repeats (1 of 2)</name>
+  <description>FUEL:
+Normal meal ~2h before. One bottle, 40-50g carbs. Done.
+
+5 sets of 1minutes low V02 (zone5) followed by 4 minutes of tempo. 1minute of rest between each.
+
+RPE guide: 107% FTP -> RPE 8-9; 90% FTP -> RPE 6-7; 68% FTP -> RPE 3; 47% FTP -> RPE 3</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.40" PowerHigh="0.50"/>
+    <SteadyState Duration="960" Power="0.68"/>
+    <SteadyState Duration="60" Power="1.07"/>
+    <SteadyState Duration="240" Power="0.90"/>
+    <SteadyState Duration="60" Power="0.47"/>
+    <SteadyState Duration="60" Power="1.07"/>
+    <SteadyState Duration="240" Power="0.90"/>
+    <SteadyState Duration="60" Power="0.47"/>
+    <SteadyState Duration="60" Power="1.07"/>
+    <SteadyState Duration="240" Power="0.90"/>
+    <SteadyState Duration="60" Power="0.47"/>
+    <SteadyState Duration="60" Power="1.07"/>
+    <SteadyState Duration="240" Power="0.90"/>
+    <SteadyState Duration="60" Power="0.47"/>
+    <SteadyState Duration="60" Power="1.07"/>
+    <SteadyState Duration="240" Power="0.90"/>
+    <SteadyState Duration="60" Power="0.47"/>
+    <Cooldown Duration="540" PowerLow="0.50" PowerHigh="0.40"/>
+  </workout>
+</workout_file>

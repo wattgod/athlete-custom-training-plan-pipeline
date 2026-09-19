@@ -1,0 +1,26 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Endurance Z2</name>
+  <description>WARM-UP:
+• 10min easy build @50-68% FTP
+
+MAIN SET:
+• 50min @66-75% FTP (RPE 3-4)
+• Position: alternate every 30min — drops (aero) / hoods (power)
+• Cadence: self-selected, comfortable endurance cadence
+
+COOL-DOWN:
+• 10min easy spin @45-68% FTP (Z1-Z2, RPE 2-3)
+
+EXECUTION:
+• Week 1/10, BASE phase — 10 weeks to Classic Gravel 100. Aerobic base building: easy riding builds mitochondrial density and fat oxidation, the foundation everything else rests on. Level 1: cadence and position focus — same structure, refine the execution.
+
+NUTRITION: 30-60g carbs/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.50" PowerHigh="0.68"/>
+    <SteadyState Duration="3000" Power="0.68"/>
+    <Cooldown Duration="600" PowerLow="0.68" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

@@ -1,0 +1,31 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Float Sets (1 of 2)</name>
+  <description>FUEL:
+Normal meal ~2h before. One bottle, 40-50g carbs. Done.
+
+WARM-UP:
+-30min building from Z1 to Z2
+
+MAIN SET:
+- 4x4min @ 112% FTP (Z5+, RPE 8-9), 2:30 recovery @ 83% FTP (Z3, RPE 5-6)
+-Cadence: 90-100rpm (race cadence)
+-Position: Drops for efforts, hoods for recovery
+
+COOL-DOWN:
+-24min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 4/6: Progressive - Increased challenge, refining execution
+-Compressed recovery. Fatigue accumulates faster — manage early reps conservatively
+
+EXECUTION:
+-Focus on consistent effort and good form throughout.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="1800" PowerLow="0.50" PowerHigh="0.70" />
+    <IntervalsT Repeat="4" OnDuration="240" OnPower="1.12" CadenceLow="85" CadenceHigh="95" OffDuration="150" OffPower="0.83" />
+    <Cooldown Duration="1440" PowerLow="0.70" PowerHigh="0.50" />
+  </workout>
+</workout_file>

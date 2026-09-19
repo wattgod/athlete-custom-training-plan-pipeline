@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Heat Acclimation Protocol</name>
+  <description>Heat Acclimation Protocol — level 2
+
+WARM-UP:
+-10min ramp 50%->65% FTP (RPE 2-3)
+
+MAIN SET:
+-60min @ 63%-73% FTP (Z2, RPE 2-3, 85-95rpm)
+
+COOL-DOWN:
+-10min spin-down 70%->50% FTP (RPE 2-3)
+
+HOW TO RIDE IT:
+-Easy and conversational the whole way.
+
+FUEL:
+-40-60g carbs/hr.
+
+HEAT PROTOCOL: ~60min at the prescribed easy zone with reduced cooling — skip the fan, add a layer, or ride the hottest part of the day. Hydrate aggressively before and during; sip past thirst. Stop if dizzy, nauseous, or confused — cool down and end the session rather than push through.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.50" PowerHigh="0.65" CadenceLow="85" CadenceHigh="92"/>
+    <SteadyState Duration="3600" Power="0.68" CadenceLow="85" CadenceHigh="95"/>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

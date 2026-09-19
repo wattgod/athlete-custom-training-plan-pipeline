@@ -31,7 +31,7 @@ INTENSITY_TITLE = re.compile(
     re.I,
 )
 LONG_RIDE_TITLE = re.compile(r"\b(long ride|durability|long endurance)\b", re.I)
-TP_KINDS = ("bike", "strength", "day_off", "race")
+TP_KINDS = ("bike", "run", "strength", "day_off", "race")
 TP_SESSION_FIELDS = (
     "date", "title", "display_name", "filename_stem", "description",
     "tp_kind", "workout_type_value_id", "tss_planned",
@@ -372,7 +372,17 @@ def _validate_manifest_projection(
 
     expected_counts = manifest.get("expected")
     canonical_counts = {**counts, "total": sum(counts.values())}
-    if expected_counts != canonical_counts:
+    # A manifest that predates a tp_kind simply omits that key, so an absent
+    # kind means zero rather than drift. Without this, adding `run` to
+    # TP_KINDS would invalidate every package and fixture built before
+    # dual-sport support existed. Unknown/extra keys are still drift.
+    if not isinstance(expected_counts, dict):
+        raise PostRenderValidationError(
+            "tp_manifest.expected does not match projected session kinds")
+    unknown = set(expected_counts) - set(canonical_counts)
+    normalized = {kind: int(expected_counts.get(kind, 0) or 0)
+                  for kind in canonical_counts}
+    if unknown or normalized != canonical_counts:
         raise PostRenderValidationError(
             "tp_manifest.expected does not match projected session kinds")
 
@@ -597,12 +607,30 @@ def _step_hard_seconds(step: Dict[str, Any], *, is_test: bool) -> int:
     return 0
 
 
+def _block_repetitions(block: Dict[str, Any]) -> int:
+    """How many times a structure block's steps actually execute.
+
+    A TP `repetition` block states its rep count in `length.value` and lists
+    the steps ONCE. Counting those steps a single time undercounts every
+    interval session by the rep factor -- a 6x3min set read as one 3-minute
+    rep. That is what the AE-2.1 hard-minutes floor was doing to every
+    structured plan it judged."""
+    if str(block.get("type") or "").lower() != "repetition":
+        return 1
+    try:
+        reps = int((block.get("length") or {}).get("value") or 1)
+    except (TypeError, ValueError):
+        return 1
+    return max(reps, 1)
+
+
 def _session_hard_seconds(session: Dict[str, Any]) -> int:
     is_test = _field_test_metric(session) is not None
     total = 0
     for block in (session.get("structure") or {}).get("structure") or []:
-        for step in block.get("steps") or []:
-            total += _step_hard_seconds(step, is_test=is_test)
+        per_pass = sum(_step_hard_seconds(step, is_test=is_test)
+                       for step in block.get("steps") or [])
+        total += per_pass * _block_repetitions(block)
     return total
 
 

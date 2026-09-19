@@ -508,6 +508,28 @@ def _load_race_intel() -> dict:
     return _race_intel_cache
 
 
+
+def _zwo_vo2_seconds(zwo_xml: str) -> float:
+    """Seconds at >=106% FTP in a rendered ZWO (AE-3.1 T@VO2max proxy, same
+    threshold ae_lint uses on the TP structure). IntervalsT counts
+    Repeat x OnDuration when OnPower >= 1.06; steady/ramp blocks count their
+    Duration when their (high) power >= 1.06."""
+    total = 0.0
+    for m in re.finditer(r'<(IntervalsT|SteadyState|Ramp|Warmup|Cooldown)\b([^>]*)/?>', zwo_xml or ''):
+        tag, attrs = m.group(1), m.group(2)
+        def _num(key):
+            mm = re.search(rf'\b{key}="([\d.]+)"', attrs)
+            return float(mm.group(1)) if mm else None
+        if tag == 'IntervalsT':
+            rep = _num('Repeat') or 1; on = _num('OnDuration') or 0; onp = _num('OnPower') or 0
+            offd = _num('OffDuration') or 0; offp = _num('OffPower') or 0
+            if onp >= 1.06: total += rep * on
+            if offp >= 1.06: total += rep * offd
+        else:
+            hi = max(_num('Power') or 0, _num('PowerHigh') or 0, _num('PowerLow') or 0)
+            if hi >= 1.06: total += _num('Duration') or 0
+    return total
+
 def _course_intel_section(race_id: str) -> str:
     """Render a COURSE INTEL section from the bundled race database extract,
     fact-conservative: only fields actually present for the matched race
@@ -544,8 +566,8 @@ def _race_day_ceiling_paragraph(longest_name: str, longest_minutes: int,
     return (
         '\n\nRACE-DAY CEILING:\n'
         f'Your longest rehearsal ride is {longest_name} ({longest_minutes / 60:.1f} hours); '
-        f'race day is expected to take {expected_hours:.1f} hours. First third conservative, '
-        'fuel on the timer, and remember: the final rehearsal is proof the distance is '
+        f'race day is expected to take {expected_hours:.1f} hours. I want the first third '
+        'conservative, fuel on the timer -- the final rehearsal is proof the distance is '
         'coverable in pieces.\n'
     )
 
@@ -560,14 +582,14 @@ def _race_day_pacing_strategy(goal_type: str, expected_duration_hours: float) ->
     conservative = (str(goal_type or '').strip().lower() in {'finish', 'finisher'}
                     or expected_duration_hours >= 6)
     if conservative:
-        return """- Ceiling rule: on every climb, choose the effort you can repeat all day. If breathing stops being controlled, back off before the crest.
+        return """- Ceiling rule: I want the effort you can repeat all day on every climb. If breathing stops being controlled, back off before the crest.
 - First third: deliberately conservative (RPE 4-5). Let the day come to you; fuel on the timer and do not answer early surges.
 - Middle third: settle into sustainable RPE 5-6, protect smooth cadence, and keep eating before hunger appears.
 - Final third: hold form, keep eating, and make only measured decisions that preserve a strong finish.
 - Technical sections: Smooth > Fast. Avoid mechanicals."""
-    return """- First 30 min: EASY. Let others burn matches. You're playing the long game.
+    return """- First 30 min: EASY. Let others burn matches -- I want you playing the long game.
 - Mile 10-40: Find your rhythm. Target G SPOT zone (88-94% FTP) on climbs.
-- Final third: This is where you pass people. Increase effort as others fade.
+- Final third: this is where you pass people. Increase effort as others fade.
 - Technical sections: Smooth > Fast. Avoid mechanicals."""
 
 
@@ -783,7 +805,7 @@ METHODOLOGY_MAP = {
 WORKOUT_DESCRIPTIONS = {
     'Recovery': {
         'structure': '{duration} min easy spin @ Z1 (50-55% FTP)',
-        'purpose': 'Active recovery. Blood flow without stress. Let your body adapt to previous training.',
+        'purpose': 'Active recovery. Blood flow without stress. I want your body adapting to what you just did.',
         'execution': 'Keep it easy. If in doubt, go easier. No heroics.',
         'rpe': 'RPE 2-3 (very easy, conversational)',
     },
@@ -795,13 +817,13 @@ WORKOUT_DESCRIPTIONS = {
     },
     'Endurance': {
         'structure': '{duration} min @ Z2 (65-75% FTP)',
-        'purpose': 'Aerobic base building. This is where 80% of your training volume lives.',
+        'purpose': "Aerobic base building. This is where I want 80% of your training volume to live.",
         'execution': 'Steady effort, smooth cadence 85-95 rpm. Nose-breathe if possible.',
         'rpe': 'RPE 3-4 (moderate, sustainable for hours)',
     },
     'Tempo': {
         'structure': '{duration} min with tempo blocks @ Z3 (76-87% FTP)',
-        'purpose': 'Muscular endurance. Building your ability to sustain moderate-hard efforts.',
+        'purpose': "Muscular endurance. I'm building your ability to sustain moderate-hard efforts.",
         'execution': 'Controlled effort. Breathing harder but rhythmic. Stay seated.',
         'rpe': 'RPE 5-6 (comfortably hard)',
     },
@@ -819,25 +841,25 @@ WORKOUT_DESCRIPTIONS = {
     },
     'Over_Under': {
         'structure': '{duration} min with over-under intervals alternating 88-92% FTP (under) and 105-108% FTP (over)',
-        'purpose': 'Race simulation. Teaches your body to clear lactate while maintaining power. Essential for gravel where pace constantly changes.',
+        'purpose': "Race simulation. I'm teaching your body to clear lactate while maintaining power. Essential for gravel where pace constantly changes.",
         'execution': 'Unders are controlled, overs are hard surges. Focus on quick transitions. Cadence drops may occur on overs - thats normal.',
         'rpe': 'RPE 7-8 (unders) to 8-9 (overs)',
     },
     'Blended': {
         'structure': '{duration} min multi-zone workout combining G SPOT base with VO2max bursts and varied cadence',
-        'purpose': 'Race simulation. Real gravel demands varied efforts - this workout trains your body to handle constant zone changes.',
+        'purpose': "Race simulation. Real gravel demands varied efforts - I'm training your body to handle constant zone changes.",
         'execution': 'Mix of zones, cadences, and positions. Simulate terrain by varying effort. Stand for power bursts, seated for steady blocks.',
         'rpe': 'RPE 5-8 (varies throughout workout)',
     },
     'Threshold': {
         'structure': '{duration} min with threshold intervals @ 95-100% FTP',
-        'purpose': 'FTP development. Training your body to sustain race-winning power.',
+        'purpose': "FTP development. I'm training your body to sustain race-winning power.",
         'execution': 'Right at your limit. Controlled suffering. Cadence 90-95 rpm.',
         'rpe': 'RPE 7-8 (hard, requires focus)',
     },
     'VO2max': {
         'structure': '{duration} min with VO2max intervals @ 110-120% FTP',
-        'purpose': 'Maximum aerobic power. Raising your ceiling so everything below feels easier.',
+        'purpose': "Maximum aerobic power. I want your ceiling raised so everything below feels easier.",
         'execution': 'These hurt. Start at 110%, adjust based on feel. High cadence 95-105 rpm.',
         'rpe': 'RPE 8-9 (very hard, labored breathing)',
     },
@@ -858,7 +880,7 @@ WORKOUT_DESCRIPTIONS = {
         # Keep this template free of duration figures: availability caps and
         # renderer changes must never make prose disagree with the assessment.
         'structure': '{duration} min FTP test protocol; see the emitted warm-up, main set, and cool-down below.',
-        'purpose': 'Establish your training zones. The 20-minute effort sets everything.',
+        'purpose': 'I use this to establish your training zones. The 20-minute effort sets everything.',
         'execution': 'Best sustainable effort -- start ~5% below what you believe and lift. Start controlled, settle in, suffer through the middle, finish strong.',
         'rpe': 'RPE 9/10 for the 20-minute test (very hard, barely sustainable)',
     },
@@ -873,7 +895,7 @@ WORKOUT_DESCRIPTIONS = {
         # activation sequence is rendered from the final blocks below.
         'structure': '{duration} min leg activation; see the emitted warm-up, main set, and cool-down below.',
         'purpose': 'Pre-race activation. Wake up the legs without creating fatigue.',
-        'execution': 'Short, sharp efforts. Full recovery between. Done when you feel snappy.',
+        'execution': "Short, sharp efforts. Full recovery between. I want snappy, not tired -- stop there.",
         'rpe': 'RPE 7-8 for efforts (short and controlled)',
     },
 }
@@ -1469,12 +1491,57 @@ def _recompute_library_week_totals(week: dict) -> None:
     week['total_tss'] = prescribed_tss + fixed_tss
 
 
+# R1 follow-up 3c (2026-09-17): these canonical names are SYNTHETIC_ONLY
+# (library_selector.SYNTHETIC_ONLY) or route to a library_key that's
+# entirely torque_* -- their curated pool is either empty by construction
+# or entirely excluded under seated_only already -- and their content is
+# torque/standing by construction, verified directly against the archetype
+# source, not the name alone:
+#   - 'Mixed Intervals' / 'Blended 30/30 and SFR' both route (workout_
+#     mapper.WORKOUT_MAP) to the SAME archetype, imported_archetypes.py's
+#     BLENDED_IMPORTED[0] ("Blended 30/30 + SFR") -- its levels embed
+#     repeated {'type': 'steady', ..., 'cadence': 55} blocks (SFR/torque
+#     work) regardless of the "Seated" position label, which is why the
+#     emitted ZWO filename literally reads *_Blended_3030__SFR_*.
+#   - 'Stomps' has a real torque_stomps routing entry, but every torque_*
+#     item is already excluded under seated_only (seated_only_excluded_ids)
+#     so it always falls to its synthetic fallback, Sprint_Neuromuscular
+#     index 4 ("Stomps", position 'Seated to standing') or index 5
+#     ("Burst Intervals", position 'Bursts: standing, Endurance: seated')
+#     depending on the rotation offset -- both standing by construction.
+# 'Blended VO2max and G Spot' (cadence 90-100rpm) and 'Blended Endurance,
+# Threshold, and Sprints' (cadence 85-90rpm, drops/hoods) were checked
+# against the same archetype source and are NOT torque/low-cadence by
+# construction, so they are deliberately left out of this set even though
+# they share the SYNTHETIC_ONLY/Blended family.
+_SEATED_ONLY_SYNTHETIC_REMAP_NAMES = frozenset({
+    'Mixed Intervals',
+    'Blended 30/30 and SFR',
+    'Stomps',
+})
+# Routes to library_key vo2_3030_micro (library_selector._VO2_3030_TYPES) --
+# a real curated, seated VO2 30/30 pool, so remapping here (before
+# library_selector.select() runs) lets a genuine curated item resolve with
+# normal series progression instead of falling through to a torque/standing
+# synthetic render.
+_SEATED_ONLY_SYNTHETIC_REMAP_TARGET = 'VO2max 30/30'
+
+
 def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None,
-                               athlete_seed=None,
+                               athlete_seed=None, session_floor_min: int = 0,
                                excluded_calendar_slots: Optional[set] = None,
-                               index=None, discipline: Optional[str] = None) -> list:
+                               index=None, discipline: Optional[str] = None,
+                               bike_constraints: Optional[list] = None) -> list:
     """C4/D1/D2: resolve in-scope block-builder days to curated TP library
     items via ``library_selector.select``.
+
+    ``bike_constraints`` (knee-safety fix 2026-09-17, from
+    ``derived['bike_constraints']``): when it carries ``'seated_only'``,
+    every torque/standing/low-cadence item (``library_selector.
+    seated_only_excluded_ids``) is barred from every slot this call
+    resolves -- an athlete with a knee injury that rules out standing or
+    stomping pedaling must never draw the Descending-Cadence Ladder,
+    Stomps, SFR, or a standing-cued composed card.
 
     Mutates ``bb_plan`` in place: a resolved day gets its item's real
     ``duration``/``tss`` written onto ``day['duration']``/``day['tss']``
@@ -1512,14 +1579,42 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
     used_items: dict = {}
     lint_exclusions: dict = {}
     fallbacks: list = []
+    # Knee-safety fix 2026-09-17: computed once per call (the index is
+    # process-cached, but the frozenset itself is cheap to build once here
+    # rather than per-slot).
+    _extra_excluded_ids = (
+        library_selector.seated_only_excluded_ids(idx)
+        if 'seated_only' in (bike_constraints or [])
+        else frozenset()
+    )
+    # Structure-less curated items never resolve on a real build (2026-09-17,
+    # sol review): they ship as a blank graph. Same mechanism as knee-safety.
+    _extra_excluded_ids = (frozenset(_extra_excluded_ids)
+                           | library_selector.structureless_item_ids(idx)
+                           | library_selector.banned_concept_item_ids(idx))
 
+    # Variety policy block identity: the engine's block_number advances
+    # only at a PHASE change (a 12-week base is one block_number; a 4-week
+    # coached block whose W1 sits in a different phase is two). Spread is
+    # judged per mesocycle in the coaching sense instead: a new meso opens
+    # on the first load week after a recovery/testing week, regardless of
+    # phase. Taper and race weeks stay in the meso that precedes them.
+    _meso = 0
+    _prev_week_type = None
     for bw in bb_plan.get('weeks', []):
         plan_week = bw.get('plan_week', bw.get('week_num', 0))
         week_in_block = bw.get('week_num', 1)
         block_number = bw.get('block_number', 1)
         phase = bw.get('phase')
         week_type = bw.get('week_type')
+        # Only a recovery week closes a meso; the week after it (load, or a
+        # re-test week that opens the next block) starts the new one.
+        if week_type in ('load', 'testing') and _prev_week_type == 'recovery':
+            _meso += 1
+        _prev_week_type = week_type
+        bw['block_id'] = ('meso', _meso)
         touched = False
+        _filler_ordinal = 0
         for bd in bw.get('days', []):
             day_abbrev = bd.get('day')
             if (plan_week, day_abbrev) in excluded_calendar_slots:
@@ -1535,12 +1630,29 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
                 continue
             if not _library_selection_in_scope(bd):
                 continue
+            _slot_filler_ordinal = None
+            if bd.get('role') == 'filler':
+                _slot_filler_ordinal = _filler_ordinal
+                _filler_ordinal += 1
 
             canonical_name = bd.get('name')
+            # R1 follow-up 3c: remap a torque/standing-by-construction
+            # SYNTHETIC_ONLY slot to the seated VO2 30/30 family BEFORE
+            # selection (see _SEATED_ONLY_SYNTHETIC_REMAP_NAMES docstring
+            # above) -- only the LOCAL name used for selection/series
+            # keying changes here; bd['name'] itself is never touched (R02/
+            # R04/R08 read the block-builder's own slot classification --
+            # see this function's docstring).
+            if ('seated_only' in (bike_constraints or [])
+                    and canonical_name in _SEATED_ONLY_SYNTHETIC_REMAP_NAMES):
+                canonical_name = _SEATED_ONLY_SYNTHETIC_REMAP_TARGET
             slot = {
                 'canonical_name': canonical_name,
                 'level': bd.get('level') or 1,
                 'budget_min': bd.get('duration') or 0,
+                # race-week openers are the one deliberately short session
+                'session_floor_min': 0 if canonical_name == 'Openers' else session_floor_min,
+                'floor_extended_min': bd.get('floor_extended_min') or 0,
                 'day_cap_min': day_caps.get(day_abbrev),
                 'role': bd.get('role'),
                 'phase': phase,
@@ -1549,6 +1661,11 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
                 'week_type': week_type,
                 'series_key': (block_number, day_abbrev, canonical_name),
                 'week_in_block': week_in_block,
+                # Variety policy (2026-09-18): block spread keys on the
+                # global block number; the filler ordinal drives the
+                # easy-day library rotation.
+                'block_id': bw['block_id'],
+                'filler_ordinal': _slot_filler_ordinal,
                 # R3: plan_week/day extend the non-series rotation seed and
                 # key the same-week hard-duplicate check.
                 'plan_week': plan_week,
@@ -1565,9 +1682,16 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
                 # docstring). No slot requests TT-bike position work today.
                 'discipline': discipline,
             }
+            # extra_excluded_ids is passed only when non-empty -- test
+            # doubles across this codebase monkeypatch library_selector.
+            # select with the pre-existing (slot, series_state, index,
+            # used_items, lint_exclusions) signature, and an athlete with no
+            # seated_only constraint must not require every one of those to
+            # also accept the new keyword.
             resolution = library_selector.select(
                 slot, series_state=series_state, index=idx, used_items=used_items,
-                lint_exclusions=lint_exclusions)
+                lint_exclusions=lint_exclusions,
+                **({'extra_excluded_ids': _extra_excluded_ids} if _extra_excluded_ids else {}))
             if resolution is None:
                 fallbacks.append({
                     'plan_week': plan_week,
@@ -1588,20 +1712,32 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
 
     _rebalance_recovery_weeks_post_resolution(
         bb_plan, day_caps=day_caps, athlete_seed=athlete_seed,
+        session_floor_min=session_floor_min,
         series_state=series_state, used_items=used_items, index=idx,
-        lint_exclusions=lint_exclusions, discipline=discipline)
+        lint_exclusions=lint_exclusions, discipline=discipline,
+        extra_excluded_ids=_extra_excluded_ids)
 
     # T27: fold the loud, deduplicated lint-exclusion report into the same
     # list D9's fallback reporting already writes to library_fallbacks.json
     # and renders under coaching_brief.md's LIBRARY FALLBACKS section.
     fallbacks.extend(sorted(lint_exclusions.values(), key=lambda rec: rec['item_id']))
 
+    # Variety rule 5: the spread report rides on the plan dict (the return
+    # value is the D9 fallback list, a contract intake_to_plan reads). The
+    # selector memory rides along too: the post-trim recovery rebalance in
+    # generate_zwo_files re-selects days and must see the same used_items /
+    # series_state, and the report is rebuilt after it (bb_plan is never
+    # serialised -- only bb_plan['library_variety'] is).
+    bb_plan['_library_selection_state'] = {'used_items': used_items, 'series_state': series_state}
+    bb_plan['library_variety'] = library_selector.variety_report(bb_plan, idx, series_state)
+
     return fallbacks
 
 
-def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed,
+def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed, session_floor_min=0,
                                               series_state, used_items, index,
-                                              lint_exclusions=None, discipline=None):
+                                              lint_exclusions=None, discipline=None,
+                                              extra_excluded_ids: frozenset = frozenset()):
     """Keep recovery weeks inside R03's band AFTER resolution moves TSS.
 
     The build-time recovery fill works with yaml numbers; resolution then
@@ -1610,6 +1746,12 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
     flags on real generations). Re-fit ONE easy resolved day at a time
     toward the band midpoint using the same selector machinery, never
     touching intensity or synthetic-pinned days.
+
+    ``extra_excluded_ids`` (knee-safety fix 2026-09-17, R1 follow-up 3a):
+    the same ``seated_only_excluded_ids`` set ``resolve_library_selections``
+    threads into its main resolution loop -- without it, a recovery-week
+    rebalance swap could re-introduce a torque/standing item this call
+    excluded elsewhere on the same plan.
     """
     from block_compliance import _preceding_load_average
     import library_selector
@@ -1658,9 +1800,12 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
             slot = {
                 'canonical_name': day.get('name'), 'level': day.get('level') or 1,
                 'budget_min': budget,
+                'session_floor_min': session_floor_min,
+                'floor_extended_min': day.get('floor_extended_min') or 0,
                 'day_cap_min': (day_caps or {}).get(day.get('day')),
                 'role': day.get('role'), 'phase': bw.get('phase'),
                 'series_key': None, 'week_in_block': bw.get('week_num', 1),
+                'block_id': bw.get('block_id', bw.get('block_number')),
                 'athlete_seed': athlete_seed, 'race_demands': False,
                 'week_type': 'recovery',
                 'plan_week': bw.get('plan_week'), 'day': day.get('day'),
@@ -1668,7 +1813,8 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
             }
             replacement = library_selector.select(
                 slot, series_state=series_state, index=index,
-                used_items=used_items, lint_exclusions=lint_exclusions)
+                used_items=used_items, lint_exclusions=lint_exclusions,
+                **({'extra_excluded_ids': extra_excluded_ids} if extra_excluded_ids else {}))
             if (replacement is None or replacement['item_id'] == old['item_id']
                     or (need_more and replacement['tss'] <= old['tss'])
                     or (not need_more and replacement['tss'] >= old['tss'])):
@@ -1677,6 +1823,32 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
             day['tss'] = replacement['tss']
             day['library_resolution'] = replacement
             _recompute_library_week_totals(bw)
+
+
+# Filesystem-reserved characters. A race name is authored copy, not a
+# slug, so it can legitimately contain any of these -- `Gran Fondo Pekan /
+# Pekan Classic` is a real entry in the race database. Before this, the race
+# ZWO filename was built as `race_name.replace(' ', '_')` and nothing else,
+# so a name containing "/" became a path separator and generation died with
+# FileNotFoundError partway through -- AFTER the compliance gate had already
+# passed, which made it read like a disk problem rather than a naming one.
+# Only the FILENAME is sanitized; the athlete-facing display name keeps the
+# race name verbatim.
+_FILENAME_RESERVED_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+
+
+def safe_filename_component(value: str) -> str:
+    """Make ``value`` safe to embed in a filename.
+
+    Spaces become underscores (the pre-existing convention, preserved so
+    every name without a reserved character produces a byte-identical
+    filename). Filesystem-reserved characters collapse to a single '-'.
+    Leading/trailing dots, dashes and spaces are stripped so the result can
+    never be '.', '..' or a hidden file.
+    """
+    collapsed = _FILENAME_RESERVED_RE.sub('-', str(value)).replace(' ', '_')
+    collapsed = re.sub(r'-{2,}', '-', collapsed).strip('. -_')
+    return collapsed or 'Race'
 
 
 def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, derived: dict, profile: dict = None, fueling: dict = None,
@@ -1758,8 +1930,23 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
     # Use centralized day mappings from constants.py
     strength_only_abbrevs = [DAY_FULL_TO_ABBREV.get(d.lower(), d) for d in strength_only_days]
-    _requested_strength_sessions = int(
-        (profile.get('strength', {}) or {}).get('sessions_per_week', 2) or 0)
+    # Strength frequency has TWO sources and they can disagree:
+    # derive_classifications writes `strength_frequency` into derived.yaml
+    # (registered as CLASSIFICATION_STRENGTH_FREQUENCY, derived from the
+    # athlete's equipment inventory and available days), and the profile
+    # carries a raw `strength.sessions_per_week`. This used to read only the
+    # profile field and default to 2 -- so an athlete whose derivation had
+    # already concluded `strength_frequency: 0` with `strength_day_candidates:
+    # []` still got two strength sessions a week generated, because the
+    # derived zero was never consulted. The derived value is the classifier's
+    # considered answer, so it wins when present; the profile field is the
+    # fallback for athletes generated before the classifier existed.
+    _derived_strength = (derived or {}).get('strength_frequency')
+    if _derived_strength is not None:
+        _requested_strength_sessions = int(_derived_strength or 0)
+    else:
+        _requested_strength_sessions = int(
+            (profile.get('strength', {}) or {}).get('sessions_per_week', 2) or 0)
     long_day_abbrev = DAY_FULL_TO_ABBREV.get(preferred_long_day.lower(), 'Sat')
     declared_long_days = {
         DAY_FULL_TO_ABBREV.get(str(day).lower(), str(day))
@@ -1840,6 +2027,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     try:
         from archetype import determine_archetype, determine_phase, derive_discipline
         from block_chain import build_plan_from_calendar, derive_week_descriptors
+        import block_builder as block_builder_module
+        import library_selector as library_selector_module
         from plan_ir import training_age_class
         from workout_mapper import render_workout as _bb_render
         from workout_selector import coached_focus_category_weights
@@ -1908,7 +2097,15 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 ((profile or {}).get('coached_block') or {}).get('focus'))
         else:
             _bb_category_weights = None
+        # AE-2.7 (amended 2026-09-17): 60-min session floor unless the
+        # athlete explicitly asked for short sessions (questionnaire or
+        # correspondence -> weekly_availability.short_sessions_ok).
+        _short_ok = bool((profile.get('weekly_availability') or {}).get('short_sessions_ok'))
+        _session_floor_min = (block_builder_module.SESSION_FLOOR_MIN_OPT_IN if _short_ok
+                              else block_builder_module.SESSION_FLOOR_MIN)
         _bb_plan = build_plan_from_calendar(
+            session_floor_min=_session_floor_min,
+            grow_to_weekday_target=not _short_ok,
             week_descriptors=_bb_descriptors,
             archetype=_bb_archetype,
             max_level=max_workout_level,
@@ -2094,8 +2291,10 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 _bb_plan,
                 day_caps=_bb_day_caps,
                 athlete_seed=_seed,
+                session_floor_min=_session_floor_min,
                 excluded_calendar_slots=_library_excluded_slots,
                 discipline=_bb_discipline,
+                bike_constraints=(derived or {}).get('bike_constraints', []),
             ))
             # NOTE: `athlete_dir` here is the caller's parameter -- in the
             # production authoring flow that's a SHORT-LIVED temp directory
@@ -2132,10 +2331,33 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         # floor; day caps remain hard inside the selector.
         if _library_selection_enabled:
             from tp_library_snapshot import load_index as _load_tp_index
+            _tp_index = _load_tp_index()
+            # Same selector memory as the first pass (variety policy 2026-09-18:
+            # a fresh {} here let this pass re-place an item already used in
+            # the block, and the report written earlier described the wrong plan).
+            _sel_state = _bb_plan.get('_library_selection_state') or {}
             _rebalance_recovery_weeks_post_resolution(
                 _bb_plan, day_caps=_bb_day_caps or {}, athlete_seed=_seed,
-                series_state={}, used_items={}, index=_load_tp_index(),
-                lint_exclusions={}, discipline=_bb_discipline)
+                session_floor_min=_session_floor_min,
+                series_state=_sel_state.get('series_state', {}),
+                used_items=_sel_state.get('used_items', {}), index=_tp_index,
+                lint_exclusions={}, discipline=_bb_discipline,
+                extra_excluded_ids=(library_selector_module.structureless_item_ids(_tp_index)
+                                    | library_selector_module.banned_concept_item_ids(_tp_index)
+                                    | (library_selector_module.seated_only_excluded_ids(_tp_index)
+                                       if 'seated_only' in ((derived or {}).get('bike_constraints') or [])
+                                       else frozenset())))
+            # Variety rule 5: the spread report describes the plan as shipped,
+            # so it is rebuilt and written after the last mutation of
+            # day['library_resolution'] (same short-lived athlete_dir as
+            # library_fallbacks.json; copied out by generate_athlete_package).
+            _bb_plan['library_variety'] = library_selector_module.variety_report(
+                _bb_plan, _tp_index, _sel_state.get('series_state'))
+            try:
+                (athlete_dir / 'library_variety.json').write_text(
+                    json.dumps(_bb_plan['library_variety'], indent=2) + '\n')
+            except OSError:
+                pass
 
         # Build lookup: (plan_week, day_abbrev) → block plan day data.
         # week_in_block rides along for series numbering in workout titles
@@ -2176,6 +2398,20 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     if _use_block_builder:
         from block_compliance import validate_plan as _bb_validate, \
             format_compliance_report as _bb_report
+        # GG_DUMP_BB_PLAN=<path>: write the block plan exactly as the gate
+        # sees it (diagnostic; sibling of GG_LIBRARY_TRACE).
+        if os.environ.get('GG_DUMP_BB_PLAN'):
+            def _jsonable(o):
+                if isinstance(o, dict):
+                    return {str(k): _jsonable(v) for k, v in o.items() if k != '_library_selection_state'}
+                if isinstance(o, (list, tuple, set, frozenset)):
+                    return [_jsonable(v) for v in o]
+                return o if isinstance(o, (str, int, float, bool)) or o is None else str(o)
+            try:
+                Path(os.environ['GG_DUMP_BB_PLAN']).write_text(
+                    json.dumps(_jsonable(_bb_plan), indent=1) + '\n')
+            except (OSError, TypeError, ValueError):
+                pass
         _compliance = _bb_validate(
             _bb_plan,
             target_hours=cycling_hours_target,
@@ -3649,7 +3885,7 @@ Stay loose, {athlete_name}!"""
             if is_b_race_day:
                 b_race_info = week.get('b_race', {})
                 b_race_name = b_race_info.get('name', 'B-Race')
-                b_race_plan_name = f"{workout_prefix}_RACE_DAY_{b_race_name.replace(' ', '_')}"
+                b_race_plan_name = f"{workout_prefix}_RACE_DAY_{safe_filename_component(b_race_name)}"
                 b_race_filename = f"{b_race_plan_name}.zwo"
                 b_race_display_name = f"B-Race Day — {b_race_name}"
 
@@ -3658,7 +3894,7 @@ Date: {day_info['date']}
 Priority: B (training race - NOT the goal event)
 
 THIS IS A TRAINING RACE:
-- Race hard, but don't blow up your training block
+- I want you racing hard, but not blowing up your training block
 - Use this as a fitness check and race-craft practice
 - Target effort: 90-95% of A-race effort
 - Practice fueling, pacing, and gear choices
@@ -3921,6 +4157,18 @@ TIPS:
                     # structure under the VO2max/Endurance title above.
                     _library_resolution = None
 
+                # AE-2.7 (amended 2026-09-17): a synthetic render never ships
+                # under the session floor, even when a curated resolution was
+                # discarded above and left the day at the item's short
+                # duration. Applied here, before the manifest record and the
+                # ZWO scale pass both read bb_duration. Race-week openers exempt.
+                _floor_here = int(locals().get('_session_floor_min') or 0)
+                _is_race_wk = bool(week.get('is_race_week')) or week.get('week_type') == 'race'
+                if (bb_duration > 0 and not _library_resolution and _floor_here
+                        and bb_duration < _floor_here
+                        and not (_is_race_wk and bb_name == 'Openers')):
+                    bb_duration = _floor_here
+
                 # Track variation for endurance variety.
                 # INTENSITY days: variation is keyed to the BLOCK so a series
                 # is the same archetype progressing +1 level per week (the
@@ -4159,6 +4407,28 @@ TIPS:
                         phase=phase,
                         week_type=week.get('week_type'),
                     )
+                    # AE-3.1 at render time for SYNTHETIC VO2 sessions (2026-09-17):
+                    # a Nate archetype level can carry >18 min at >=106% FTP
+                    # ("VO2max with Loaded Recovery" L3 rendered 22 min for a
+                    # junior). Step the level down until the dose is inside
+                    # the ratified ceiling; L1 ships regardless (lint reports).
+                    _vo2_guard_level = bb_level
+                    while (zwo_content and _vo2_guard_level > 1
+                           and _zwo_vo2_seconds(zwo_content) > 18 * 60):
+                        _vo2_guard_level -= 1
+                        _retry = _bb_render(
+                            name=bb_name, level=_vo2_guard_level, methodology=nate_methodology,
+                            workout_name=workout_name, display_name=display_name,
+                            variation_offset=var_offset, author=_workout_author,
+                            discipline=_bb_discipline, training_age=_bb_training_age,
+                            endurance_variant=(_e_variant if bb_name == 'Endurance'
+                                               and bb_role == 'filler' else None),
+                            phase=phase, week_type=week.get('week_type'),
+                        )
+                        if not _retry:
+                            break
+                        zwo_content = _retry
+                        bb_level = _vo2_guard_level
                     # The ride beside a long simulation is a recovery spin
                     # with a job, not generic base building — say so, or
                     # three identical Mondays read as generator filler.
@@ -4525,7 +4795,7 @@ TIPS:
             if is_race_day:
                 # Create RACE DAY PLAN - not a workout, but a race execution guide
                 # Pull from fueling.yaml, race data, and training guide
-                race_plan_name = f"{workout_prefix}_RACE_DAY_{race_name.replace(' ', '_')}"
+                race_plan_name = f"{workout_prefix}_RACE_DAY_{safe_filename_component(race_name)}"
                 race_filename = f"{race_plan_name}.zwo"
                 race_display_name = f"Race Day — {race_name}"
 
@@ -5167,9 +5437,9 @@ GO GET IT, {athlete_name.upper()}!
             full_description = f"FOCUS: {strength_workout['focus']}\n\nEXERCISES:\n{exercises_text}\n\nEXECUTION:\nComplete all sets with good form. {rest_line}"
             # T18: never leave a bike+lift day without an order.
             if str(date_full) in _hard_bike_dates:
-                full_description += ("\n\nSEQUENCING:\nToday also carries your hard ride. "
-                                     "Ride first; lift at least 4 hours later — or move this "
-                                     "lift to tomorrow if the day is tight.")
+                full_description += ("\n\nSEQUENCING:\nToday also carries your hard ride, so I want "
+                                     "it sequenced right. Ride first; lift at least 4 hours later — "
+                                     "or move this lift to tomorrow if the day is tight.")
 
             zwo_content = ZWO_TEMPLATE.format(
                 author=_workout_author,
@@ -5388,6 +5658,16 @@ def generate_athlete_package(athlete_id: str) -> dict:
         if private_review.is_file():
             (athlete_dir / 'NEEDS_REVIEW.txt').write_text(
                 private_review.read_text(encoding='utf-8'), encoding='utf-8')
+        else:
+            # A clean gate must clear a flag left by an earlier build of the
+            # same athlete dir: a stale NEEDS_REVIEW.txt kept three golden
+            # orders "failing" after the underlying defect was fixed
+            # (2026-09-19). The coach signal is the CURRENT gate, never a
+            # previous one.
+            try:
+                (athlete_dir / 'NEEDS_REVIEW.txt').unlink()
+            except FileNotFoundError:
+                pass
         # C4 (D9): library-selection fallback list was written into the
         # temp authoring dir (same reasoning as NEEDS_REVIEW.txt above) --
         # copy it out before that directory is cleaned up.
@@ -5395,6 +5675,10 @@ def generate_athlete_package(athlete_id: str) -> dict:
         if _private_fallbacks.is_file():
             (athlete_dir / 'library_fallbacks.json').write_text(
                 _private_fallbacks.read_text(encoding='utf-8'), encoding='utf-8')
+        _private_variety = _authored_dir / 'library_variety.json'
+        if _private_variety.is_file():
+            (athlete_dir / 'library_variety.json').write_text(
+                _private_variety.read_text(encoding='utf-8'), encoding='utf-8')
     detail(f"Authored {len(zwo_files)} canonical workout sessions")
     control = canonical_model['athlete']
     detail(f"Canonical control: {control['control_metric']} ({control['control_basis']})")

@@ -19,6 +19,13 @@ from workout_selector import (
 )
 from series_tracker import SeriesTracker
 
+# AE-2.7 (amended 2026-09-17) session-floor constants -- see apply_session_floor.
+SESSION_FLOOR_MIN = 60
+SESSION_FLOOR_MIN_OPT_IN = 45          # explicit athlete request only
+WEEKDAY_TARGET_MAX_MIN = 120
+_Z2_TSS_PER_MIN = 0.70                 # ~42 TSS/h, IF .65 -- the added minutes are Z2
+
+
 # Day template: standard week structure
 # Intensity days are non-consecutive, long ride on weekend
 STANDARD_DAY_TEMPLATE = {
@@ -167,6 +174,8 @@ def build_calendar_week(
     race_day: Optional[str] = None,
     athlete_age: Optional[int] = None,
     stress_level: Optional[str] = None,
+    session_floor_min: int = SESSION_FLOOR_MIN,
+    grow_to_weekday_target: bool = True,
 ) -> Dict[str, Any]:
     """Build one week whose type and phase come from the calendar (plan_dates).
 
@@ -209,6 +218,8 @@ def build_calendar_week(
         race_day=race_day,
         athlete_age=athlete_age,
         stress_level=stress_level,
+        session_floor_min=session_floor_min,
+        grow_to_weekday_target=grow_to_weekday_target,
     )
     week['block_number'] = block_number
     return week
@@ -299,6 +310,91 @@ def _build_day_template(
     return roles
 
 
+# Matti ruling 2026-09-17 (AE-2.7 amendment): "an hour should be a minimum,
+# with the average for a 9-5, ~10 h/wk rider being ~1.5 h on a weekday
+# (warm-up and cool-down included)". 35/40/45-minute cards are a defect
+# unless the athlete's questionnaire or correspondence explicitly asks for
+# short sessions. The old behaviour -- shrinking a session to fit the weekly
+# budget or a day cap -- produced stubs like a 32-minute race simulation and
+# a 35-minute Tune-Up on a recovery Tuesday. The floor is applied LAST and
+# is allowed to overshoot the weekly budget: volume is never the reason to
+# ship a pointless card.
+
+
+def weekday_target_minutes(days: List[Dict[str, Any]], hours_per_week: float,
+                           floor_min: int) -> int:
+    """What a normal weekday ride should average for this athlete this
+    week: the weekly hours left after the long ride, spread over the other
+    riding days, clamped to [floor, 2 h]. A 10 h/wk rider with a 3 h long
+    ride and four other rides lands at ~105 min."""
+    riding = [d for d in days if d.get('duration', 0) > 0
+              and d.get('role') not in ('off', 'race', 'rest')
+              and d.get('name') != 'Rest Day']
+    long_min = max((d.get('duration', 0) for d in riding if d.get('role') == 'long_ride'), default=0)
+    others = max(len(riding) - (1 if long_min else 0), 1)
+    target = (hours_per_week * 60 - long_min) / others
+    return int(max(floor_min, min(WEEKDAY_TARGET_MAX_MIN, round(target))))
+
+
+def apply_session_floor(days: List[Dict[str, Any]], *, hours_per_week: float,
+                        day_caps: Optional[Dict[str, int]] = None,
+                        week_type: str = 'load',
+                        floor_min: int = SESSION_FLOOR_MIN,
+                        grow_to_weekday_target: bool = True,
+                        target_scale: float = 1.0,
+                        grow_fillers_to_target: bool = False,
+                        max_minutes: Optional[float] = None) -> List[str]:
+    """Grow every under-floor riding session in place. Returns the names of
+    the sessions that were extended (for logging/tests).
+
+    Exempt: off/rest/race days, the race-week Openers (a 40-min opener is
+    the point), and any day whose availability cap is itself below the
+    floor -- the athlete's stated cap IS the explicit short-session request.
+    A session under the floor grows to the weekday target (not merely to
+    the floor) when ``grow_to_weekday_target`` is on; the extra minutes are
+    modelled as Z2 for TSS and the renderer extends the Z2 portions of the
+    session, so the quality set is untouched.
+    """
+    grown: List[str] = []
+    target = floor_min
+    if grow_to_weekday_target:
+        target = max(floor_min, int(round(weekday_target_minutes(days, hours_per_week, floor_min) * target_scale)))
+    # The FLOOR is mandatory and may overshoot the week; growth beyond the
+    # floor toward the weekday target spends only what the R19 budget
+    # (hours x tolerance) still has room for, so the ratified +-10% hours
+    # gate keeps binding.
+    headroom = float('inf')
+    if max_minutes is not None:
+        headroom = max(0.0, float(max_minutes) - sum(x.get('duration', 0) for x in days))
+    for d in days:
+        dur = d.get('duration', 0)
+        if dur <= 0 or d.get('role') in ('off', 'race', 'rest') or d.get('name') == 'Rest Day':
+            continue
+        if week_type == 'race' and d.get('name') == 'Openers':
+            continue
+        cap = (day_caps or {}).get(d.get('day'), 0) or 0
+        if cap and cap < floor_min:
+            continue                      # athlete-stated short day
+        d['session_floor_min'] = floor_min   # downstream trims must not go under this
+        if dur >= floor_min and not (grow_fillers_to_target and d.get('role') == 'filler' and dur < target):
+            continue
+        new_dur = target if d.get('role') != 'long_ride' else floor_min
+        if cap:
+            new_dur = min(new_dur, cap)
+        mandatory = max(dur, min(new_dur, floor_min))     # up to the floor: always
+        optional = max(0, new_dur - mandatory)             # floor -> target: budgeted
+        spend = min(optional, headroom)
+        new_dur = mandatory + int(spend)
+        if new_dur <= dur:
+            continue
+        headroom -= max(0.0, new_dur - max(dur, floor_min))
+        d['tss'] = round(d.get('tss', 0) + (new_dur - dur) * _Z2_TSS_PER_MIN)
+        d['floor_extended_min'] = new_dur - dur
+        d['duration'] = new_dur
+        grown.append(d.get('name', ''))
+    return grown
+
+
 def _fit_workout_to_cap(workout: Dict[str, Any], cap: int) -> Dict[str, Any]:
     """Fit a workout to a per-day duration cap.
 
@@ -367,6 +463,11 @@ def trim_week_to_budget(days: List[Dict[str, Any]], week_type: str, hours_per_we
     if max_minutes is None:
         return None
 
+    # AE-2.7 (amended 2026-09-17): the weekly budget (R19) still binds, but
+    # a session is never shrunk under its floor to meet it -- an over-budget
+    # week loses whole filler days (below) before any session gets shorter,
+    # and the down-level / shave steps stop at the floor.
+
     total_duration = sum(d.get('duration', 0) for d in days)
     if total_duration > max_minutes:
         for i in range(len(days) - 1, -1, -1):
@@ -380,14 +481,43 @@ def trim_week_to_budget(days: List[Dict[str, Any]], week_type: str, hours_per_we
                 }
                 total_duration -= removed_dur
 
+        # Floor growth is optional volume, the budget is not: give back the
+        # weekday-target extension on grown sessions (back to their floor)
+        # before any level comes off (2026-09-19: the growth pushed a load
+        # week over budget and the loop below levelled the LONG RIDE down to
+        # 60 min -- an R06 fail on three golden orders).
+        total_duration = sum(d.get('duration', 0) for d in days)
+        for d in sorted((x for x in days if x.get('floor_extended_min')),
+                        key=lambda x: -int(x.get('floor_extended_min') or 0)):
+            if total_duration <= max_minutes:
+                break
+            ext = int(d.get('floor_extended_min') or 0)
+            give = min(ext, int(total_duration - max_minutes) + 1)
+            if give <= 0:
+                continue
+            d['duration'] = d['duration'] - give
+            d['tss'] = max(0, round(d.get('tss', 0) - give * 0.70))
+            d['floor_extended_min'] = ext - give
+            if d['floor_extended_min'] <= 0:
+                d.pop('floor_extended_min', None)
+            total_duration -= give
+
         # Fillers exhausted but still over budget (time-crunched athletes in
-        # high-level blocks): step the longest intensity/long-ride workout
-        # down a level at a time until the week fits or everything is at L1.
+        # high-level blocks): step the longest intensity workout down a level
+        # at a time; the long ride is levelled only when no intensity day can
+        # give, and never under R06's plausible-duration floor (90 min, 60 for
+        # athletes under 7 h/wk) -- "long ride every load week" outranks the
+        # weekly tolerance band.
+        _r06_min = 60 if (hours_per_week and hours_per_week < 7) else 90
         total_duration = sum(d.get('duration', 0) for d in days)
         while total_duration > max_minutes:
-            candidates = [d for d in days
-                          if d.get('role') in ('intensity', 'long_ride')
-                          and d.get('level', 1) > 1]
+            intensity = [d for d in days if d.get('role') == 'intensity' and d.get('level', 1) > 1]
+            long_rides = [d for d in days if d.get('role') == 'long_ride' and d.get('level', 1) > 1
+                          and week_type == 'load'
+                          and get_workout_duration(d['name'], d['level'] - 1) >= _r06_min]
+            if week_type != 'load':
+                long_rides = [d for d in days if d.get('role') == 'long_ride' and d.get('level', 1) > 1]
+            candidates = intensity or long_rides
             if not candidates:
                 break
             longest = max(candidates, key=lambda d: d.get('duration', 0))
@@ -398,6 +528,14 @@ def trim_week_to_budget(days: List[Dict[str, Any]], week_type: str, hours_per_we
                 # Library gap — treat as unloweable, stop trying this one
                 longest['level'] = 1
                 continue
+            _floor = int(longest.get('session_floor_min') or 0)
+            if new_dur < _floor:
+                # AE-2.7: down-level the set, keep the day at the floor (Z2)
+                new_tss = round(new_tss + (_floor - new_dur) * 0.70)
+                longest['floor_extended_min'] = _floor - new_dur
+                new_dur = _floor
+            else:
+                longest.pop('floor_extended_min', None)
             total_duration -= (longest['duration'] - new_dur)
             longest['level'] = new_level
             longest['duration'] = new_dur
@@ -414,7 +552,11 @@ def trim_week_to_budget(days: List[Dict[str, Any]], week_type: str, hours_per_we
             if candidates:
                 longest = max(candidates, key=lambda d: d['duration'])
                 old_duration = longest['duration']
-                new_duration = max(1, old_duration - (total_duration - max_minutes))
+                _shave_floor = int(longest.get('session_floor_min') or 0)
+                if longest.get('role') == 'long_ride' and week_type == 'load':
+                    _shave_floor = max(_shave_floor, _r06_min)  # R06 outranks the shave
+                new_duration = max(1, _shave_floor,
+                                   old_duration - (total_duration - max_minutes))
                 longest['duration'] = new_duration
                 longest['tss'] = round(longest['tss'] * new_duration / old_duration)
 
@@ -444,6 +586,8 @@ def _build_week(
     race_day: Optional[str] = None,
     athlete_age: Optional[int] = None,
     stress_level: Optional[str] = None,
+    session_floor_min: int = SESSION_FLOOR_MIN,
+    grow_to_weekday_target: bool = True,
 ) -> Dict[str, Any]:
     """Build a single week with day-by-day workout assignments."""
 
@@ -460,6 +604,7 @@ def _build_week(
             day_caps=day_caps,
             athlete_age=athlete_age,
             stress_level=stress_level,
+            session_floor_min=session_floor_min,
         )
 
     # Get workout menu for this week
@@ -692,6 +837,40 @@ def _build_week(
                 longest['duration'] = new_duration
                 longest['tss'] = round(longest['tss'] * new_duration / old_duration)
 
+    # AE-2.7 (amended 2026-09-17): the session floor is applied LAST and may
+    # overshoot the weekly budget -- see apply_session_floor. Growth to the
+    # weekday TARGET is a load-week behaviour; recovery and taper weeks, and
+    # the deliberate first-base-block ramp-in, get the floor only so the
+    # periodised volume shape (ramp, dip, taper) survives.
+    # A recovery week's Z2 fillers grow to the same weekday
+    # target) so R03's 50-65% recovery ratio survives the load weeks
+    # growing; taper and the first-base-block ramp-in get the floor only.
+    _grow = (grow_to_weekday_target and week_type in ('load', 'recovery')
+             and not (phase == 'base' and block_number <= 1))
+    apply_session_floor(days, hours_per_week=hours_per_week, day_caps=day_caps,
+                        week_type=week_type, floor_min=session_floor_min,
+                        grow_to_weekday_target=_grow,
+                        target_scale=1.0, max_minutes=max_minutes,
+                        # recovery Z2 fillers track the (grown) load weeks so
+                        # R03's 50-65% ratio holds; nothing hard is added.
+                        grow_fillers_to_target=(week_type == 'recovery'))
+    # If the floor pushed the week over the R19 budget, the week loses whole
+    # filler days (from the end) rather than any session getting shorter --
+    # "fewer, longer sessions" is the ruling's intent. Long ride, intensity
+    # and the race-week shape are never touched here.
+    if max_minutes is not None:
+        _total = sum(d.get('duration', 0) for d in days)
+        # smallest filler first: a 3% overage must not cost the Sunday ride
+        for d in sorted((x for x in days if x.get('role') == 'filler'
+                         and x.get('name') != 'Rest Day' and x.get('duration', 0) > 0),
+                        key=lambda x: x.get('duration', 0)):
+            if _total <= int(max_minutes):
+                break
+            _total -= d['duration']
+            d.update({'name': 'Rest Day', 'level': 1, 'tss': 0, 'duration': 0, 'role': 'filler'})
+            d.pop('floor_extended_min', None); d.pop('session_floor_min', None)
+    total_tss = sum(d.get('tss', 0) for d in days)
+
     return {
         'week_num': week_num,
         'week_type': week_type,
@@ -710,6 +889,7 @@ def _build_race_week(
     day_caps: Optional[Dict[str, int]],
     athlete_age: Optional[int] = None,
     stress_level: Optional[str] = None,
+    session_floor_min: int = SESSION_FLOOR_MIN,
 ) -> Dict[str, Any]:
     """Build the coach-approved race-week microcycle.
 
@@ -720,6 +900,10 @@ def _build_race_week(
     """
     race_day = race_day if race_day in DAY_ORDER else 'Sat'
     race_index = DAY_ORDER.index(race_day)
+    # Openers go the day BEFORE the race, never wrapped to Sunday (a Monday
+    # race has no eve inside its own week -> no opener). If race eve is
+    # unavailable, move the activation to the latest available earlier day
+    # instead of dropping it.
     # Prefer race eve. If that day is genuinely unavailable, preserve the
     # athlete's constraint and move the activation to the latest available
     # earlier day instead of silently dropping it from the week.
@@ -780,6 +964,9 @@ def _build_race_week(
         if day_caps and workout['role'] not in ('off', 'race') and workout['duration'] > 0:
             workout = _fit_workout_to_cap(workout, day_caps.get(day, 0))
         days.append({'day': day, **workout})
+
+    apply_session_floor(days, hours_per_week=0, day_caps=day_caps, week_type='race',
+                        floor_min=session_floor_min, grow_to_weekday_target=False)
 
     return {
         'week_num': week_num,

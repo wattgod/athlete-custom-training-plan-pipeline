@@ -14,6 +14,7 @@ import math
 import os
 import re
 import tempfile
+from datetime import date
 from types import SimpleNamespace
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -54,15 +55,20 @@ def determine_control(profile: Dict[str, Any]) -> Dict[str, Any]:
     lthr = _num(fitness.get("lthr"))
     hrmax = _num(fitness.get("max_hr"))
 
-    if requested == "power" and power_basis == "measured" and ftp:
+    # Matti ruling 2026-09-17: EVERY Motoren cycling athlete trains on %FTP.
+    # An FTP anchor always wins, whatever metric the intake requested -- the
+    # requested metric is recorded but never overrides a real anchor. (Edward
+    # Shapiro's Sep block shipped 100% RPE because his profile carried
+    # ftp_watts 270 + requested_metric "rpe" and the request won.) RPE is
+    # legal only on field-test cards and, below, as the last-resort fallback
+    # for an athlete with no power AND no HR anchor at all.
+    if ftp:
         metric, basis = "power", "ftp"
     elif requested == "hr" or (requested not in {"power", "rpe"} and (lthr or hrmax)):
         metric = "hr"
         basis = "lthr" if lthr else ("hrmax" if hrmax else "rpe_pending_lthr")
-    elif requested == "rpe":
+    elif requested == "rpe" and not (lthr or hrmax):
         metric, basis = "rpe", "rpe"
-    elif power_basis == "measured" and ftp:
-        metric, basis = "power", "ftp"
     elif lthr or hrmax:
         metric, basis = "hr", "lthr" if lthr else "hrmax"
     else:
@@ -71,7 +77,7 @@ def determine_control(profile: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "control_metric": metric,
         "control_basis": basis,
-        "power_basis": "measured" if power_basis == "measured" and ftp else "none",
+        "power_basis": "measured" if ftp else "none",
         "ftp_watts": int(round(ftp)) if metric == "power" and ftp else None,
         "lthr_bpm": int(round(lthr)) if lthr else None,
         "hrmax_bpm": int(round(hrmax)) if hrmax else None,
@@ -411,12 +417,21 @@ def _compile_authored_weeks(
             for day in week_data.get("days") or []:
                 if str(day.get("day_name", day.get("day", "")))[:3].title() != raw.get("day"):
                     continue
+                # Dual-sport athletes declare non-bike fixed blocks with
+                # `sport: run`.  Hardcoding cycling/bike/2 here turned every
+                # declared run into a bike card -- the reason a runner-cyclist
+                # could get a bike-only block.  TP workoutTypeId 3 = run.
+                _raw_sport = str(raw.get("sport") or "cycling").strip().lower()
+                _is_run = _raw_sport in ("run", "running")
                 sessions.append(SimpleNamespace(
                     date=day.get("date"), title=raw.get("title") or "Fixed external session",
-                    sport="cycling", type="external_fixed", origin="athlete_fixed",
+                    sport="running" if _is_run else "cycling",
+                    type="external_fixed", origin="athlete_fixed",
                     duration_s=int(raw.get("duration_min", 0)) * 60,
                     tss=int(raw.get("tss", 0) or 0), segments=[], source_file=None,
-                    description=None, tp_kind="bike", workout_type_value_id=2,
+                    description=None,
+                    tp_kind="run" if _is_run else "bike",
+                    workout_type_value_id=3 if _is_run else 2,
                     tss_planned=float(raw.get("tss", 0) or 0),
                     total_time_planned=float(raw.get("duration_min", 0)) / 60,
                     series_id=None, series_index=None, series_total=None,
@@ -561,6 +576,10 @@ def build_canonical_model(
 
     sessions: List[Dict[str, Any]] = []
     field_test_title = _metric_field_test_title(control)
+    _optional_weekdays = {
+        str(day).strip().lower()
+        for day in ((profile.get("schedule_constraints") or {}).get("optional_days") or [])
+    }
     for week in reflected.weeks:
         ordinals_by_date: Dict[str, int] = {}
         for raw_session in week.sessions:
@@ -574,6 +593,22 @@ def build_canonical_model(
                 field_test_title if is_field_test and
                 control["control_metric"] != "power" else
                 metric_neutral_text(raw_session.title, control))
+            # schedule_constraints.optional_days: a coach can mark a whole
+            # weekday's prescribed work optional without deleting it, so the
+            # athlete keeps the session but owes nothing. Uses the existing
+            # "OPTIONAL:" prefix convention (dual_sport_week.yaml). Locked
+            # athlete-fixed blocks, rest days and strength are never touched
+            # -- those are his own commitments, not the coach's prescription.
+            if (_optional_weekdays and raw_session.date
+                    and getattr(raw_session, "origin", None) != "athlete_fixed"
+                    and getattr(raw_session, "tp_kind", None) not in ("day_off", "strength")
+                    and not title.upper().startswith("OPTIONAL")):
+                try:
+                    _dow = date.fromisoformat(str(raw_session.date)).strftime("%A").lower()
+                except ValueError:
+                    _dow = ""
+                if _dow in _optional_weekdays:
+                    title = f"OPTIONAL: {title}"
             description = metric_neutral_description(
                 raw_session.description, control)
             if is_field_test and control["control_metric"] != "power":
@@ -739,8 +774,15 @@ def validate_canonical_model(model: Dict[str, Any]) -> None:
             raise CanonicalModelError("athlete-visible title contains an internal token")
         description = str(session.get("description") or "")
         if description and sanitize_athlete_description(description) != description:
+            # Name the session and the first line the sanitizer would
+            # change -- a bare "contains compiler-only copy" once cost a
+            # rebuild to locate (2026-09-18).
+            _clean_lines = sanitize_athlete_description(description).splitlines()
+            _offending = next(
+                (line for line in description.splitlines() if line not in _clean_lines), "")
             raise CanonicalModelError(
-                "athlete-visible description contains compiler-only copy")
+                "athlete-visible description contains compiler-only copy: "
+                f"{session.get('title') or session.get('date') or '?'!s} -> {_offending[:120]!r}")
         for segment in session.get("segments") or []:
             target = segment.get("target") or {}
             if target.get("type") not in TARGET_TYPES:

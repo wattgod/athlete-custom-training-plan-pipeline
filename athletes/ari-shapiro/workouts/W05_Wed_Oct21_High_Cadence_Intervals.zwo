@@ -1,0 +1,33 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>High Cadence Intervals</name>
+  <description>High Cadence Intervals — level 5
+
+WARM-UP:
+• 4min ramp 50%->60% FTP
+• 3x 45s @55%-65% FTP / 1:15 @55%-65%
+• 2min @50%-60% FTP
+• 1min @50%-60% FTP
+
+MAIN SET:
+-4x 9min @ 77%-83% FTP (Z3, RPE 3-4, 110-120rpm) / 2min @ 50%-60% (Z1, RPE 1-2)
+
+COOL-DOWN:
+-10min spin-down 70%->50% FTP (RPE 2-3)
+
+EXECUTION:
+-Fast, smooth, quiet hips — let the legs spin.
+
+NUTRITION:
+-40-60g carbs/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="240" PowerLow="0.50" PowerHigh="0.60" CadenceLow="90" CadenceHigh="95"/>
+    <IntervalsT Repeat="3" OnDuration="45" OnPower="0.60" CadenceLow="125" CadenceHigh="125" OffDuration="75" OffPower="0.60"/>
+    <SteadyState Duration="120" Power="0.55" CadenceLow="95" CadenceHigh="100"/>
+    <SteadyState Duration="60" Power="0.55" CadenceLow="90" CadenceHigh="95"/>
+    <IntervalsT Repeat="4" OnDuration="540" OnPower="0.80" CadenceLow="120" CadenceHigh="120" OffDuration="120" OffPower="0.55"/>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

@@ -21,7 +21,7 @@ from typing import Any, Iterable
 
 
 REFERENCE_CAPTURE_VERSION = "reference_capture/v1"
-KINDS = ("bike", "strength", "day_off", "race")
+KINDS = ("bike", "run", "strength", "day_off", "race")
 _EMAIL_RE = re.compile(
     r"(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\w.-])",
     re.IGNORECASE,

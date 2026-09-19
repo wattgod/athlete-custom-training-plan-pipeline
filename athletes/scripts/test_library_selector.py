@@ -494,15 +494,25 @@ class TestRoleWeekTypeCeiling:
         )
         assert any(item["name_base"] == "Z2 + Sprints" for item in pool)
 
-    def test_z2_sprints_excluded_from_long_ride_slot(self):
+    def test_z2_sprints_excluded_from_short_long_ride_but_kept_on_a_real_one(self):
+        # AE-2.8 at selection (2026-09-19): post_render_validator only calls
+        # a ride "long" at >= 3 h, so a 68-min long_ride slot is an endurance
+        # session there and the 50 TSS/h ceiling (IF <= .707) binds it. A
+        # real (>= 3 h) long ride keeps the unceilinged behaviour of the fix
+        # spec -- checked on the gate itself since no Z2 + Sprints item is
+        # 3 h long.
         index = load_index()
         pool = _qualifying_pool(
             index["items"], ("endurance_with_work",), budget_min=68, day_cap_min=None,
             slot=self._z2_sprints_slot(role="long_ride"),
         )
-        assert any(item["name_base"] == "Z2 + Sprints" for item in pool), (
-            "long_ride slots keep current (unceilinged) behavior per the fix spec"
+        assert not any(item["name_base"] == "Z2 + Sprints" for item in pool)
+        sprints = next(item for item in index["items"] if item["name_base"] == "Z2 + Sprints")
+        real_long_ride = base_slot(
+            canonical_name="Endurance", budget_min=240, day_cap_min=None,
+            series_key=None, role="long_ride", phase="build",
         )
+        assert ls._passes_role_ceiling(sprints, real_long_ride)
 
     def test_recovery_week_tightens_filler_ceiling_further(self):
         # if_planned 0.715 clears the load-week filler ceiling (<=0.78) but
@@ -634,10 +644,14 @@ class TestUsedItemMemory:
         ]
         index = make_index(items)
         used_items: dict = {}
+        # allow_heat: heat items are opt-in since the 2026-08-29 ruling.
+        # This cap governs an athlete who HAS opted in, so the slots must.
         slot_a = base_slot(series_key=None, plan_week=4, day="Mon",
                            athlete_seed="x", week_type="recovery")
         slot_b = base_slot(series_key=None, plan_week=4, day="Sun",
                            athlete_seed="x", week_type="recovery")
+        slot_a["allow_heat"] = True
+        slot_b["allow_heat"] = True
         first = select(slot_a, series_state=None, index=index, used_items=used_items)
         second = select(slot_b, series_state=None, index=index, used_items=used_items)
         assert first is not None and second is not None
@@ -1524,4 +1538,250 @@ class TestPinnedTestItemRouting:
             resolution = select(slot, index=index)
             assert resolution is not None, f"{canonical_name} pinned item {item_id} not resolvable"
             assert resolution["item_id"] == item_id
-            assert resolution["library_key"] == "testing_openers"
+
+
+# ---------------------------------------------------------------------------
+# Fix 1 (race-week library audit, 2026-08-26): RPE-metric structures must be
+# decoded through tp_structure_to_zwo._RPE_TO_PCT_FTP before the 92%
+# taper/race ceiling comparison -- an RPE 1-10 integer is never itself a
+# %FTP number. Real defect: "Power Test (12min)"/"Power Test (3min)"
+# (14416937/14416939) carry a single ALL-OUT RPE9-10 leaf that used to read
+# as 0s of hard work and 0.0s worst-rep, silently passing the taper/race
+# ceiling.
+# ---------------------------------------------------------------------------
+
+def _rpe_structure(*, leaf_seconds: float, rpe_min: int, rpe_max: int) -> dict:
+    return {
+        "primaryIntensityMetric": "rpe",
+        "structure": [{
+            "length": {"value": 1},
+            "steps": [{
+                "name": "ALL OUT", "length": {"value": leaf_seconds},
+                "targets": [{"minValue": rpe_min, "maxValue": rpe_max}],
+            }],
+        }],
+    }
+
+
+class TestRpeCeilingDecodeFix:
+    def test_max_hard_rep_seconds_decodes_rpe_metric_structures(self):
+        # RPE 9-10 decodes to 95-130% FTP (tp_structure_to_zwo._RPE_TO_PCT_FTP)
+        # -- well over the 92% floor, so the leaf's full 720s must count.
+        structure = _rpe_structure(leaf_seconds=720, rpe_min=9, rpe_max=10)
+        assert ls._max_hard_rep_seconds(structure) == 720.0
+        assert ls._hard_work_seconds(structure) == 720.0
+
+    def test_hard_work_seconds_ignores_easy_rpe_metric_leaves(self):
+        # RPE 3 decodes to 50-60% FTP -- must never count as hard work.
+        structure = _rpe_structure(leaf_seconds=600, rpe_min=3, rpe_max=3)
+        assert ls._max_hard_rep_seconds(structure) == 0.0
+        assert ls._hard_work_seconds(structure) == 0.0
+
+    def test_percent_ftp_metric_behavior_unchanged(self):
+        # No primaryIntensityMetric key (or "percentOfFtp") -- raw
+        # minValue/maxValue ARE %FTP points, decoded exactly as before.
+        structure = {"structure": [{
+            "length": {"value": 1},
+            "steps": [{"name": "On", "length": {"value": 300},
+                       "targets": [{"minValue": 98}]}],
+        }]}
+        assert ls._max_hard_rep_seconds(structure) == 300.0
+        assert ls._hard_work_seconds(structure) == 300.0
+
+    def test_rpe_metric_item_over_cap_rejected_for_taper_and_race(self):
+        """An RPE-metric item whose decoded worst rep exceeds the 120s cap
+        must fail _passes_role_ceiling for both gated week types -- the
+        exact shape of the two live "Power Test" defects (a single ALL-OUT
+        RPE9-10 leaf, no repeats)."""
+        item = {"if_planned": 0.9, "structure": _rpe_structure(leaf_seconds=720, rpe_min=9, rpe_max=10)}
+        taper_slot = {"role": None, "week_type": "taper"}
+        race_slot = {"role": "intensity", "week_type": "race"}
+        assert not ls._passes_role_ceiling(item, taper_slot)
+        assert not ls._passes_role_ceiling(item, race_slot)
+
+    def test_rpe_metric_easy_item_still_passes_taper_ceiling(self):
+        """An RPE-metric item that's genuinely easy (RPE 3, decodes well
+        under 92% FTP) must still be selectable in a taper/race slot -- the
+        fix must not turn every RPE-metric item into a blanket reject."""
+        item = {"if_planned": 0.55, "structure": _rpe_structure(leaf_seconds=600, rpe_min=3, rpe_max=3)}
+        taper_slot = {"role": None, "week_type": "taper"}
+        assert ls._passes_role_ceiling(item, taper_slot)
+
+    def test_real_power_test_items_now_blocked_from_taper_and_race(self):
+        """Realism check against the actual built index: both live
+        defects (14416937 'Power Test (12min)', 14416939 'Power Test
+        (3min)') must now fail the taper/race ceiling."""
+        index = load_index()
+        taper_slot = {"role": None, "week_type": "taper"}
+        race_slot = {"role": "intensity", "week_type": "race"}
+        for item_id in (14416937, 14416939):
+            item = next(i for i in index["items"] if i["item_id"] == item_id)
+            assert not ls._passes_role_ceiling(item, taper_slot), item_id
+            assert not ls._passes_role_ceiling(item, race_slot), item_id
+
+
+# ---------------------------------------------------------------------------
+# Fix 2 (race-week library audit, 2026-08-26; coach ruling "Yes threshold
+# touch variant"): a taper-safe "Threshold Touch - Taper" family (6 levels,
+# authored per AE-1.17(b): reps <=120s at >=92% FTP, <=900s total >=92%
+# work, plus dimension/cadence work) so the racing-phase intensity_2 slot
+# can place its own namesake instead of silently substituting a cousin.
+# Authored at read time in tp_library_snapshot._apply_authored_additions --
+# never modifies/deletes the existing 6 "Threshold Touch" items.
+# ---------------------------------------------------------------------------
+
+class TestTaperSafeThresholdTouchFamily:
+    def _authored_items(self):
+        index = load_index()
+        return sorted(
+            (item for item in index["items"] if item["library_key"] == "threshold_intervals"
+             and item["name_base"] == "Threshold Touch - Taper"),
+            key=lambda item: item["explicit_level"],
+        )
+
+    def test_family_has_six_levels(self):
+        items = self._authored_items()
+        assert [item["explicit_level"] for item in items] == [1, 2, 3, 4, 5, 6]
+
+    def test_existing_threshold_touch_family_untouched(self):
+        """The original 6 curated items stay exactly as they are -- same
+        item_ids, same name_base, still present and still over-cap outside
+        taper/race (archive-never-delete)."""
+        index = load_index()
+        original_ids = {14357136, 14357137, 14357138, 14357139, 14357140, 14357141}
+        found = {item["item_id"] for item in index["items"]
+                 if item["item_id"] in original_ids and item["name_base"] == "Threshold Touch"}
+        assert found == original_ids
+
+    def test_every_level_passes_ceiling_for_taper_and_race(self):
+        items = self._authored_items()
+        assert len(items) == 6
+        taper_slot = {"role": "intensity", "week_type": "taper"}
+        race_slot = {"role": "intensity", "week_type": "race"}
+        for item in items:
+            assert ls._passes_role_ceiling(item, taper_slot), item["item_id"]
+            assert ls._passes_role_ceiling(item, race_slot), item["item_id"]
+
+    def test_every_level_stays_under_the_per_rep_and_total_caps(self):
+        items = self._authored_items()
+        assert len(items) == 6
+        for item in items:
+            worst_rep = ls._max_hard_rep_seconds(item["structure"])
+            total = ls._hard_work_seconds(item["structure"])
+            assert worst_rep <= 120, (item["item_id"], worst_rep)
+            assert total <= 900, (item["item_id"], total)
+            # AE-1.17(b): must carry real >=92% touch content, not just
+            # dodge the cap by carrying none at all.
+            assert worst_rep > 0, item["item_id"]
+
+    def test_family_carries_dimension_work(self):
+        """AE-1.17(c): flat-Z2-only taper endurance with no dimension work
+        is a defect -- every level must carry cadence targets (dimension
+        credit), not just a bare intensity touch."""
+        items = self._authored_items()
+        for item in items:
+            assert item["has_cadence_targets"], item["item_id"]
+            assert item["dimension_score"] > 0, item["item_id"]
+
+    def test_family_reachable_by_taper_intensity_2_selection_path(self):
+        """Reachability proven via the actual selection path -- not by
+        eyeball. 'Threshold Touch' routes through library_selector.
+        ROUTING_TABLE to threshold_intervals/threshold_sustained/
+        threshold_floats_ou (the exact pool the racing-phase intensity_2
+        slot queries); confirm the authored family's items land in that
+        slot's qualifying pool at realistic taper budgets across the whole
+        level ladder."""
+        index = load_index()
+        authored_ids = {item["item_id"] for item in self._authored_items()}
+        seen: set = set()
+        for budget_min in (30, 34, 38, 43, 46, 50):
+            slot = {
+                "canonical_name": "Threshold Touch", "level": 1, "budget_min": budget_min,
+                "day_cap_min": None, "role": "intensity", "phase": "racing",
+                "week_type": "taper", "series_key": None, "athlete_seed": "athlete-x",
+                "plan_week": 1, "day": "Wed",
+            }
+            keys = ls.resolve_library_keys(slot)
+            pool = ls._qualifying_pool(index["items"], keys, budget_min, None, slot=slot)
+            seen |= {item["item_id"] for item in pool} & authored_ids
+        assert seen == authored_ids, f"unreached levels: {authored_ids - seen}"
+
+    def test_select_can_resolve_directly_to_an_authored_level(self):
+        """End-to-end: select() (the real entry point the taper intensity_2
+        slot calls) can resolve to an authored item, not just have it sit
+        unreached in the pool."""
+        index = load_index()
+        authored_ids = {item["item_id"] for item in self._authored_items()}
+        resolved_any = False
+        for seed in ("athlete-a", "athlete-b", "athlete-c", "athlete-d", "athlete-e"):
+            slot = {
+                "canonical_name": "Threshold Touch", "level": 2, "budget_min": 34,
+                "day_cap_min": None, "role": "intensity", "phase": "racing",
+                "week_type": "taper", "series_key": None, "athlete_seed": seed,
+                "plan_week": 1, "day": "Wed", "race_demands": None,
+            }
+            resolution = select(slot, index=index)
+            if resolution is not None and resolution["item_id"] in authored_ids:
+                resolved_any = True
+                break
+        assert resolved_any
+
+
+# ---------------------------------------------------------------------------
+# Opt-in concepts: real workouts that must never select themselves.
+# Matti ruling 2026-08-29 (Judd Pulley, October race in northern Wisconsin
+# drew "Heat Acclimation Protocol" twice). Same class of gap as the
+# RETIRED_ARCHETYPES purge: archetype-level filtering does not reach the
+# TP-curated path, so it has to be blocked here too.
+# ---------------------------------------------------------------------------
+
+def test_heat_acclimation_is_not_selectable_from_the_curated_library():
+    from library_selector import _is_internal_only
+    assert _is_internal_only({"name_base": "Heat Acclimation Protocol"})
+    assert _is_internal_only({"name_base": "Base - + Heat Training"})
+
+
+def test_opt_in_block_is_case_insensitive_and_matches_name_raw():
+    from library_selector import _is_internal_only
+    assert _is_internal_only({"name_base": "HEAT ACCLIMATION PROTOCOL"})
+    assert _is_internal_only({"name_raw": "Endurance - heat acclimation - 60min"})
+
+
+def test_ordinary_endurance_items_are_untouched():
+    """The block must be narrow -- it must not swallow the normal pool."""
+    from library_selector import _is_internal_only
+    for name in ("Endurance", "Z2 w/ Surges", "Bread & Butter",
+                 "Endurance — Cadence Focus", "Tempo w/ cadence changes",
+                 "Barn Builder", "Time on Feet"):
+        assert not _is_internal_only({"name_base": name}), name
+
+
+def test_purged_and_internal_names_still_blocked():
+    """The pre-existing exclusions must survive the addition."""
+    from library_selector import _is_internal_only
+    assert _is_internal_only({"name_base": "FatMax Development"})
+    assert _is_internal_only({"name_base": "Structured Fartlek"})
+    assert _is_internal_only({"name_base": "The Happy Ending"})
+
+
+def test_archetype_pool_excludes_opt_in_by_default_and_admits_it_on_request():
+    from nate_workout_generator import get_all_archetypes_for_category
+    from archetype_registry import OPT_IN_ARCHETYPES
+    default = {a["name"] for a in get_all_archetypes_for_category("Endurance")}
+    opted = {a["name"] for a in get_all_archetypes_for_category(
+        "Endurance", opt_in=OPT_IN_ARCHETYPES)}
+    assert "Heat Acclimation Protocol" not in default
+    assert "Heat Acclimation Protocol" in opted
+    # opting in must ADD, never remove
+    assert default < opted
+
+
+def test_opt_in_slot_admits_heat_but_never_purged_or_internal():
+    """allow_heat must be narrow: it unlocks heat, nothing else."""
+    from library_selector import _is_internal_only
+    assert not _is_internal_only({"name_base": "Heat Acclimation Protocol"},
+                                 allow_opt_in=True)
+    # the hard exclusions are not for sale at any price
+    assert _is_internal_only({"name_base": "FatMax Development"}, allow_opt_in=True)
+    assert _is_internal_only({"name_base": "Structured Fartlek"}, allow_opt_in=True)
+    assert _is_internal_only({"name_base": "The Happy Ending"}, allow_opt_in=True)

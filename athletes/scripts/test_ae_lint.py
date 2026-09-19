@@ -6,13 +6,14 @@ percentOfMaxHr endurance structures, bare Day Off cards, and cadence-critical
 sessions without a programmed cadence target. The plan-level gates
 (AE-1.14, AE-2.10) mirror the two same-day 2026-08-26 build failures: Jesse
 Couch's v1 modeled 72 -> low-40s CTL by his A-race, and Kendall Aubertot's
-load weeks anchored to a stale plan number instead of her demonstrated dose.
+load weeks anchored to a stale plan number instead of the demonstrated dose.
 """
 import json
 from datetime import date, timedelta
 
-from ae_lint import (lint_demonstrated_dose, lint_ctl_trajectory, lint_race_day_tsb,
-                     lint_taper_shape, lint_workout, main)
+import ae_lint
+from ae_lint import (_hard_seconds, lint_demonstrated_dose, lint_ctl_trajectory, lint_race_day_tsb,
+                     lint_taper_shape, lint_voice, lint_workout, main)
 
 
 def _structure(steps, metric="percentOfFtp"):
@@ -444,3 +445,181 @@ def test_taper_shape_silent_without_race_date():
     workouts = [_taper_workout(date(2026, 9, 10), tss=300, hard_seconds=10)]
     assert lint_taper_shape(workouts, None) == []
     assert lint_taper_shape(workouts, None, current_ctl=100.0) == []
+
+
+# --- RPE decode (live defect 2026-08-29): ae_lint read RPE-metric structures
+# as ZERO hard seconds, silently disabling AE-1.12 caps + AE-1.17 taper
+# intensity retention for every RPE-authored plan (Judd/Andy/Edward/Brian).
+def _rpe_struct(value, metric="rpe"):
+    return {"primaryIntensityMetric": metric, "structure": [
+        {"type": "repetition", "length": {"unit": "repetition", "value": 4},
+         "steps": [
+             {"length": {"unit": "second", "value": 300},
+              "targets": [{"minValue": value, "maxValue": value}],
+              "intensityClass": "active"},
+             {"length": {"unit": "second", "value": 180},
+              "targets": [{"minValue": 2}], "intensityClass": "rest"}]}]}
+
+
+def test_rpe_structure_hard_seconds_are_decoded():
+    total, longest = _hard_seconds(_rpe_struct(9))
+    assert total == 1200.0 and longest == 300.0
+
+
+def test_rpe_easy_structure_counts_no_hard_seconds():
+    assert _hard_seconds(_rpe_struct(5)) == (0.0, 0.0)
+
+
+def test_rpe_alias_metric_names_decode_too():
+    total, _ = _hard_seconds(_rpe_struct(10, metric="perceivedExertion"))
+    assert total == 1200.0
+
+
+def test_percent_ftp_structures_unchanged_by_rpe_decode():
+    ftp = {"primaryIntensityMetric": "percentOfFtp", "structure": [
+        {"type": "repetition", "length": {"unit": "repetition", "value": 4},
+         "steps": [
+             {"length": {"unit": "second", "value": 300},
+              "targets": [{"minValue": 107, "maxValue": 107}],
+              "intensityClass": "active"},
+             {"length": {"unit": "second", "value": 180},
+              "targets": [{"minValue": 50}], "intensityClass": "rest"}]}]}
+    assert _hard_seconds(ftp) == (1200.0, 300.0)
+
+
+# --------------------------------------------------- AE-9.11 voice gate
+# Real strings from the 2026-08-29 Forest Hietpas block review: coach ruling
+# "you have to write it in first person" / "in the future that needs to be
+# a gate." FOREST_LEAK_NOTE is the pre-fix Week-1 note that leaked
+# coach-internal coached_block.focus metadata verbatim; FOREST_FIXED_NOTE is
+# the real shipped replacement (notes_payload.json, forest-hietpas build).
+FOREST_LEAK_NOTE = (
+    'Re-entry after a lapsed season… FTP re-anchored at 300W (coach-confirmed '
+    '2026-08-23, "300 is about right") -- bike structure may run %FTP. '
+    'No A-race; consistency is the trained adaptation.'
+)
+FOREST_FIXED_NOTE = (
+    "Week 1 of 4. Base. Nothing flashy; I want steady work and the point is "
+    "accumulation.\n\nThis block: Getting the calendar back to something you "
+    "can actually hit. I care about frequency and rhythm first, duration "
+    "second, and nothing else until January."
+)
+
+
+def test_voice_leak_forest_prefix_note_fails():
+    notes = [{"title": "Week 1: Base", "noteDate": "2026-08-31", "description": FOREST_LEAK_NOTE}]
+    assert ("FAIL", "AE-9.11") in _rules(lint_voice([], notes))
+
+
+def test_voice_leak_fixed_note_passes():
+    notes = [{"title": "Week 1: Base", "noteDate": "2026-08-31", "description": FOREST_FIXED_NOTE}]
+    assert not any(f["severity"] == "FAIL" for f in lint_voice([], notes))
+
+
+def test_voice_leak_ae_citation_fails():
+    w = {"title": "Endurance Ride", "workoutDay": "2026-09-01",
+         "description": "Steady effort per AE-1.17 pacing; keep it controlled throughout the ride today."}
+    assert ("FAIL", "AE-9.11") in _rules(lint_voice([w]))
+
+
+def test_voice_first_person_note_passes():
+    # Real Motoren story_notes.py voice -- must not trip the impersonal-
+    # construction check.
+    notes = [{"title": "Midweek", "noteDate": "2026-09-03",
+              "description": "Nothing flashy; I want steady work and the point is accumulation."}]
+    assert lint_voice([], notes) == []
+
+
+def test_voice_impersonal_second_person_warns():
+    # Real Forest pre-fix midweek note: second-person, no first-person
+    # coach marker -- the exact impersonal-construction defect from the
+    # 2026-08-29 review.
+    notes = [{"title": "Day Off", "noteDate": "2026-09-02",
+              "description": "From your calendar, all day. Nothing assigned "
+                              "today but the 20 minutes if you want it."}]
+    assert ("WARN", "AE-9.11") in _rules(lint_voice([], notes))
+
+
+def test_voice_short_structured_description_passes_silently():
+    # Mechanical interval card -- neither pronoun, must not false-positive.
+    w = {"title": "VO2max Intervals", "workoutDay": "2026-09-04",
+         "description": "3x12min @80% FTP (Z3, RPE 6-7), 4min easy recovery between reps."}
+    assert lint_voice([w]) == []
+
+
+def test_voice_gate_on_by_default_no_flags(tmp_path, capsys):
+    # AE-9.11 is always-on: no flag turns it on or off.
+    notes = [{"title": "Week 1: Base", "noteDate": "2026-08-31", "description": FOREST_LEAK_NOTE}]
+    payload = {"workouts": [], "notes": notes}
+    path = tmp_path / "notes.json"
+    path.write_text(json.dumps(payload))
+
+    exit_code = main(["--json", str(path)])
+    out = json.loads(capsys.readouterr().out)
+    rules = {(f["severity"], f["rule"]) for f in out["findings"]}
+    assert ("FAIL", "AE-9.11") in rules
+    assert exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# AE-9.11a -- voice rule governs narrative prose, not tactical instruction.
+# Matti ruling 2026-08-29: "The rule is over broad."
+# ---------------------------------------------------------------------------
+
+def test_ae911a_tactical_race_brief_is_exempt():
+    """Eric Quiat's Mad Gravel brief -- the card that triggered the ruling.
+
+    Facts plus numbered race instructions, no coaching judgment to attribute,
+    so no natural place for "I". Must not warn.
+    """
+    body = (
+        "Race day.\n\n"
+        "The Hemi is 80+ miles and 6,400 feet, all gravel, topping out at "
+        "7,300. Rolling and punchy. No real climbs.\n\n"
+        "Small regional field. The podium is there.\n\n"
+        "1. Wind decides this, not the climbs. Open plains, nothing to hide "
+        "behind. Sit in and don't pull for free.\n"
+        "2. The rollers are short. The cost is the eightieth one, not the "
+        "first. Stay seated, stay smooth.\n"
+        "3. Fuel at your long-ride rate and hold it when the pace goes. Two "
+        "or three aid stations, so carry extra.\n"
+        "4. This is a tune-up race. The Rad is 20 days out and that's the "
+        "one that counts."
+    )
+    assert ae_lint._voice_findings("2026-09-06", "Mad Gravel — The Hemi", body) == []
+
+
+def test_ae911a_narrative_prose_without_voice_still_warns():
+    """The rule must still catch what it was created for."""
+    body = ("Taper week. Rest today, one short reload Tuesday so you don't "
+            "arrive flat, then the event Saturday. Your job is to show up "
+            "fresh rather than fit.")
+    found = ae_lint._voice_findings("2026-10-19", "EVENT WEEK", body)
+    assert len(found) == 1
+    assert found[0]["rule"] == "AE-9.11"
+    assert found[0]["severity"] == "WARN"
+
+
+def test_ae911a_first_person_in_a_list_item_still_satisfies_the_rule():
+    """Only the second-person trigger is prose-restricted; "I" counts anywhere."""
+    body = ("This week is about repeatability, and you'll feel it by Friday.\n"
+            "1. I've capped the long ride at three hours on purpose.")
+    assert ae_lint._voice_findings("2026-09-21", "LOAD WEEK", body) == []
+
+
+def test_ae911a_bulleted_and_parenthesised_markers_both_count_as_list_lines():
+    for marker in ("-", "*", "•", "1.", "2)"):
+        body = ("Race day.\n" + f"{marker} Fuel at your long-ride rate and "
+                "hold it when the pace goes, all the way to the line.")
+        assert ae_lint._voice_findings("2026-09-06", "Race", body) == [], marker
+
+
+def test_ae911a_leak_check_still_scans_list_lines():
+    """The narrowing is scoped to the impersonal check ONLY.
+
+    An internal leak hiding inside a numbered instruction must still FAIL.
+    """
+    body = ("Race day.\n"
+            "1. Ride to the plan (see profile.yaml for the coached_block focus).")
+    found = ae_lint._voice_findings("2026-09-06", "Race", body)
+    assert any(f["severity"] == "FAIL" for f in found)

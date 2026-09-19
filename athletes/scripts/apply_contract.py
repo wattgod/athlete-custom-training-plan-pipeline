@@ -38,8 +38,8 @@ DISPOSITIONS = {"create", "update", "keep", "delete"}
 INVENTORY_FIELDS = {
     "remote_id", "desired_digest", "payload_snapshot_ref", "kind", "last_op_id",
 }
-SUPPORTED_TP_WORKOUT_TYPES = frozenset({2, 7, 9})
-LEGACY_PRIOR_TP_WORKOUT_TYPES = frozenset({2, 7, 9, 100})
+SUPPORTED_TP_WORKOUT_TYPES = frozenset({2, 3, 7, 9})   # 3 = run (dual-sport)
+LEGACY_PRIOR_TP_WORKOUT_TYPES = frozenset({2, 3, 7, 9, 100})
 SnapshotReader = Callable[[str], Mapping[str, Any]]
 
 
@@ -69,7 +69,11 @@ MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS = 360
 _VISIBLE_INTERNAL_TAG = re.compile(
     r"\[[A-Z][A-Z0-9 _-]{0,40}:\s*[^\]]*\]", re.IGNORECASE)
 _FUEL_TAG = re.compile(
-    r"^\[(FUEL|LONG-RIDE FUEL|RACE FUEL):\s*([^\]]+)\]\s*$",
+    # Any "<TIER> FUEL" label: fueling_policy's HIGH / LONG-RIDE / RACE tiers
+    # and the curated copy's own "[MODERATE FUEL: ...]" (2026-09-18: a
+    # quality-day pick shipped "[HIGH FUEL: ...]" and the contract rejected
+    # its own tag as an internal token; MODERATE FUEL sits in 4 library items).
+    r"^\[((?:[A-Z][A-Z -]*)?FUEL):\s*([^\]]+)\]\s*$",
     re.IGNORECASE,
 )
 _ATHLETE_WEEK_BOILERPLATE = re.compile(

@@ -36,18 +36,18 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 # ---------------------------------------------------------------------------
 _FAMILY_RULES: List[Tuple[re.Pattern, str, List[str]]] = [
     (re.compile(r"ftp test", re.I), "ftp_test", [
-        "{name} {day}: your numbers for the rest of the plan come from this. Rested, fueled, no heroics in the warm-up.",
-        "{name} {day}. Ride it like a race you have to finish: even, then everything in the last five minutes.",
+        "{name} {day}: I get your numbers for the plan from this. Rested, fueled, no heroics in the warm-up.",
+        "{name} {day}. I want it ridden like a race you have to finish: even, then everything in the last five minutes.",
     ]),
     (re.compile(r"anaerobic test", re.I), "anaerobic_test", [
         "{name} {day} tells me how much snap you have above threshold. It will hurt for three minutes; that is the whole test.",
     ]),
     (re.compile(r"openers|tune-up|tune up", re.I), "openers", [
-        "{name} {day}: short, sharp, and done before you feel like you have started. The point is to wake the legs, not test them.",
+        "{name} {day}: I want it short, sharp, and done before you feel like you have started. The point is to wake the legs, not test them.",
         "{name} {day}: a handful of efforts to remind the body what fast feels like. Finish wanting more.",
     ]),
     (re.compile(r"30[-/ ]?15|30[-/ ]?30|40[-/ ]?20|billat|r[oø]nnestad|vo2", re.I), "vo2", [
-        "{name} {day}. The short recoveries are the trick: you never fully recover, so the oxygen system stays pinned without the legs blowing up.",
+        "{name} {day}. The short recoveries are the trick: I don't let you fully recover, so the oxygen system stays pinned without the legs blowing up.",
         "{name} {day} is the hardest thing this week. Start the first rep at the number, not above it, and let the set get hard on its own.",
         "{name} {day}. If the power fades more than ten percent, the set is over. Ending early is correct; grinding out junk reps is not.",
     ]),
@@ -57,12 +57,12 @@ _FAMILY_RULES: List[Tuple[re.Pattern, str, List[str]]] = [
     ]),
     (re.compile(r"sweet spot|g-?spot|tempo", re.I), "tempo", [
         "{name} {day}: hard enough to matter, easy enough to repeat. This is the work that adds up quietly.",
-        "{name} {day}. Comfortably hard, nothing more. If you are grimacing, you are over it.",
+        "{name} {day}. Comfortably hard, nothing more. If you are grimacing, I want the power down.",
         "{name} {day}: the middle gear of the plan. Not easy, not a test, done with something left.",
     ]),
     (re.compile(r"climb", re.I), "climbing", [
         "{name} {day}. Stay seated through the tempo, stand for the short lift, then settle immediately. I want the transition clean; that is the whole session.",
-        "{name} {day}. Hold the seated rhythm and make the standing lift deliberate. Back on the number as soon as you sit down.",
+        "{name} {day}. Hold the seated rhythm and make the standing lift deliberate. I want you back on the number as soon as you sit down.",
     ]),
     (re.compile(r"np/?if|normalized power", re.I), "pacing", [
         "{name} {day}. Hold the prescribed power changes and keep the position quiet. I want the normalized-power target reached with every rise ridden at the prescribed number.",
@@ -82,18 +82,18 @@ _FAMILY_RULES: List[Tuple[re.Pattern, str, List[str]]] = [
     ]),
     (re.compile(r"race sim|simulation|dress rehearsal", re.I), "race_sim", [
         "{name} {day} is the spine of the race, rehearsed: the decisive efforts, the tempo between them, the fueling at race rate. Ride it like {race}.",
-        "{name} {day}. Same fuel, same bottles, same clothing as race day. Anything you have not practiced by now is a gamble.",
+        "{name} {day}. Same fuel, same bottles, same clothing as race day. Anything you have not practiced by now, I count as a gamble.",
     ]),
     (re.compile(r"heat", re.I), "heat", [
         "{name} {day} is about the heat, not the watts. Keep the power honest and let the temperature do the work.",
     ]),
     (re.compile(r"fatmax|durability|tired|fatigued", re.I), "durability", [
-        "{name} {day}: the quality comes late, on tired legs. That is the point. Fuel early so you are still there for it.",
+        "{name} {day}: the quality comes late, on tired legs. That is the point. Fuel early; I want you still there for it.",
     ]),
     (re.compile(r"endurance|z2|base|long|blocks|surges|spin", re.I), "endurance", [
-        "{name} {day} is the long one. Boring on purpose. Fuel from the first twenty minutes, not when you get hungry.",
+        "{name} {day} is the long one. Boring on purpose. I want fuel from the first twenty minutes, not when you get hungry.",
         "{name} {day}: steady, conversational, and longer than feels necessary. This is the aerobic work everything else sits on.",
-        "{name} {day}. Keep it easy enough that tomorrow is not compromised. If you finish wondering whether it was too easy, it was right.",
+        "{name} {day}. Keep it easy enough that tomorrow is not compromised. If you finish wondering whether it was too easy, I'd call that right.",
     ]),
 ]
 
@@ -106,12 +106,12 @@ _NOTICE: Dict[str, List[str]] = {
     ],
     "load": [
         "Watch the easy days. If they creep up in pace, the hard days will start falling short.",
-        "Sleep is the variable you control. Seven hours minimum this week, more after the hard days.",
+        "Sleep is the variable you control. I want seven hours minimum this week, more after the hard days.",
         "Missed work stays missed. Do not stack two hard days to make up a session.",
         "If a hard session falls apart, stop and message me. One bad workout is data; two is a pattern.",
         "Fuel the long ride like it matters, because it does. Under-eating on Sunday shows up on Tuesday.",
         "Two good hard days beat three average ones. If the third is not there, make it easy.",
-        "Check the tyres and the chain this week. Mechanicals are the only bad luck you can schedule out.",
+        "Check the tyres and the chain this week — I count mechanicals as the only bad luck you can schedule out.",
         "The easy days are not optional filler. They are where the hard days come from.",
         "Notice how the warm-ups feel. When they start feeling short, the fitness is moving.",
         "Keep the hard days hard and the easy days embarrassing. That gap is the whole method.",
@@ -131,7 +131,7 @@ _NOTICE: Dict[str, List[str]] = {
 _ASIDES: List[str] = [
     "Yes, the easy days are supposed to be that easy.",
     "Nobody has ever regretted an early night before a hard session.",
-    "The plan works if you do the boring parts.",
+    "The plan works if you do the boring parts. I mean it.",
     "Rest days count. Strava does not.",
     "The fitness is in the weeks you don't notice.",
 ]
@@ -314,7 +314,7 @@ def render_preview_race_copy(race_name: str) -> Dict[str, str]:
 # never fail here regardless of plan length.
 _MIDWEEK_LOAD_FEEL: List[str] = [
     "Legs heavy today is the load landing, not a warning sign.",
-    "If today feels flat, that is the last two hard days still in your legs. Normal.",
+    "If today feels flat, that is the last two hard days still in your legs. I expect that. Normal.",
     "A dead-legs day mid-week is the training working, not the training gone wrong.",
     "Slower than usual today is expected here. The adaptation happens on the rest day, not this one.",
     "A grey day mid-week is the block doing its job. Ride it, do not chase it.",
@@ -324,22 +324,22 @@ _MIDWEEK_LOAD_FEEL: List[str] = [
 ]
 
 _MIDWEEK_LONG_RIDE_FUEL: List[str] = [
-    "Fuel the long ride from hour zero, not when you get hungry.",
-    "Bottles mixed and food counted before you roll out for the long one.",
-    "Start eating on the long ride before you want to. By the time you are hungry, you are behind.",
+    "I want the long ride fueled from hour zero, not when you get hungry.",
+    "Bottles mixed and food counted before you roll out for the long one; I check for that.",
+    "Start eating on the long ride before you want to. By the time you are hungry, I'm already behind on getting it back.",
     "The long ride's fuel plan starts at the door, not at mile twenty.",
     "Pre-load fluids the night before the long ride; do not try to catch up on the bike.",
     "Lay out the long ride's food tonight so tomorrow morning is not a scramble.",
-    "Set a fuel timer for the long ride. Do not rely on feeling hungry to remind you.",
-    "The long ride rewards the rider who eats early. Start the first bar before you think you need it.",
+    "Set a fuel timer for the long ride. I don't want you relying on feeling hungry to remind you.",
+    "The long ride rewards the rider who eats early. I want the first bar started before you think you need it.",
     # AE-9.1b (2026-08-24 TP review, addendum): a repeated theme owns the
     # repeat in the coach's voice instead of pretending novelty. These sit
     # AFTER the first-instance variants above so they only fire once the
     # athlete has actually seen the earlier ones -- the self-reference has
     # to be true, not just funny.
-    "This fuel note again. Eat early on the long ride; you've heard it before because it keeps not sticking.",
-    "Same reminder, new week: bottles and food sorted before you roll out. Some lessons need saying more than once.",
-    "Fuel the long ride early -- yes, still. If it were sinking in on the first pass, this note would stop showing up.",
+    "This fuel note again. Eat early on the long ride; you've heard it before because it keeps not sticking. I'll keep saying it.",
+    "Same reminder, new week: bottles and food sorted before you roll out. I know -- some lessons need saying more than once.",
+    "Fuel the long ride early -- yes, still. If it were sinking in on the first pass, I wouldn't need this note again.",
 ]
 
 _MIDWEEK_WEEKDAY_PREFERENCE = (3, 2, 1, 4)  # Thursday, Wednesday, Tuesday, Friday

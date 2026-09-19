@@ -9,6 +9,8 @@ ratified standard is violated outright; WARN means it needs a human look.
 Input formats (auto-detected per file):
   - TP calendar readback JSON: {"workouts": [...]} or a bare list of workouts
   - a single TP workout dict (has "structure" or "workoutDay"/"title")
+  - TP notes_payload.json: a bare list of {title, noteDate, description}
+    dicts, or {"notes": [...]} -- feeds the AE-9.11 voice gate only
 
 Usage:
   ae_lint.py [--ftp WATTS] [--race-date YYYY-MM-DD] [--json] FILE [FILE...]
@@ -31,7 +33,7 @@ from typing import Any, Iterator, Mapping
 # restate a number without one.
 ENDURANCE_IF_LO, ENDURANCE_IF_HI = 0.60, 0.70          # ratified band (AE-2.8 pair)
 ENDURANCE_TSS_PER_HR = 50.0                            # AE-2.8
-SESSION_FLOOR_SECONDS = 45 * 60                        # AE-2.7
+SESSION_FLOOR_SECONDS = 60 * 60                        # AE-2.7 (60 min since 2026-09-17; 45 only by explicit athlete request)
 TAPER_MAX_HARD_REP_SECONDS = 120                       # AE-1.12
 TAPER_HARD_WORK_SECONDS = 900                          # AE-1.12
 TAPER_WINDOW_DAYS = 10                                 # AE-1.12: hard caps bind once rest
@@ -54,6 +56,11 @@ TAPER_OPENER_BUMP_MAX = 0.30                           # AE-1.17: default opener
 TAPER_INTENSITY_RETENTION = 0.70                       # AE-1.17: X=70 ratified by Matti 2026-08-26
 TAPER_INTENSITY_FLOOR_SECONDS = 300                    # AE-1.17: pre-taper week under this = nothing to retain, skip
 CTL_TAPER_RETENTION_FRACTION = 0.90                    # AE-1.18: race-day CTL >= 90% of CTL at taper start
+MIN_LEN_FOR_VOICE_CHECK = 60                           # AE-9.11: floor below which a card is a legitimately
+# short mechanical card (interval list, rest-day one-liner) with no voice to
+# check -- not tuned to the doc's "~200 chars" prose since the real pinned
+# examples (Motoren's real notes, 65-86 chars; Forest's pre-fix leak, 188
+# chars) are all under 200. Tuned 2026-08-29 against those exact strings.
 
 BANNED_NAME_RE = re.compile(r"fatmax|fat\s*max|fartlek|fasted", re.I)
 ENDURANCE_NAME_RE = re.compile(r"endurance|(?<!an)aerobic|\bz2\b|zone\s*2|base\s+miles", re.I)
@@ -73,6 +80,74 @@ FLOOR_EXEMPT_RE = re.compile(
 BIKE_TYPE_IDS = {2}           # TP workoutTypeValueId: 2 = bike
 DAY_OFF_TYPE_IDS = {7}        # 7 = Day Off / rest
 
+# AE-9.11 -- first-person coach voice. (a) internal-leak markers: coach-only
+# metadata that must never render athlete-facing (Forest Hietpas Week-1 note,
+# 2026-08-29). Documented as a growing list -- add a marker + label pair
+# here, never inline. (b) second/first-person pronoun regexes for the
+# impersonal-construction check, below.
+INTERNAL_LEAK_MARKERS: list[tuple[str, re.Pattern]] = [
+    ("AE rule citation", re.compile(r"\bAE-\d")),
+    ("coach-confirmed citation", re.compile(r"coach-confirmed", re.I)),
+    ("%FTP engine-structure jargon",
+     re.compile(r"\bstructure\b(?:(?!\.).){0,30}\brun[s]?\b(?:(?!\.).){0,10}%\s?FTP", re.I)),
+    ("re-anchored jargon", re.compile(r"re-anchored", re.I)),
+    ("no-A-race internal shorthand", re.compile(r"\bno\s+A-race\b", re.I)),
+    ("week_type field name", re.compile(r"\bweek_type\b")),
+    ("coached_block field name", re.compile(r"\bcoached_block\b")),
+    ("profile.yaml path", re.compile(r"profile\.yaml")),
+    ("archetype jargon", re.compile(r"\barchetype\b", re.I)),
+    ("library_key field name", re.compile(r"\blibrary_key\b")),
+    ("RUN-LIB jargon", re.compile(r"\bRUN-LIB\b")),
+    ("Motoren engine name", re.compile(r"\bMotoren\b")),
+    # Quoted coach speech about the athlete (e.g. `"300 is about right"`)
+    # is folded into this marker rather than standing alone: a bare
+    # quoted-string regex fired on ordinary quoted titles ("Recovery
+    # Week", "Start Line") and on AE-9.4's verbatim workout-comment
+    # template ("e.g., ... or \"Felt sluggish to start\"") across nearly
+    # every athlete in the 2026-08-29 sweep -- false positives, not leaks.
+    # The real defect shape is a quoted remark sitting inside a
+    # coach-confirmed provenance parenthetical, which this catches without
+    # the noise.
+    ("parenthetical ISO-date citation",
+     re.compile(r"\([^()]{0,60}\d{4}-\d{2}-\d{2}[^()]{0,60}\)")),
+    ("quoted coach speech in a provenance citation",
+     re.compile(r'\(\s*coach-confirmed\b[^()]*"[A-Za-z0-9][^"]{2,60}"[^()]*\)', re.I)),
+]
+SECOND_PERSON_RE = re.compile(r"\byou\b|\byour\b", re.I)
+FIRST_PERSON_RE = re.compile(r"\bi'm\b|\bi've\b|\bi'll\b|\bi\b|\bmy\b|\bme\b", re.I)
+
+# AE-9.11 narrowing (Matti ruling 2026-08-29: "The rule is over broad.").
+# A numbered/bulleted instruction line is tactical race or workout direction
+# -- "Sit in and don't pull for free", "Fuel at your long-ride rate". There is
+# no coaching judgment in it to attribute, so there is no natural place for
+# the coach's "I", and demanding one produces worse copy. The voice rule
+# exists for NARRATIVE copy -- the prose that frames the week and explains
+# what the coach wants ("I've built more work into this week than you're used
+# to"). So the impersonal-construction check now runs on prose lines only.
+# Trigger case: Eric Quiat's Mad Gravel race-day brief, which Matti edited by
+# hand into exactly the shape he wanted and which the rule then flagged.
+LIST_ITEM_RE = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s+")
+
+
+def _prose_only(text: str) -> str:
+    """Drop numbered/bulleted instruction lines, keeping narrative prose."""
+    return "\n".join(
+        line for line in text.splitlines() if not LIST_ITEM_RE.match(line))
+
+
+# RPE -> (%FTP low, %FTP high). MIRRORS tp_structure_to_zwo._RPE_TO_PCT_FTP
+# verbatim -- ae_lint stays import-free of the pipeline by design, so the
+# table is duplicated rather than imported; keep the two in sync. Without
+# this decode every RPE-metric structure reads as ZERO hard seconds, which
+# silently disabled the AE-1.12 caps and the AE-1.17 taper-intensity gate
+# for every RPE-authored plan (live defect found 2026-08-29).
+RPE_TO_PCT_FTP = {
+    1: (40.0, 50.0), 2: (50.0, 60.0), 3: (50.0, 60.0), 4: (60.0, 70.0),
+    5: (60.0, 70.0), 6: (76.0, 90.0), 7: (76.0, 90.0), 8: (95.0, 110.0),
+    9: (95.0, 110.0), 10: (115.0, 130.0),
+}
+RPE_METRICS = ("rpe", "perceivedexertion", "percentofmaxhr_rpe")
+
 
 # ---------------------------------------------------------------- structure
 def _steps(structure: Mapping[str, Any] | None) -> Iterator[dict]:
@@ -82,6 +157,8 @@ def _steps(structure: Mapping[str, Any] | None) -> Iterator[dict]:
     for the hard edge — mirrors library_selector's excursion counting."""
     if not structure:
         return
+    metric = str(structure.get("primaryIntensityMetric") or "").lower()
+    is_rpe = metric in RPE_METRICS
     for element in structure.get("structure") or []:
         reps = 1
         if (element.get("type") or "").lower() == "repetition":
@@ -102,6 +179,12 @@ def _steps(structure: Mapping[str, Any] | None) -> Iterator[dict]:
                         continue
                     mn = float(target.get("minValue") or 0)
                     mx = float(target.get("maxValue") or 0)
+                    if is_rpe:
+                        # decode RPE points -> %FTP band before any comparison
+                        lo_pct = RPE_TO_PCT_FTP.get(int(round(mn)), (0.0, 0.0))[0]
+                        hi_pct = RPE_TO_PCT_FTP.get(int(round(max(mn, mx))),
+                                                    (0.0, 0.0))[1]
+                        mn, mx = lo_pct, hi_pct
                     lo, hi = mn, max(mn, mx)
                 yield {"seconds": seconds, "lo": lo, "hi": hi, "cadence": cadence}
 
@@ -173,7 +256,7 @@ def lint_workout(w: Mapping[str, Any], race: date | None) -> list[dict]:
     # open AE-8.4 ruling; non-bike types are out of this floor's scope.
     if (hours and hours * 3600 < SESSION_FLOOR_SECONDS and not floor_exempt
             and type_id in BIKE_TYPE_IDS):
-        add("WARN", "AE-2.7", f"{hours * 60:.0f} min session under the 45-min floor (no exemption matched)")
+        add("WARN", "AE-2.7", f"{hours * 60:.0f} min session under the 60-min floor (no exemption matched)")
 
     # T1 — taper/race-week hard caps (AE-1.12), needs --race-date
     if race and day:
@@ -200,6 +283,75 @@ def lint_workout(w: Mapping[str, Any], race: date | None) -> list[dict]:
     if structure and CADENCE_CRITICAL_RE.search(title) and not _has_cadence_target(structure):
         add("WARN", "AE-3.7", "cadence-critical name but no programmed cadence target in structure")
 
+    return findings
+
+
+def _voice_findings(day: str, title: str, text: str) -> list[dict]:
+    """Shared AE-9.11 checks for one athlete-facing text blob (a workout
+    description or a calendar/plan note). Leak markers are searched over
+    title+text combined (a leak can hide in either); the impersonal-
+    construction check runs on `text` alone -- titles are too short to
+    carry the "gives instruction" signal."""
+    findings: list[dict] = []
+    combined = f"{title}\n{text}" if title else text
+    for label, pattern in INTERNAL_LEAK_MARKERS:
+        m = pattern.search(combined)
+        if m:
+            findings.append({"day": day, "title": title or "(untitled)",
+                             "severity": "FAIL", "rule": "AE-9.11",
+                             "msg": f"coach-internal leak ({label}): {m.group(0)!r}"})
+    # The first-person marker may live anywhere in the card, but the
+    # second-person address that DEMANDS one only counts if it appears in
+    # narrative prose -- see _prose_only and the AE-9.11 narrowing note.
+    prose = _prose_only(text)
+    if len(text) >= MIN_LEN_FOR_VOICE_CHECK:
+        if SECOND_PERSON_RE.search(prose) and not FIRST_PERSON_RE.search(text):
+            findings.append({"day": day, "title": title or "(untitled)",
+                             "severity": "WARN", "rule": "AE-9.11",
+                             "msg": "second-person instruction with no first-person coach voice (impersonal construction)"})
+    return findings
+
+
+def lint_voice(workouts: list[dict], notes: list[dict] | None = None) -> list[dict]:
+    """AE-9.11 -- first-person coach voice. On by DEFAULT, no flag: this is
+    an always-on quality gate, not opt-in. Two checks over every
+    athlete-facing title/description in `workouts` and `notes` (TP calendar
+    notes -- weekly/mid-week story notes, self-review templates, etc.):
+      (a) internal-leak markers (INTERNAL_LEAK_MARKERS) -- coach-internal
+          metadata (rule IDs, config field names, engine jargon, FTP
+          provenance, quoted coach speech) bleeding into athlete-facing
+          copy. FAIL.
+      (b) impersonal construction -- NARRATIVE text (>=
+          MIN_LEN_FOR_VOICE_CHECK chars) using second-person address
+          ("you"/"your") with no first-person coach marker ("I", "I'm",
+          "I've", "I'll", "my", "me"). WARN. Two exemptions, both
+          deliberate: short mechanical cards fall under the length floor,
+          and numbered/bulleted instruction lines are stripped before the
+          second-person search (see _prose_only). The first-person marker
+          still counts wherever it appears in the card -- only the
+          second-person address that DEMANDS one is restricted to prose.
+    Source: Matti ruling 2026-08-29 ("you have to write it in first
+    person" / "in the future that needs to be a gate."), Forest Hietpas
+    block review. NARROWED by Matti ruling 2026-08-29 ("The rule is over
+    broad.") after it flagged Eric Quiat's Mad Gravel race-day brief --
+    a tactical card of facts plus numbered race instructions that Matti
+    had just hand-edited into the exact shape he wanted. Tactical
+    direction carries no coaching judgment to attribute, so it has no
+    natural place for "I"; forcing one produces worse copy. The voice
+    rule is for prose that frames the block and says what the coach
+    wants.
+    """
+    findings: list[dict] = []
+    for w in workouts:
+        title = (w.get("title") or "").strip()
+        text = w.get("description") or ""
+        day = (w.get("workoutDay") or "")[:10]
+        findings.extend(_voice_findings(day, title, text))
+    for n in notes or []:
+        title = (n.get("title") or "").strip()
+        text = n.get("description") or ""
+        day = (n.get("noteDate") or "")[:10]
+        findings.extend(_voice_findings(day, title, text))
     return findings
 
 
@@ -519,16 +671,35 @@ def lint_demonstrated_dose(workouts: list[dict],
 
 
 # ---------------------------------------------------------------- io
+def _is_note(item: Mapping[str, Any]) -> bool:
+    """TP calendar-note items carry noteDate and never workoutDay/structure
+    -- distinguishes a notes_payload.json entry from a workout entry when
+    both can appear as bare-list JSON."""
+    return "noteDate" in item and "workoutDay" not in item and "structure" not in item
+
+
 def _workouts(payload: Any) -> list[dict]:
     if isinstance(payload, list):
-        return [w for w in payload if isinstance(w, dict)]
+        return [w for w in payload if isinstance(w, dict) and not _is_note(w)]
     if isinstance(payload, dict):
         for key in ("workouts", "items", "Workouts", "w"):
             if isinstance(payload.get(key), list):
-                return [w for w in payload[key] if isinstance(w, dict)]
+                return [w for w in payload[key] if isinstance(w, dict) and not _is_note(w)]
         if "title" in payload or "structure" in payload or "workoutDay" in payload:
             return [payload]
     return []
+
+
+def _notes(payload: Any) -> list[dict]:
+    """TP calendar-note payloads (notes_payload.json): a bare list of
+    {title, noteDate, description} dicts, or {"notes": [...]}."""
+    items: list = payload if isinstance(payload, list) else []
+    if not items and isinstance(payload, dict):
+        for key in ("notes", "Notes"):
+            if isinstance(payload.get(key), list):
+                items = payload[key]
+                break
+    return [n for n in items if isinstance(n, dict) and _is_note(n)]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -561,12 +732,33 @@ def main(argv: list[str] | None = None) -> int:
             print(f"ae-lint: cannot read {path}: {exc}", file=sys.stderr)
             return 2
         workouts = _workouts(payload)
+        notes = _notes(payload)
         total_workouts += len(workouts)
         all_workouts.extend(workouts)
         for w in workouts:
             for finding in lint_workout(w, race):
                 finding["file"] = str(path)
                 all_findings.append(finding)
+        for finding in lint_voice(workouts, notes):  # AE-9.11 -- always on, no flag
+            finding["file"] = str(path)
+            all_findings.append(finding)
+
+    # Plan-level gates (span the whole payload, not a single workout) —
+    # both silent unless their inputs are supplied.
+    plan_file = str(args.files[0]) if len(args.files) == 1 else "(plan)"
+    for finding in lint_ctl_trajectory(all_workouts, race, args.current_ctl):
+        finding["file"] = plan_file
+        all_findings.append(finding)
+    for finding in lint_race_day_tsb(all_workouts, race, args.current_ctl,
+                                      args.current_atl, args.coach_override):
+        finding["file"] = plan_file
+        all_findings.append(finding)
+    for finding in lint_taper_shape(all_workouts, race, args.current_ctl):
+        finding["file"] = plan_file
+        all_findings.append(finding)
+    for finding in lint_demonstrated_dose(all_workouts, args.demonstrated_load):
+        finding["file"] = plan_file
+        all_findings.append(finding)
 
     # Plan-level gates (span the whole payload, not a single workout) —
     # both silent unless their inputs are supplied.

@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Bike - MTI - Tempo and Standing Starts</name>
+  <description>FUEL:
+Normal meal ~2h before. One bottle, 40-50g carbs. Done.
+
+Warm up for 10 progressing from z1-z2
+-
+1x5min high cadence (95+) z3
+-
+2min recovery
+-
+5x20sec seated stomps. Start in big gear from a standstill and wind it up so you're sprinting (in the saddle, not out) in the last 5 sec.
+
+RPE guide: 140% FTP -> RPE 8-9; 82% FTP -> RPE 5-6; 55% FTP -> RPE 3</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.40" PowerHigh="0.50"/>
+    <SteadyState Duration="300" Power="0.82" CadenceLow="105" CadenceHigh="115"/>
+    <SteadyState Duration="120" Power="0.55"/>
+    <IntervalsT Repeat="6" OnDuration="20" OnPower="1.40" CadenceLow="50" CadenceHigh="90" OffDuration="180" OffPower="0.55"/>
+    <Cooldown Duration="180" PowerLow="0.50" PowerHigh="0.40"/>
+  </workout>
+</workout_file>

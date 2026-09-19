@@ -1,0 +1,509 @@
+name: Forest Hietpas
+email: olympicsherpa@gmail.com
+athlete_id: forest-hietpas
+order_id: ''
+delivery_platform: manual
+fulfillment:
+  order_id: ''
+  delivery_platform: manual
+  order_created_at: ''
+  generation_at: ''
+  weeks_purchased: 4
+  athlete_timezone: ''
+  generation_revision: 2
+  effective_date: '2026-09-28'
+  planning_horizon_end: '2026-10-25'
+  publication_horizon_weeks: 0
+sex: male
+height_cm: 0
+weight_kg: 75.0
+primary_goal: base_building
+target_race: {}
+coached_block:
+  phase: base
+  focus: 'Block 2. Same rhythm you just built, a little more in it. Frequency first, duration second,
+    nothing else is required until January. Running stays at 6-12 miles a week because you asked for
+    it, weekends stay open for real rides, and Sunday is still your call.'
+  week_types:
+  - load
+  - load
+  - load
+  - recovery
+  coach_notes: 'Block 2 (2026-09-28 to 2026-10-25). September evidence: 4am anchor rides hit ~every
+    workday (12-32 TSS each); Wed evening MTB with buddies (52-81 min); weekend gravel rides 3h+ (Sep 6
+    154 TSS, Sep 13 65 TSS); ran Beat the Blerch half marathon 2026-09-12 "off the couch" (2h11, 248
+    rTSS); most OPTIONAL prescribed runs skipped in favour of his own rides. Weekly actuals 8.7h / 7.7h /
+    ~5h. His 2026-09-16 self-review: keep running 6-12 mi/wk for "fun adventure runs and chill events";
+    new relationship (Kristen) means weekend rides are social; wattbike issues fixed 09-16; still building
+    "rock solid patterns around sleep". Coach call booked Fri 2026-10-02 11:30 MDT. FTP 320W from 2026-09-18 (Matti: "320 in TP"; was 300W)
+    (coach ruling 2026-09-01). No A-race; consistency is the trained adaptation.'
+brand: gravelgod
+road_category: null
+discipline_default: gravel
+a_events: []
+b_events: []
+c_events: []
+secondary_races: []
+racing:
+  has_goals: false
+  race_list: ''
+  success_metrics: See workouts on the calendar and do them. No podium target this block -- long-horizon
+    context only (Oregon Cascades Volcanic Arc FKT, world 12-hour TT) is not this block's job.
+  obstacles: Restarted 2026-09-01; block 1 done. Life load is real -- Kristen weekends, Roslyn date
+    weekend Oct 8-11, Admin DnD, therapy, and a 24-hour work commitment Oct 24-25 all compete with the
+    week. Sleep patterns still being rebuilt (his words, 2026-09-16).
+  training_goals: Rebuild training frequency and rhythm first, duration second, intensity last and optional
+    through 2026-12-31.
+  goals_notes: ''
+training_history:
+  summary: 149 logged sessions May-Aug 2026 (84 bike, 36 run, 12 MTB, 12 strength, 5 other/hike-walk).
+    All-sport CTL 55.9, bike-only CTL 29.4 -- currently more runner than cyclist. Recent 6 weeks averaged
+    ~310 TSS / ~6.5h/week.
+  years_cycling: 0
+  years_structured: 0
+  strength_background: unknown
+  highest_weekly_hours: 11.7
+  current_weekly_hours: 6.5
+  strengths: ''
+  weaknesses: ''
+fitness_markers:
+  ftp_watts: 320
+  ftp_estimated: false
+  power_basis: measured
+  ftp_date: '2026-09-18'
+  weight_kg: 75.0
+  height_cm: 0
+  sex: male
+  w_kg: 4.27
+  resting_hr: 0
+  max_hr: 0
+  lthr: 0
+  training_metric: power
+  control_metric: power
+  control_basis: ftp
+  requested_metric: power
+  field_testing_allowed: false
+  reanchor:
+    required: false
+    week: null
+    test: null
+    action: 'No testing this block (coach ruling 2026-08-29: "no tests"). FTP anchored at 300W by coach
+      confirmation. RE-CONFIRMED 2026-09-01 ("Just leave it at 300 for ftp") after the athlete said on
+      08-22 he had "zero clue" and picked 300 because it "felt right" -- the coach owns this number.
+      2026-09-18 Matti: "320 in TP" -- FTP moved to 320 W to match his TP settings (weekly refresh hold
+      ftp_mismatch cleared by coach ruling)
+      knowingly. Re-anchor only when the coach calls for it.'
+recent_training:
+  last_12_weeks: consistent
+  current_phase: base
+  coming_off_injury: false
+  days_since_last_ride: null
+weekly_availability:
+  total_hours_available: 7
+  cycling_hours_target: 4.5
+  strength_sessions_max: 2
+  notes: 'Coach call 2026-08-21. 8h/wk is "a stretch" right now -- build to ~6-7h. Commute: 1h to work
+    AM, 2h home PM, 10h workdays, 1800 mi/month. Bed 19:30-20:00, up 04:00. He does NOT return to the
+    line until JANUARY -- this block primes the pump, it is not a build.'
+  volume_warning: null
+preferred_days:
+  monday:
+    availability: available
+    time_slots:
+    - am
+    max_duration_min: 60
+    is_key_day_ok: false
+  tuesday:
+    # Stays 0: this encodes "place no PRESCRIBED work here" and is what keeps
+    # Friday as the long day. Setting it to 60 to match his locked load
+    # (20min anchor + 40min run) made the generator treat Tuesday as a
+    # placement target and collapsed Friday to 3-15 min. The resulting
+    # AVAILABILITY_CAP_IMPOSSIBLE is a data-hygiene complaint about the
+    # athlete's OWN fixed sessions exceeding a deliberately-zero cap, and is
+    # waived at publish time rather than "fixed" by wrecking the week.
+    availability: unavailable
+    time_slots:
+    - am
+    - pm
+    max_duration_min: 0
+    is_key_day_ok: false
+  wednesday:
+    # 60 per the 08-21 call ("Wed 1 h ride AM"); the old 45 cap level-downed
+    # the block-2 VO2 session to a 4-minute dose (AE-3.1 FAIL).
+    availability: available
+    time_slots:
+    - am
+    - pm
+    max_duration_min: 60
+    is_key_day_ok: false
+  thursday:
+    availability: available
+    time_slots:
+    - am
+    - pm
+    max_duration_min: 90
+    is_key_day_ok: true
+  friday:
+    availability: available
+    time_slots:
+    - am
+    - pm
+    max_duration_min: 110
+    is_key_day_ok: true
+  saturday:
+    availability: unavailable
+    time_slots:
+    - am
+    max_duration_min: 0
+    is_key_day_ok: false
+  sunday:
+    availability: limited
+    time_slots:
+    - am
+    max_duration_min: 150
+    is_key_day_ok: true
+availability_roles:
+  long_ride_days:
+  - friday
+  interval_days: []
+  off_days: []
+recurring_sessions:
+- day: Mon
+  title: 4am trainer ride (self-selected, no structure)
+  duration_min: 20
+  tss: 12
+  locked: true
+- day: Tue
+  title: 4am trainer ride (self-selected, no structure)
+  duration_min: 20
+  tss: 12
+  locked: true
+- day: Wed
+  title: 4am trainer ride (self-selected, no structure)
+  duration_min: 20
+  tss: 12
+  locked: true
+- day: Thu
+  title: 4am trainer ride (self-selected, no structure)
+  duration_min: 20
+  tss: 12
+  locked: true
+# RUNS (coaching_history.md: 2-3 runs/wk, 6-9 miles; 2026-08-31 athlete ruling
+# caps Mon-Thu runs at 40 min, so the long run moves to the weekend). Blocked
+# time, not prescriptions -- "he needs to see 30 min, 60 min, 360 minutes."
+- day: Tue
+  title: 40 min run
+  duration_min: 40
+  tss: 32
+  sport: run
+  locked: true
+- day: Thu
+  title: 40 min run
+  duration_min: 40
+  tss: 32
+  sport: run
+  locked: true
+# SUNDAY (coach ruling 2026-09-01): a ride with optional structure, and an
+# AUDIBLE day -- it depends on where his wind is blowing. Declared as a block
+# so it reliably lands; `limited` availability alone left it empty 3 weeks in 4.
+# Title leads with duration per his stated convention.
+- day: Sun
+  title: 90 min ride — optional structure, your call
+  duration_min: 90
+  tss: 65
+  locked: true
+calendar_protection:
+  requested: false
+  referenced_dates: []
+availability_review_issues: []
+# Block 2 protected dates (not travel, but the engine's travel overlay is the
+# sanctioned "swap the planned session for an optional shakeout" lever):
+# Fri 10-09 + Sat 10-10 = Roslyn date weekend; Sat 10-24 = Salt Creek 24-hour
+# work commitment. Saturdays are already unavailable, so only Friday 10-09
+# actually changes (long ride -> optional shakeout).
+travel_dates:
+- '2026-10-09'
+- '2026-10-10'
+- '2026-10-24'
+schedule_constraints:
+  work_schedule: unknown
+  work_hours: 0
+  travel_frequency: unknown
+  family_commitments: Time with Finn is a protected life anchor -- never bulldoze it for a session. Exact
+    weekday/time not in the source data; coach to confirm.
+  seasonal_changes: ''
+  preferred_off_days:
+  - tuesday
+  - monday
+  # Coach ruling 2026-09-01: Thursday's prescribed ride is OPTIONAL. Thursday
+  # already carries the 4am anchor, a 40-min run and the lift, on a 10-hour
+  # shift plus a 3-hour commute. Keeps the session on the calendar; he owes
+  # nothing. Does not touch his own locked blocks, rest days or strength.
+  optional_days:
+  - thursday
+  preferred_long_day: friday
+  strength_only_days: []
+  life_anchors:
+  - name: Time with Finn
+    day: null
+    note: protected, never bulldozed for training
+  - name: Monday Nico calls
+    day: monday
+    note: schedule around, not over
+  - name: Admin DnD
+    day: null
+    note: exact day not in source data -- flagged as a gap
+  - name: Beat the Blerch
+    day: null
+    note: date not found in the 149-session pull or the 6-note calendar excerpt provided -- NOT scheduled
+      around; flagged as an open question rather than invented.
+  structure_policy: 'STRUCTURE ONLY ON WEEKENDS. Verbatim: "He wants tastes of structure on the weekends."
+    Weekday mornings are Z1/self-selected only -- "At 4am he cannot do anything more than low Z2. He cannot
+    do structure in the morning, that would destroy him."'
+  daily_shape:
+    monday: 20min AM trainer (Z1, no structure) + 1h PT/lift block PM
+    tuesday: 20min AM + optional 1h enduro ride w/ buddies (~2x/month) + aspirational 4mi run
+    wednesday: 1h low-Z2 ride AM (the "maple syrup in the coffee" hour, 1-2x/wk)
+    thursday: '20min AM + 1h lift block + PM run. HEAVIEST DAY -- 10h shift + 3h commute on top.
+      NOTE 2026-09-01: max_duration_min does NOT gate block-builder placement here; a ~60min bike still
+      lands on Thursday. If it needs to go, it is a coach decision, not an availability edit.'
+    friday: 'COACH RULING 2026-09-01: Friday is a TRANSITION FROM WORK. He should do some pedaling,
+      mostly FUN-FOCUSED, and it can be LONGER with OPTIONAL structure. Athlete ruling 2026-08-31: does
+      NOT work Fridays, no 20min 4am ride here. Long/big day of the week (Saturday is committed).'
+    saturday: bike ride -- the weekend structure taste lives here
+    sunday: 'COACH RULING 2026-09-01: a RIDE with OPTIONAL structure -- but this is an AUDIBLE DAY,
+      it depends on where his wind is blowing. Do not program it as a fixed obligation.'
+  title_convention: 'TITLES MUST LEAD WITH DURATION. Verbatim: "he does not need to see the description
+    of the workout, he needs to see 30 min, 60 min, 360 minutes -- needs to see how much time it is."'
+  communication: Neurospicy with time and space. TrainingPeaks is hard for him to communicate through;
+    he shares an iCal calendar instead -- read it for guys-weekends etc. WATCH FOR OVERCOMMITMENT.
+cycling_equipment:
+  smart_trainer: true
+  power_meter_bike: true
+  hr_monitor: true
+  indoor_setup: smart_trainer
+  bike_computer: ''
+strength_equipment:
+- minimal
+training_environment:
+  primary_location: home
+  gym_type: home_gym
+  outdoor_riding_access: good
+  indoor_riding_tolerance: tolerate_it
+injury_history:
+  current_injuries: []
+  past_injuries: []
+movement_limitations:
+  deep_squat: null
+  hip_hinge: null
+  overhead_reach: null
+  single_leg_balance: null
+  push_up_position: null
+  notes: ''
+health_factors:
+  age: 40
+  sleep_quality: unknown
+  sleep_hours_avg: 7
+  stress_level: moderate
+  recovery_capacity: normal
+  medical_conditions: ''
+  medications: ''
+  health_notes: Fuel the work; intentional weight loss is NOT a project. No calorie or deficit language
+    anywhere in this athlete's deliverables (binding).
+strength:
+  sessions_per_week: 2
+  prescription: TIME BLOCK ONLY -- do not prescribe exercises
+  notes: 'Coach ruling 08-21: "just put in block for weight lifting on a day." He has a full home gym
+    and his own PT work. Possible guinea-pig for Devin''s velocity-based-training app from ~Sept; revisit
+    in January.'
+devices:
+  training_log: true
+  platforms:
+  - trainingpeaks
+  devices:
+  - power_meter
+  - hr_strap
+  unknown_tokens: []
+work:
+  employed: true
+  hours_per_week: 0
+  stress_level: moderate
+life_balance:
+  relationships: ''
+  time_commitments: ''
+  time_management_challenge: false
+nutrition:
+  diet_styles: []
+  fluid_intake_rating: null
+  restrictions: ''
+  training_fuel: ''
+  race_fueling_range_g_per_hour: null
+  post_workout: ''
+  notes: Fuel the work; no calorie/deficit framing (binding).
+bike:
+  last_fit: ''
+  pain: false
+  pain_description: ''
+social:
+  group_rides_per_week: 0
+  group_ride_importance: null
+  training_partners: ''
+coaching:
+  previous_coach: true
+  experience: Coached athlete, re-subscribed to TP Coaching Premium 2026-08-27.
+personal:
+  important_people: Finn
+  anything_else: 'Standing question worth threading once: "Is training helping you live, or are you using
+    training to prove your worth?"'
+  life_affecting_training: ''
+methodology_preferences:
+  time_crunched: 4
+  g_spot: 3
+  polarized: 3
+  pyramidal: 3
+  preferred_approach: ''
+  past_success_with: ''
+  past_failure_with: ''
+workout_preferences:
+  longest_indoor_tolerable: 90
+  preferred_interval_style: mixed
+  music_or_entertainment: preferred
+  group_rides_available: false
+  outdoor_interval_friendly: true
+strength_preferences:
+  experience_level: some
+  comfort_with_barbell: some
+  comfort_with_kettlebells: some
+  preferred_session_length: 40
+  time_of_day: separate_day
+coaching_style:
+  communication_frequency: weekly
+  feedback_detail: moderate
+  accountability_need: moderate
+  autonomy_preference: high_autonomy
+  communication_style: flexible
+motivation:
+  primary_driver: consistency
+  what_excites_you: '"The biggest first movement for me in this is just to see workouts on the calendar.
+    Once I create the space in my life for the calendar blocks what happens in those blocks is easy."
+    -- Forest, 2026-08-22.'
+  what_scares_you: ''
+  past_quit_reasons: ''
+  accountability_style: coach
+mental_game:
+  race_anxiety: none
+  training_consistency: rebuilding
+  handles_failure: unknown
+  perfectionist: false
+  missed_workout_response: move_on
+  best_training_block: ''
+lifestyle:
+  occupation: ''
+  active_job: false
+  commute_bikeable: false
+  family_support: unknown
+  weight_goal: maintain
+platforms:
+  primary: trainingpeaks
+  secondary: ''
+  calendar_integration: ''
+communication:
+  preferred_method: email
+  timezone: ''
+  best_time_to_reach: ''
+plan_start:
+  preferred_start: '2026-09-28'
+  current_commitments: ''
+  notes: 'Block 2 starts Mon 2026-09-28, the day after block 1 ends (2026-09-27). Kristen is visiting
+    Fri 09-25 through Tue 09-29, so Monday/Tuesday of week 1 are light by design.'
+discipline: gravel
+intensity_policy:
+  all_intensity_optional_until: '2027-01-01'
+  rule: 'Coach ruling 2026-08-29: ALL intensity AND ALL specificity are OPTIONAL through January 1st.
+    Sessions may be PRESCRIBED but every one must be titled OPTIONAL and carry the no-pressure line.
+    He does not return to the line until January; nothing before then is mandatory.'
+  label_prefix: OPTIONAL
+  zero_penalty_text: "OPTIONAL — NO PRESSURE. Nothing before January 1st is required. Skip it, nothing
+    to make up. I'd rather you skip it than do it because it's on the calendar."
+  covers: >-
+    Intensity AND specificity, not intensity alone. Matti restated this on
+    2026-08-29 after reviewing the applied calendar: "he does not want any
+    pressure to do intensity or specificity until January 1st. He's fine with
+    me programming the option, but ABSOLUTELY NO PRESSURE TO DO SO. This
+    should be emphasized."
+  applies_to: >-
+    Any card whose body carries RPE >= 5, >= 90% FTP, strides/sprints/VO2/
+    threshold work, power-hiking, or race-like/race-pace specificity. This is
+    NOT satisfied by labelling only the obvious interval sessions: five cards
+    shipped unmarked in the first applied block (Quick Feet L1 x2, Barn
+    Builder L1, Tune-Up, Time on Feet L1), and the Tune-Up ran 2x18s at 140%
+    FTP with no OPTIONAL marker at all. The only exemptions are rest days,
+    the 4am self-selected trainer rides, strength time-blocks, and the
+    B-race card.
+  vo2_allowed: true
+  notes: Supersedes the earlier no-VO2 stance -- keep the sessions, make them optional.
+nutrition_policy:
+  intentional_deficit: false
+  notes: 'Coach ruling 08-21: NOT in a robust enough place for intentional weight loss -- tried a month,
+    hunger on top of it "makes things really fucking hard." Eating is a control issue; do not create a
+    weight project. Fuel the work. No calorie/deficit language on any card.'
+life_calendar:
+  source: Forest iCloud "Home"/"Work" shared calendars, re-read 2026-09-17 via local Calendar store (subscription
+    under stormspandies@gmail.com), window 2026-09-21 to 2026-10-31
+  commitments:
+  - date: '2026-09-25'
+    time: '17:00'
+    title: DnD eve
+    impact: late evening -- outside this block, protect Saturday morning after
+  - date: '2026-09-26'
+    all_day: true
+    title: Admin DnD
+    impact: outside this block (block 1 recovery week)
+  - date: '2026-09-28'
+    all_day: true
+    title: Kristen here (Fri 09-25 through Tue 09-29)
+    impact: social weekend runs into Mon/Tue of week 1 -- keep Monday and Tuesday light, no prescribed ride
+  - date: '2026-09-29'
+    all_day: true
+    title: Kristen here (last day)
+    impact: keep Tuesday light, no prescribed ride
+  - date: '2026-10-02'
+    time: '11:30'
+    title: Matti call (30 min, 11:30 MDT)
+    impact: midday only -- Friday long ride still fits around it
+  - date: '2026-10-08'
+    all_day: true
+    title: Roslyn date weekend (Thu eve 10-08 through Sun 10-11)
+    impact: Thursday evening committed
+  - date: '2026-10-09'
+    all_day: true
+    title: Roslyn date weekend
+    impact: PROTECTED -- no long ride assignment; a short ride if it fits, nothing owed
+  - date: '2026-10-10'
+    all_day: true
+    title: Roslyn date weekend
+    impact: PROTECTED -- no training assignment
+  - date: '2026-10-11'
+    all_day: true
+    title: Roslyn date weekend (through Sun) + Jeff Goldblum in Seattle 19:00
+    impact: PROTECTED -- Sunday ride optional only if it fits the weekend; evening committed
+  - date: '2026-10-15'
+    all_day: true
+    title: 'Drae? (tentative, Thu eve 10-15 through Sat 10-17)'
+    impact: tentative -- Thursday evening may be committed
+  - date: '2026-10-16'
+    time: '16:00'
+    title: Therapy (16:00) + tentative Drae visit
+    impact: afternoon committed -- Friday long ride in the morning only
+  - date: '2026-10-17'
+    all_day: true
+    title: 'Drae? (tentative)'
+    impact: tentative -- Saturday may be social
+  - date: '2026-10-24'
+    all_day: true
+    title: Salt Creek 24 (Work calendar, 09:30 Sat through 09:30 Sun)
+    impact: WORK COMMITMENT -- 24 hours, no training assignment Saturday
+  - date: '2026-10-25'
+    all_day: true
+    title: Salt Creek 24 ends 09:30
+    impact: coming off a 24-hour work shift -- Sunday ride optional only, nothing owed

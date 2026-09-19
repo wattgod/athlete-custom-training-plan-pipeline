@@ -1,0 +1,37 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Aerobic Base</name>
+  <description>FUEL:
+Target 55g carbs/hr. Practice this prescription.
+
+WARM-UP:
+-10min easing from Z1 to low Z2.
+
+MAIN SET:
+-2h30 total. Hold steady aerobic Z2 (65-75% FTP), alternating gently every 20min so it doesn't go dead.
+-Cadence 85-95rpm, seated, relaxed.
+
+EXECUTION:
+-Conversational the whole way. If you can't talk, you're too high. This ride builds the aerobic base everything else sits on — the win is time-in-zone, not watts.
+
+NUTRITION:
+-55 g/hr. Start fueling in the first 30min.
+
+HYDRATION:
+-500-750ml/hr with electrolytes; more in heat.
+
+RPE guide: 71% FTP -> RPE 3; 68% FTP -> RPE 3</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.50" PowerHigh="0.65"/>
+    <SteadyState Duration="1200" Power="0.68"/>
+    <SteadyState Duration="1200" Power="0.71"/>
+    <SteadyState Duration="1200" Power="0.68"/>
+    <SteadyState Duration="1200" Power="0.71"/>
+    <SteadyState Duration="1200" Power="0.68"/>
+    <SteadyState Duration="1200" Power="0.71"/>
+    <SteadyState Duration="900" Power="0.68"/>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

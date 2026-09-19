@@ -1,0 +1,27 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Endurance</name>
+  <description>Endurance Blocks — level 1
+
+WARM-UP:
+-10min ramp 50%->65% FTP (RPE 2-3)
+
+MAIN SET:
+-60min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)
+
+COOL-DOWN:
+-10min spin-down 65%->50% FTP (RPE 2-3)
+
+HOW TO RIDE IT:
+-Easy and conversational the whole way.
+
+FUEL:
+-40-60g carbs/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.50" PowerHigh="0.65" CadenceLow="85" CadenceHigh="92"/>
+    <SteadyState Duration="3600" Power="0.65" CadenceLow="85" CadenceHigh="95"/>
+    <Cooldown Duration="600" PowerLow="0.65" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

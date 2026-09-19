@@ -227,7 +227,7 @@ def test_update_from_intake_emits_d0_threshold_update_with_before_image_and_keep
     contract = build_contract(
         {"weeks": [{"number": 1, "sessions": [{
             "date": "2026-08-10", "title": "Fixture ride",
-            "description": "Fixture", "workout_type_value_id": 1,
+            "description": "Fixture", "workout_type_value_id": 2,  # bike; 1 is not a type Motoren emits
             "duration_s": 3600, "tss_planned": 40, "structure": None,
             "type": "workout",
         }]}]}, order_id=resolved["order_id"], tp_athlete_id=tp_id,

@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Endurance Blocks</name>
+  <description>FUEL:
+Target 60g carbs/hr. Practice this prescription.
+
+MAIN SET:
+• 30min @ 56-75% FTP, RPE 3-4
+• 10min @ 56-75% FTP, RPE 3-4
+• 30min @ 56-75% FTP, RPE 3-4
+• 10min @ 56-75% FTP, RPE 3-4
+• 30min @ 56-75% FTP, RPE 3-4
+• Position: Alternating - Alternate every 30 min: 30 min drops (aero) → 30 min hoods (power)
+• Cadence: self-selected - Comfortable endurance cadence
+
+COOL-DOWN:
+• 10min easy spin Z1-Z2 (RPE 3-4)</description>
+  <sportType>bike</sportType>
+  <workout>
+    <SteadyState Duration="1800" Power="0.75"/>
+    <SteadyState Duration="600" Power="0.70"/>
+    <SteadyState Duration="1800" Power="0.75"/>
+    <SteadyState Duration="600" Power="0.70"/>
+    <SteadyState Duration="1800" Power="0.75"/>
+    <Cooldown Duration="600" PowerLow="0.65" PowerHigh="0.50"/>
+  </workout>
+</workout_file>

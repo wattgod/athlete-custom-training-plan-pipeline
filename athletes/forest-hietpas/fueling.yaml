@@ -1,0 +1,396 @@
+athlete:
+  weight_kg: 75.0
+  sex: male
+race:
+  distance_miles: 100
+  elevation_feet: 0
+  duration_hours: 8.333333333333334
+  goal_type: finish
+calories:
+  total_calories: 6337
+  calories_per_hour: 760
+  rate_kcal_kg_km: 0.525
+  duration_hours: 8.333333333333334
+  distance_km: 160.9
+  weight_kg: 75.0
+  breakdown:
+    base_rate: 0.5
+    elevation_adjustment: 0.0
+    duration_factor: 1.05
+    final_rate: 0.525
+carbohydrates:
+  hourly_target: 61
+  hourly_range: &id002
+  - 54
+  - 68
+  total_grams: 508
+  total_range:
+  - 450
+  - 567
+  duration_hours: 8.333333333333334
+  goal_type: finish
+gut_training:
+  phases:
+    base:
+      description: Build tolerance - start conservative
+      guidance: Practice fueling on ALL rides over 90 minutes. Start with familiar
+        products.
+      weeks:
+      - W1
+      - W2
+      - W3
+      - W4
+      target_range: &id001
+      - 41
+      - 51
+  weekly_progression:
+  - description: Build tolerance - start conservative
+    guidance: Practice fueling on ALL rides over 90 minutes. Start with familiar products.
+    current_week: 1
+    week_label: W1
+    plan_weeks: 4
+    phase_name: base
+    target_range: *id001
+  - description: Build tolerance - start conservative
+    guidance: Practice fueling on ALL rides over 90 minutes. Start with familiar products.
+    current_week: 2
+    week_label: W2
+    plan_weeks: 4
+    phase_name: base
+    target_range:
+    - 41
+    - 51
+  - description: Build tolerance - start conservative
+    guidance: Practice fueling on ALL rides over 90 minutes. Start with familiar products.
+    current_week: 3
+    week_label: W3
+    plan_weeks: 4
+    phase_name: base
+    target_range:
+    - 41
+    - 51
+  - description: Build tolerance - start conservative
+    guidance: Practice fueling on ALL rides over 90 minutes. Start with familiar products.
+    current_week: 4
+    week_label: W4
+    plan_weeks: 4
+    phase_name: base
+    target_range:
+    - 41
+    - 51
+fueling_timeline:
+- hour: 0
+  mile: 0
+  action: START
+  carbs_target: 0
+  cumulative_carbs: 0
+  notes: Top off with 30-50g in final 30min before start
+- hour: 1
+  mile: 12
+  action: FUEL
+  carbs_target: 61
+  cumulative_carbs: 61
+  notes: 'Target: 61g carbs this hour | Early race: establish rhythm, don''t fall
+    behind'
+- hour: 2
+  mile: 24
+  action: FUEL
+  carbs_target: 61
+  cumulative_carbs: 122
+  notes: 'Target: 61g carbs this hour | Early race: establish rhythm, don''t fall
+    behind'
+- hour: 3
+  mile: 36
+  action: FUEL
+  carbs_target: 61
+  cumulative_carbs: 183
+  notes: 'Target: 61g carbs this hour'
+- hour: 4
+  mile: 48
+  action: FUEL
+  carbs_target: 61
+  cumulative_carbs: 244
+  notes: 'Target: 61g carbs this hour'
+- hour: 5
+  mile: 60
+  action: FUEL
+  carbs_target: 61
+  cumulative_carbs: 305
+  notes: 'Target: 61g carbs this hour'
+- hour: 6
+  mile: 72
+  action: FUEL
+  carbs_target: 61
+  cumulative_carbs: 366
+  notes: 'Target: 61g carbs this hour'
+- hour: 7
+  mile: 84
+  action: FUEL
+  carbs_target: 61
+  cumulative_carbs: 427
+  notes: 'Target: 61g carbs this hour | Final push: maintain intake even if appetite
+    drops'
+- hour: 8
+  mile: 96
+  action: FUEL
+  carbs_target: 61
+  cumulative_carbs: 488
+  notes: 'Target: 61g carbs this hour | Final push: maintain intake even if appetite
+    drops'
+prescription:
+  race_target_g_per_hour: 61
+  race_range_g_per_hour: *id002
+  total_g: 508
+  training_tiers:
+    quality:
+      target_g_per_hour: 51
+      range_g_per_hour:
+      - 44
+      - 58
+    long_ride:
+      target_g_per_hour: 56
+      range_g_per_hour:
+      - 49
+      - 61
+    race_sim:
+      target_g_per_hour: 61
+      range_g_per_hour:
+      - 54
+      - 68
+  hydration: &id003
+    target_ml_per_hour: 600
+    electrolytes: 500-1000mg sodium per hour depending on sweat rate
+  assumptions:
+  - Current carbohydrate tolerance was not captured; conservative ceiling applied.
+  inputs:
+    basis: measured_power_duration_body_mass
+    duration_hours: 8.3
+    weight_kg: 75.0
+    ftp_watts: 300
+    intensity_factor: 0.68
+    absolute_work_watts: 204
+    goal_type: finish
+    gut_training_phase: build
+    tolerated_g_per_hour: null
+  policy_version: 2026-08-08.3
+fueling_basis:
+  kind: measured_power_duration_body_mass
+  power_used: true
+  label: Measured power + duration + body mass
+  reanchor: null
+recommendations:
+  hourly_target: 61g/hr
+  total_target: 508g total
+  example_products:
+    gels_only:
+      quantity: 20
+      frequency: 1 gel every 24min
+      notes: Simple but can cause palate fatigue
+    mixed_approach:
+      gels: 8
+      chews_packs: 4
+      drink_mix_bottles: 2
+      notes: 'Recommended: variety prevents palate fatigue'
+    real_food_hybrid:
+      gels: 6
+      rice_cakes_bars: 5
+      drink_mix: 3
+      notes: 'Good for ultra-distance: solid food + liquid carbs'
+  hydration: *id003
+  pre_race:
+    meal_timing: 3-4 hours before start
+    meal_composition: High carb, moderate protein, low fat/fiber
+    example: Oatmeal with banana, honey, and nut butter (avoid large amounts of fiber)
+    final_top_off: 30-50g carbs 30min before start (gel or sports drink)
+  post_race:
+    timing: Within 30-60 minutes
+    composition: 1.2g/kg carbs + 0.3g/kg protein
+    example: Chocolate milk, recovery shake, or real food meal
+generated_date: '2026-09-17 09:44:44'
+_derived:
+- id: FUELING_BASIS
+  field: fueling_basis
+  class: inferred
+  basis: truthful power-basis selection for fueling
+  inputs:
+    power_basis: measured
+    ftp_present: true
+  sensitivity: personal
+  at: '2026-09-17T09:44:44.349054-06:00'
+  revision: 2
+- id: FUELING_HOURLY_RANGE
+  field: carbohydrates.hourly_range
+  class: inferred
+  basis: canonical fueling-policy physiological range
+  inputs:
+    basis: measured_power_duration_body_mass
+    duration_hours: 8.3
+    weight_kg: 75.0
+    ftp_watts: 300
+    intensity_factor: 0.68
+    absolute_work_watts: 204
+    goal_type: finish
+    gut_training_phase: build
+    tolerated_g_per_hour: null
+  sensitivity: sensitive
+  at: '2026-09-17T09:44:44.349054-06:00'
+  revision: 2
+- id: FUELING_HOURLY_TARGET
+  field: carbohydrates.hourly_target
+  class: inferred
+  basis: measured_power_duration_body_mass
+  inputs:
+    basis: measured_power_duration_body_mass
+    duration_hours: 8.3
+    weight_kg: 75.0
+    ftp_watts: 300
+    intensity_factor: 0.68
+    absolute_work_watts: 204
+    goal_type: finish
+    gut_training_phase: build
+    tolerated_g_per_hour: null
+  sensitivity: sensitive
+  at: '2026-09-17T09:44:44.349054-06:00'
+  revision: 2
+- id: FUELING_PRESCRIPTION
+  field: prescription
+  class: inferred
+  basis: measured_power_duration_body_mass
+  inputs:
+    basis: measured_power_duration_body_mass
+    duration_hours: 8.3
+    weight_kg: 75.0
+    ftp_watts: 300
+    intensity_factor: 0.68
+    absolute_work_watts: 204
+    goal_type: finish
+    gut_training_phase: build
+    tolerated_g_per_hour: null
+  sensitivity: sensitive
+  at: '2026-09-17T09:44:44.349054-06:00'
+  revision: 2
+- id: FUELING_RECOMMENDATIONS
+  field: recommendations
+  class: inferred
+  basis: canonical prescription rendered as athlete-facing recommendations
+  inputs:
+    duration_hours: 8.333333333333334
+    hourly_target: 61
+    total_carbs: 508
+  sensitivity: sensitive
+  at: '2026-09-17T09:44:44.349054-06:00'
+  revision: 2
+- id: FUELING_TIMELINE
+  field: fueling_timeline
+  class: inferred
+  basis: hourly target distributed across modeled event duration and distance
+  inputs:
+    duration_hours: 8.333333333333334
+    hourly_target: 61
+    distance_miles: 100
+  sensitivity: sensitive
+  at: '2026-09-17T09:44:44.349054-06:00'
+  revision: 2
+- id: FUELING_TOTAL_RANGE
+  field: carbohydrates.total_range
+  class: inferred
+  basis: hourly prescription bounds multiplied by modeled event duration
+  inputs:
+    hourly_range:
+    - 54
+    - 68
+    duration_hours: 8.333333333333334
+  sensitivity: sensitive
+  at: '2026-09-17T09:44:44.349054-06:00'
+  revision: 2
+- id: FUELING_TOTAL_TARGET
+  field: carbohydrates.total_grams
+  class: inferred
+  basis: hourly prescription multiplied by modeled event duration
+  inputs:
+    hourly_target: 61
+    duration_hours: 8.333333333333334
+  sensitivity: sensitive
+  at: '2026-09-17T09:44:44.349054-06:00'
+  revision: 2
+- id: GUT_PHASES
+  field: gut_training.phases
+  class: inferred
+  basis: plan-week inventory of the canonical gut-training progression
+  inputs:
+    plan_weeks: 4
+    prescription:
+      basis: measured_power_duration_body_mass
+      duration_hours: 8.3
+      weight_kg: 75.0
+      ftp_watts: 300
+      intensity_factor: 0.68
+      absolute_work_watts: 204
+      goal_type: finish
+      gut_training_phase: build
+      tolerated_g_per_hour: null
+  sensitivity: sensitive
+  at: '2026-09-17T09:44:44.349054-06:00'
+  revision: 2
+- id: GUT_WEEKLY_PROGRESSION
+  field: gut_training.weekly_progression
+  class: inferred
+  basis: week-indexed canonical gut-training progression
+  inputs:
+    plan_weeks: 4
+    prescription:
+      basis: measured_power_duration_body_mass
+      duration_hours: 8.3
+      weight_kg: 75.0
+      ftp_watts: 300
+      intensity_factor: 0.68
+      absolute_work_watts: 204
+      goal_type: finish
+      gut_training_phase: build
+      tolerated_g_per_hour: null
+  sensitivity: sensitive
+  at: '2026-09-17T09:44:44.349054-06:00'
+  revision: 2
+- id: HYDRATION_TARGET
+  field: recommendations.hydration
+  class: inferred
+  basis: canonical fueling-policy hydration prescription
+  inputs:
+    basis: measured_power_duration_body_mass
+    duration_hours: 8.3
+    weight_kg: 75.0
+    ftp_watts: 300
+    intensity_factor: 0.68
+    absolute_work_watts: 204
+    goal_type: finish
+    gut_training_phase: build
+    tolerated_g_per_hour: null
+  sensitivity: sensitive
+  at: '2026-09-17T09:44:44.349054-06:00'
+  revision: 2
+- id: RACE_CALORIES
+  field: calories
+  class: inferred
+  basis: body mass, modeled duration, course load, sex, and goal model
+  inputs:
+    distance_miles: 100
+    elevation_feet: 0
+    discipline: gravel
+    goal_type: finish
+    weight_kg: 75.0
+    sex: male
+  sensitivity: sensitive
+  at: '2026-09-17T09:44:44.349054-06:00'
+  revision: 2
+- id: RACE_DURATION_HOURS
+  field: race.duration_hours
+  class: inferred
+  basis: race distance, elevation, discipline, and goal pace model
+  inputs:
+    distance_miles: 100
+    elevation_feet: 0
+    discipline: gravel
+    goal_type: finish
+  sensitivity: personal
+  at: '2026-09-17T09:44:44.349054-06:00'
+  revision: 2

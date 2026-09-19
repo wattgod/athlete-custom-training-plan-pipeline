@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Race Simulation — Act 1 of 1 — Dress Rehearsal</name>
+  <description>FUEL:
+Target 59g carbs/hr. Practice this prescription.
+MAIN SET:
+- 15min @ 65% FTP (Z2, RPE 3)
+- 2 x (4x2:50 @ 83% FTP (Z3, RPE 5-6), 0:10 recovery @ 165% FTP (Z5+, RPE 8-9) + 40min @ 66% FTP (Z2, RPE 3))
+- 4x2:50 @ 83% FTP (Z3, RPE 5-6), 0:10 recovery @ 165% FTP (Z5+, RPE 8-9)
+- 15min @ 66% FTP (Z2, RPE 3)
+- 4x2:50 @ 83% FTP (Z3, RPE 5-6), 0:10 recovery @ 165% FTP (Z5+, RPE 8-9)
+- 22min @ 66% FTP (Z2, RPE 3)
+- 10min @ 50% FTP (Z1, RPE 3)
+
+RACE SIMULATION — ACT 1 OF 1
+
+THE UNIT: 4x[2:50 @76-90% (tempo rhythm) + 0:10 @150-180% (micro-surge)] — this is the crux demand of the race: hold tempo and answer sudden surges — no supplied climbing profile to shape this any other way.
+
+THE SHAPE: 4 units across 1.9hr of Z2 — Act 1 of 1. Each act packs them tighter; I've built it so race day is the only day you do the full count.
+
+AUDIBLE: if the legs are gone after unit 3, skip the remaining surges and ride the tempo blocks</description>
+  <sportType>bike</sportType>
+  <workout>
+    <SteadyState Duration="900" Power="0.65" />
+    <IntervalsT Repeat="4" OnDuration="170" OnPower="0.83" OffDuration="10" OffPower="1.65" />
+    <SteadyState Duration="2400" Power="0.66" />
+    <IntervalsT Repeat="4" OnDuration="170" OnPower="0.83" OffDuration="10" OffPower="1.65" />
+    <SteadyState Duration="2400" Power="0.66" />
+    <IntervalsT Repeat="4" OnDuration="170" OnPower="0.83" OffDuration="10" OffPower="1.65" />
+    <SteadyState Duration="900" Power="0.66" />
+    <IntervalsT Repeat="4" OnDuration="170" OnPower="0.83" OffDuration="10" OffPower="1.65" />
+    <SteadyState Duration="1320" Power="0.66" />
+    <SteadyState Duration="600" Power="0.50" />
+  </workout>
+</workout_file>

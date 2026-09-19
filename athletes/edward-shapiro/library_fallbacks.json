@@ -1,0 +1,200 @@
+[
+  {
+    "plan_week": 4,
+    "day": "Tue",
+    "canonical_name": "VO2max Extended",
+    "role": "intensity",
+    "phase": "build"
+  },
+  {
+    "plan_week": 4,
+    "day": "Thu",
+    "canonical_name": "Blended VO2max and G Spot",
+    "role": "intensity",
+    "phase": "build"
+  },
+  {
+    "plan_week": 5,
+    "day": "Thu",
+    "canonical_name": "Blended VO2max and G Spot",
+    "role": "intensity",
+    "phase": "build"
+  },
+  {
+    "plan_week": 6,
+    "day": "Fri",
+    "canonical_name": "Cadence Work",
+    "role": "filler",
+    "phase": "taper"
+  },
+  {
+    "item_id": 14355843,
+    "library_key": "endurance_z2_short",
+    "name": "This is Uncomfortable",
+    "flags": [
+      "lint_manual_review"
+    ],
+    "lint_duration_claim": null,
+    "lint_rpe_conflict": null,
+    "lint_bookend_intensity": null,
+    "reason": "lint_excluded",
+    "canonical_name": "Endurance",
+    "plan_week": 1,
+    "day": "Wed",
+    "role": "filler",
+    "phase": "base"
+  },
+  {
+    "item_id": 14355844,
+    "library_key": "endurance_z2_short",
+    "name": "This is Uncomfortable",
+    "flags": [
+      "lint_manual_review"
+    ],
+    "lint_duration_claim": null,
+    "lint_rpe_conflict": null,
+    "lint_bookend_intensity": null,
+    "reason": "lint_excluded",
+    "canonical_name": "Endurance",
+    "plan_week": 1,
+    "day": "Wed",
+    "role": "filler",
+    "phase": "base"
+  },
+  {
+    "item_id": 14356048,
+    "library_key": "endurance_z2_short",
+    "name": "Z2",
+    "flags": [
+      "lint_stale_plan_context"
+    ],
+    "lint_duration_claim": null,
+    "lint_rpe_conflict": null,
+    "lint_bookend_intensity": null,
+    "reason": "lint_excluded",
+    "canonical_name": "Endurance",
+    "plan_week": 1,
+    "day": "Wed",
+    "role": "filler",
+    "phase": "base"
+  },
+  {
+    "item_id": 14356050,
+    "library_key": "endurance_with_work",
+    "name": "Blocks 2h59",
+    "flags": [
+      "lint_stale_plan_context"
+    ],
+    "lint_duration_claim": null,
+    "lint_rpe_conflict": null,
+    "lint_bookend_intensity": null,
+    "reason": "lint_excluded",
+    "canonical_name": "Endurance Blocks",
+    "plan_week": 2,
+    "day": "Sat",
+    "role": "long_ride",
+    "phase": "base"
+  },
+  {
+    "item_id": 14356051,
+    "library_key": "endurance_with_work",
+    "name": "Blocks 3h00",
+    "flags": [
+      "lint_stale_plan_context"
+    ],
+    "lint_duration_claim": null,
+    "lint_rpe_conflict": null,
+    "lint_bookend_intensity": null,
+    "reason": "lint_excluded",
+    "canonical_name": "Endurance Blocks",
+    "plan_week": 2,
+    "day": "Sat",
+    "role": "long_ride",
+    "phase": "base"
+  },
+  {
+    "item_id": 14356052,
+    "library_key": "endurance_z2_short",
+    "name": "1h40 Z2",
+    "flags": [
+      "lint_stale_plan_context"
+    ],
+    "lint_duration_claim": null,
+    "lint_rpe_conflict": null,
+    "lint_bookend_intensity": null,
+    "reason": "lint_excluded",
+    "canonical_name": "Endurance",
+    "plan_week": 2,
+    "day": "Wed",
+    "role": "filler",
+    "phase": "base"
+  },
+  {
+    "item_id": 14356053,
+    "library_key": "endurance_with_work",
+    "name": "+ Race Surges 4h09",
+    "flags": [
+      "lint_stale_plan_context"
+    ],
+    "lint_duration_claim": null,
+    "lint_rpe_conflict": null,
+    "lint_bookend_intensity": null,
+    "reason": "lint_excluded",
+    "canonical_name": "Endurance",
+    "plan_week": 1,
+    "day": "Sat",
+    "role": "long_ride",
+    "phase": "base"
+  },
+  {
+    "item_id": 14356246,
+    "library_key": "skills",
+    "name": "Base - + Heat Training",
+    "flags": [
+      "lint_manual_review"
+    ],
+    "lint_duration_claim": null,
+    "lint_rpe_conflict": null,
+    "lint_bookend_intensity": null,
+    "reason": "lint_excluded",
+    "canonical_name": "Endurance Blocks",
+    "plan_week": 2,
+    "day": "Sat",
+    "role": "long_ride",
+    "phase": "base"
+  },
+  {
+    "item_id": 14356254,
+    "library_key": "skills",
+    "name": "Better Late Than Cadence",
+    "flags": [
+      "lint_manual_review"
+    ],
+    "lint_duration_claim": null,
+    "lint_rpe_conflict": null,
+    "lint_bookend_intensity": null,
+    "reason": "lint_excluded",
+    "canonical_name": "Endurance Blocks",
+    "plan_week": 1,
+    "day": "Sun",
+    "role": "filler",
+    "phase": "base"
+  },
+  {
+    "item_id": 14356260,
+    "library_key": "skills",
+    "name": "General + HC (TT bike)",
+    "flags": [
+      "lint_manual_review"
+    ],
+    "lint_duration_claim": null,
+    "lint_rpe_conflict": null,
+    "lint_bookend_intensity": null,
+    "reason": "lint_excluded",
+    "canonical_name": "Endurance",
+    "plan_week": 1,
+    "day": "Wed",
+    "role": "filler",
+    "phase": "base"
+  }
+]

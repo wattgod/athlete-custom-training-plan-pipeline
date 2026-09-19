@@ -38,15 +38,15 @@
     }
   },
   "boulder_roubaix": {
-    "aid_stations": "Neutral support based on volunteer availability \u2014 unlikely. Self-supported. Bring pump, spare tube, and do a bolt check.",
+    "aid_stations": "Neutral support based on volunteer availability — unlikely. Self-supported. Bring pump, spare tube, and do a bolt check.",
     "features": [
-      "Unpaved county roads \u2014 ranging from smooth to extremely rutted depending on weather",
+      "Unpaved county roads — ranging from smooth to extremely rutted depending on weather",
       "Rolling terrain with no sustained major climbs but constant undulation",
-      "Mixed-surface transitions between pavement and dirt \u2014 the defining tactical element",
+      "Mixed-surface transitions between pavement and dirt — the defining tactical element",
       "Winding curves through North Boulder County open space and farmland",
       "New 2026 finish along Boulder Feeder Canal and across reservoir dams"
     ],
-    "surface": "61% unpaved, 39% paved (2026 course). The unpaved sections are real working county and farm roads \u2014 not manicured gravel. Surface quality ranges from smooth hard-pack to deeply rutted washboard depending on weather conditions leading up to race day. The 2026 course adds a challenging finish along the Boulder Feeder Canal and across the Boulder Reservoir dams."
+    "surface": "61% unpaved, 39% paved (2026 course). The unpaved sections are real working county and farm roads — not manicured gravel. Surface quality ranges from smooth hard-pack to deeply rutted washboard depending on weather conditions leading up to race day. The 2026 course adds a challenging finish along the Boulder Feeder Canal and across the Boulder Reservoir dams."
   },
   "dirty_kanza_200": {
     "aid_stations": "2 full checkpoints + 2 water oases. Everything between those points is on you, your crew, and whatever you can fix in the ditch.",
@@ -110,7 +110,7 @@
       "Red dirt roads that can be chunky in sections. If the mud gets wet, it becomes very problematic for traction and bike handling.",
       "Surprisingly not sketchy on descents despite being DIY roads, though riders report being puckered up on the descents due to conditions."
     ],
-    "surface": "98-99% unpaved Oklahoma red clay (iron oxide). Hard-pack when dry = slick center tread tires work well. 'Peanut butter mud' when wet\u2014wheels stop spinning. Not the chunky gravel of Unbound.",
+    "surface": "98-99% unpaved Oklahoma red clay (iron oxide). Hard-pack when dry = slick center tread tires work well. 'Peanut butter mud' when wet—wheels stop spinning. Not the chunky gravel of Unbound.",
     "top_tire": {
       "name": "Schwalbe G-One Ultrabite",
       "width_mm": 40
@@ -125,6 +125,24 @@
       "name": "Specialized Pathfinder Pro",
       "width_mm": 38
     }
+  },
+  "shawangunk_grit": {
+    "aid_stations": "Four on the 50.4-mile course: mile 12.4 (Spring Farm), 25 (Home Farm Circle), 35.7 (Welcome Boulder), 43.1 (Gravel Yard).",
+    "features": [
+      "Lenape Climb (Strava-timed segment: 1.47 mi, 433 ft, 5.6% avg, pitches 2-13%)",
+      "Climb to Sky Top tower on the Shawangunk Ridge",
+      "Mandatory dismount / bike-hike up cedar steps near the Million Dollar View",
+      "Optional technical single-track at ~mile 28 (Old Pasture Loop bypass avoids it)",
+      "Loose-rock carriage-road descents",
+      "Calm, controlled mass start at 8:30 am, 'Goldilocks' lineup by speed",
+      "Cutoff 2:00 pm at mile 31; finish by 3:30 pm"
+    ],
+    "rider_intel_notes": [
+      "Organizer: 'This is not a race; think of it as a super challenging fun ride' -- the only clock is the Lenape Climb Strava segment.",
+      "Organizer: 'No road bikes' -- gravel, cyclocross or mountain bike; bells recommended, carriage roads are shared with hikers and climbers."
+    ],
+    "source": "mohonkpreserve.org/grit/course-description and /grit/registration, bikereg.com/grit, read 2026-09-17",
+    "surface": "About 98-99% gravel once you enter Mohonk Preserve at mile two: historic carriage roads, rough and steep in spots, loose rock especially on the descents. Two miles of public road behind a pace car at the start."
   },
   "unbound_gravel_100": {
     "aid_stations": "1 full checkpoint (Council Grove, ~mi 50)",

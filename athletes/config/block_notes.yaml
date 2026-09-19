@@ -1,61 +1,235 @@
 # Block Notes — exact coaching text per week type
 # Source: block-builder references/block-notes.md
 # Placed on Monday of each week in the plan
+#
+# Each week type is a LIST of variations. Entry [0] is the canonical text
+# (Matti's original, byte-identical — never edit it). Entries [1:] are
+# rotation variations added 2026-08-29 so an athlete on a long plan doesn't
+# read the identical wall every load/recovery/etc. week. Same physiological
+# purpose and behavioural rules across every variation of a type — only the
+# expression changes. All variations pass ae_lint.lint_voice (AE-9.11) with
+# zero findings; see test_delivery_notes.py::test_block_note_variations_*.
+# Entry [0] is exempt from that gate (see docs note below) — it predates
+# AE-9.11 (ratified same day) and is preserved verbatim by design.
 
-load: |
-  LOAD WEEK — Your training load is higher than average. You're pushing for increased fitness through harder training than your body is used to. Mostly through increased weekly training time; sometimes more intensity. Rarely both.
+load:
+  - |
+    LOAD WEEK — Your training load is higher than average. You're pushing for increased fitness through harder training than your body is used to. Mostly through increased weekly training time; sometimes more intensity. Rarely both.
 
-  To succeed:
-  1. Prioritize training — this is the week that counts
-  2. Eat more, especially carbs
-  3. Drink to thirst and keep sodium up — recovery days included
-  4. Prioritize sleep (8+ hours)
-  5. Monk mode — minimize social distractions
+    To succeed:
+    1. Prioritize training — this is the week that counts
+    2. Eat more, especially carbs
+    3. Drink to thirst and keep sodium up — recovery days included
+    4. Prioritize sleep (8+ hours)
+    5. Monk mode — minimize social distractions
 
-  By the end of the week, you should feel TIRED but not DESTROYED.
+    By the end of the week, you should feel TIRED but not DESTROYED.
+  - |
+    LOAD WEEK — I'm asking for more than usual this week. Mostly more time on the bike, sometimes more intensity, rarely both at once.
 
-medium: |
-  MEDIUM WEEK — Training load stays fairly constant. The purpose is to sustain your load but shift the composition of workouts.
+    To succeed:
+    1. I want this week prioritized above everything else on your schedule
+    2. Eat more, especially carbs
+    3. Drink to thirst and keep sodium up, recovery days included
+    4. Sleep 8+ hours
+    5. Cut social distractions — monk mode
 
-  To succeed:
-  1. Don't be tempted to do extra training
-  2. Stay on top of nutrition, hydration, and sleep
-  3. Pay attention to workouts — many seem like repeats but have an extra set or differ slightly
+    I want you tired by Sunday, not destroyed.
+  - |
+    LOAD WEEK — I've built more work into this week than you're used to. Usually more hours, occasionally more intensity, almost never both.
 
-  End of week goal: Neutral — not too tired, not too rested.
+    To succeed:
+    1. Treat training as the priority this week
+    2. Eat more, carbs especially
+    3. Drink to thirst, keep sodium up on recovery days too
+    4. Get 8+ hours of sleep
+    5. Minimize social plans — protect your energy
 
-recovery: |
-  RECOVERY WEEK — Training load is lower. You're giving your body time to repair stress from load weeks so it can adapt.
+    Finish the week tired, not destroyed. That's the target I'm giving you.
+  - |
+    LOAD WEEK — Your numbers go up this week. More volume most of the time, more intensity occasionally, both together rarely.
 
-  To succeed:
-  1. Don't train more than planned
-  2. Don't train harder than planned
-  3. Don't be afraid to shorten workouts
-  4. Do as much restorative movement as you want (yoga, stretching, walking)
-  5. Great time to prioritize other things than training
+    To succeed:
+    1. Nothing beats this week on your calendar
+    2. Eat more — carbs first
+    3. Drink to thirst; sodium stays up on rest days too
+    4. 8+ hours of sleep, no negotiating
+    5. Monk mode: skip the social stuff
 
-  The goal: feel refreshed and excited to train harder again.
+    I'm looking for tired, not destroyed, when Sunday comes.
 
-race: |
-  RACE WEEK — Training prioritizes showing up rested, fueled, and ready to race.
+medium:
+  - |
+    MEDIUM WEEK — Training load stays fairly constant. The purpose is to sustain your load but shift the composition of workouts.
 
-  To succeed:
-  1. Don't train more than planned before the race
-  2. Don't train harder than planned before the race
-  3. Don't radically change anything, especially your diet
-  4. Spend time during the week on logistics
-  5. Double down on sleep
-  6. Minimize social life 1-2 days out
+    To succeed:
+    1. Don't be tempted to do extra training
+    2. Stay on top of nutrition, hydration, and sleep
+    3. Pay attention to workouts — many seem like repeats but have an extra set or differ slightly
 
-  The goal: perform well with good energy and medium-low fatigue.
+    End of week goal: Neutral — not too tired, not too rested.
+  - |
+    MEDIUM WEEK — I'm holding your load steady this week. What changes is the mix of work, not the amount.
 
-uber_load: |
-  UBER LOAD WEEK — Training load is significantly higher than average. This is a deliberate overreach — you'll end the week feeling depleted.
+    To succeed:
+    1. Don't add extra training — I've written what I want
+    2. Stay on top of nutrition, hydration, and sleep
+    3. Read each workout closely — some look like repeats but carry an extra set or a small change
 
-  IMPORTANT: By the end of the week, you should feel DESTROYED. This is a calculated risk. The adaptation comes in the recovery week that follows. If you don't recover properly after this, the whole thing backfires.
+    I want you neutral by Sunday: not too tired, not too rested.
+  - |
+    MEDIUM WEEK — Same load as last week, different shape. I'm shifting the composition, not the volume.
 
-  Rules:
-  1. Sleep is non-negotiable (9+ hours)
-  2. Eat everything in sight
-  3. Cancel all optional social commitments
-  4. If anything feels wrong (sharp pain, illness), STOP immediately
+    To succeed:
+    1. Resist the urge to bolt on extra work
+    2. Keep nutrition, hydration, and sleep dialed in
+    3. Check each session carefully — a lot of these repeat with one extra set or a small twist
+
+    My target for the end of the week: neutral. Not wrecked, not fresh.
+  - |
+    MEDIUM WEEK — I want the load held constant and the work mixed up.
+
+    To succeed:
+    1. No extra sessions — stick to what's written
+    2. Nutrition, hydration, and sleep stay a priority
+    3. Look closely at each workout — several repeat with a small addition you could miss
+
+    Land the week neutral: not too tired, not too fresh. That's what I'm after.
+
+recovery:
+  - |
+    RECOVERY WEEK — Training load is lower. You're giving your body time to repair stress from load weeks so it can adapt.
+
+    To succeed:
+    1. Don't train more than planned
+    2. Don't train harder than planned
+    3. Don't be afraid to shorten workouts
+    4. Do as much restorative movement as you want (yoga, stretching, walking)
+    5. Great time to prioritize other things than training
+
+    The goal: feel refreshed and excited to train harder again.
+  - |
+    RECOVERY WEEK — I've dropped your load this week. The point is to let your body repair what the last few load weeks cost it.
+
+    To succeed:
+    1. Don't train more than what's written
+    2. Don't train harder than what's written
+    3. Shorten a workout if it's not landing right — I won't mind
+    4. Take all the restorative movement you want: yoga, stretching, walking
+    5. Use the extra time on the rest of your life
+
+    I want you refreshed and itching to train hard again by the end of it.
+  - |
+    RECOVERY WEEK — I've written this week light on purpose. Your body needs the space to adapt to what came before.
+
+    To succeed:
+    1. Stick to the planned load — don't add to it
+    2. Stick to the planned intensity — don't push it
+    3. Cut a session short if that's what your body needs
+    4. Yoga, stretching, walking — take as much as you want
+    5. Good week to give attention to everything that isn't training
+
+    By the end I want you refreshed, ready to go hard again.
+  - |
+    RECOVERY WEEK — Load comes down this week so your body can catch up on the adaptation the last few weeks earned.
+
+    To succeed:
+    1. Don't exceed what's planned
+    2. Don't push harder than what's planned
+    3. Shortening a workout is fine — better fine than forced
+    4. Restorative movement is unlimited: yoga, stretching, walking
+    5. Spend the freed-up time on life outside training
+
+    My goal for you: refreshed, and wanting to train hard again.
+
+race:
+  - |
+    RACE WEEK — Training prioritizes showing up rested, fueled, and ready to race.
+
+    To succeed:
+    1. Don't train more than planned before the race
+    2. Don't train harder than planned before the race
+    3. Don't radically change anything, especially your diet
+    4. Spend time during the week on logistics
+    5. Double down on sleep
+    6. Minimize social life 1-2 days out
+
+    The goal: perform well with good energy and medium-low fatigue.
+  - |
+    RACE WEEK — Everything I've written this week is about arriving rested, fueled, and ready.
+
+    To succeed:
+    1. Don't train more than what's planned before the race
+    2. Don't train harder than what's planned before the race
+    3. Don't change anything, especially your diet — now is not the time to experiment
+    4. Use the week to handle logistics
+    5. Sleep more than usual
+    6. Cut social plans 1-2 days out
+
+    I want you racing with good energy and medium-low fatigue. That's the goal.
+  - |
+    RACE WEEK — I'm not adding fitness this week. I'm getting you to the start line rested, fueled, and ready.
+
+    To succeed:
+    1. Stick to the planned volume, nothing extra before the race
+    2. Stick to the planned intensity, nothing harder before the race
+    3. Keep your diet exactly as it's been — no changes
+    4. Handle logistics now, while there's time
+    5. Sleep is the priority
+    6. Pull back on social plans 1-2 days out
+
+    I want good energy and medium-low fatigue on race day.
+  - |
+    RACE WEEK — My only job this week is getting you to the line rested, fueled, and ready to race.
+
+    To succeed:
+    1. Don't train more than what's planned before the race
+    2. Don't train harder than what's planned before the race
+    3. Leave your diet alone, especially now
+    4. Use the week for logistics — get ahead of it
+    5. Sleep comes first
+    6. Scale back your social life 1-2 days out
+
+    I'm aiming for good energy and medium-low fatigue when the race starts.
+
+uber_load:
+  - |
+    UBER LOAD WEEK — Training load is significantly higher than average. This is a deliberate overreach — you'll end the week feeling depleted.
+
+    IMPORTANT: By the end of the week, you should feel DESTROYED. This is a calculated risk. The adaptation comes in the recovery week that follows. If you don't recover properly after this, the whole thing backfires.
+
+    Rules:
+    1. Sleep is non-negotiable (9+ hours)
+    2. Eat everything in sight
+    3. Cancel all optional social commitments
+    4. If anything feels wrong (sharp pain, illness), STOP immediately
+  - |
+    UBER LOAD WEEK — I've pushed this week well past your usual load. This is a deliberate overreach and you'll finish it depleted.
+
+    IMPORTANT: I want you DESTROYED by the end of this week. That's the calculated risk. The adaptation shows up in the recovery week I've built right after it — if you don't recover properly there, this whole week backfires.
+
+    Rules:
+    1. Sleep 9+ hours — non-negotiable
+    2. Eat everything in sight
+    3. Cancel every optional social commitment
+    4. Sharp pain or illness means STOP immediately and message me
+  - |
+    UBER LOAD WEEK — This week's load is well above what I normally give you. It's a deliberate overreach, and you should end it depleted.
+
+    IMPORTANT: I need you DESTROYED by Sunday. I'm taking that risk on purpose — the payoff is in the recovery week right after. Skip the recovery and the whole thing backfires.
+
+    Rules:
+    1. 9+ hours of sleep, every night, no exceptions
+    2. Eat everything in sight
+    3. Cancel every optional social commitment
+    4. Sharp pain or illness: STOP immediately
+  - |
+    UBER LOAD WEEK — I've loaded this week harder than any other. It's an intentional overreach — you're supposed to finish it wrecked.
+
+    IMPORTANT: DESTROYED is the target by the end of the week. I'm taking this risk on purpose; the adaptation lands in the recovery week that follows. Skip that recovery and the whole overreach is wasted.
+
+    Rules:
+    1. Sleep is not optional — 9+ hours
+    2. Eat everything in sight
+    3. Cancel all optional social plans
+    4. Anything feels wrong — sharp pain, illness — STOP immediately

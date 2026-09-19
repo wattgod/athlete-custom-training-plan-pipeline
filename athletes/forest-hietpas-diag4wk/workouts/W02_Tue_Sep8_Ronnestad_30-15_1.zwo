@@ -1,0 +1,37 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Ronnestad 30-15 (1 of 2)</name>
+  <description>FUEL:
+Normal meal ~2h before. One bottle, 40-50g carbs. Done.
+
+WARM-UP:
+-12min ramp Z1->Z2, then 2x1min @113% with 1min easy
+
+MAIN SET:
+-3 sets of 11x (30s @110% FTP / 15s @50%)
+-3min @50% between sets
+-Cadence: 90-110rpm, seated and smooth
+
+EXECUTION:
+-Hit target on every 30s. The float is a true easy spin. End a set if you can't hold the 30s power in its back third.
+
+NUTRITION:
+-30-60g carbs/hr.
+
+HYDRATION:
+-500-750ml/hr with electrolytes.
+
+RPE guide: 113% FTP -> RPE 8-9; 110% FTP -> RPE 8-9; 50% FTP -> RPE 3</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="720" PowerLow="0.50" PowerHigh="0.70" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="2" OnDuration="60" OnPower="1.13" CadenceLow="105" CadenceHigh="105" OffDuration="60" OffPower="0.50"/>
+    <IntervalsT Repeat="11" OnDuration="30" OnPower="1.10" CadenceLow="110" CadenceHigh="110" OffDuration="15" OffPower="0.50"/>
+    <SteadyState Duration="180" Power="0.50" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="11" OnDuration="30" OnPower="1.10" CadenceLow="110" CadenceHigh="110" OffDuration="15" OffPower="0.50"/>
+    <SteadyState Duration="180" Power="0.50" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="11" OnDuration="30" OnPower="1.10" CadenceLow="110" CadenceHigh="110" OffDuration="15" OffPower="0.50"/>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

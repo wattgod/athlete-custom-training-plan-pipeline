@@ -293,7 +293,21 @@ intensive (threshold+) ≤10–15%. Both bands cannot sit at their maxima in
 the same week without violating AE-2.2, which governs. Sweet-spot ≤3
 days/week — fewer, fuller sessions. (R15, R18)
 
-**AE-2.7 — Session floors (ruling Q5).** [ratified] 45-min session floor;
+**AE-2.7 — Session floors (ruling Q5; amended 2026-09-17).** [ratified]
+**60-min session floor** for every riding session; 45 min only when the
+athlete's questionnaire or correspondence explicitly asks for short sessions
+(`weekly_availability.short_sessions_ok`), and a day whose stated cap is
+under the floor is itself that request. Race-week openers, recovery spins,
+and the AE-1.10 novice branch are exempt. A session under the floor is never
+shipped as a stub: the block-builder grows it to the athlete's weekday
+target (weekly hours minus the long ride, spread over the other riding days,
+clamped 60-120 min -- "~1.5 h on a weekday for a 9-5, ~10 h/wk rider"),
+extending the Z2 portions, and may overshoot the weekly budget to do so.
+Matti 2026-09-17: "there should be a gate for 35 minute, 40 minute workouts
+unless the athlete's questionnaire or some correspondence explicitly
+requests that"; "you're being too anal about prescribed duration ... which
+is causing you to make up or pick stupid workouts to fit the overall volume
+or schedule requests". Previous text: 45-min floor;
 recovery rides, openers, and the AE-1.10 novice branch are exempt. Sessions
 tagged aerobic-development carry a 90-min floor (adaptations switch on
 between 45 and 90 min — F7). Time-crunched sessions are complete on their
@@ -748,6 +762,57 @@ specificity and speed, not prose. Source: Matti's words verbatim,
 like that, less verbose, more to the point" — with the approved Jesse
 email (~160 words, numbered facts) standing as the reference exemplar.
 
+### 9c addendum — round 4 rulings (Matti, 2026-08-29)
+
+**AE-9.11 — First-person coach voice on every athlete-facing surface.**
+Every athlete-facing surface — calendar notes, workout descriptions,
+pre-activity comments, day-off cards, race cards — is written by the coach
+in FIRST PERSON to the athlete: "I want", "I've left", "I'm not moving
+it", "tell me." Impersonal/third-person construction and passive
+coach-absent phrasing (e.g. "From your calendar, all day. Nothing assigned
+today…") are defects. Compose with AE-9.10 — terse AND first person, not
+either/or.
+
+Coach-internal metadata must NEVER appear in athlete-facing copy: rule IDs
+and AE citations, config field names (`week_type`, `coached_block`,
+`library_key`), file paths (`profile.yaml`), engine/phase jargon
+(`archetype`, `RUN-LIB`, `Motoren`), dates-of-ruling and FTP provenance
+notes (e.g. "FTP re-anchored at 300W (coach-confirmed 2026-08-23)"), and
+quoted coach speech about the athlete (e.g. `"300 is about right"`).
+Internal decision context belongs in a coach-only field
+(`coached_block.coach_notes`), never rendered to the athlete.
+
+Source: Matti Rowe, 2026-08-29, verbatim — "you have to write it in first
+person" and "in the future that needs to be a gate." Two real defects in
+Forest Hietpas's generated block prompted the ruling: impersonal
+third-person notes standing in for Motoren's own first-person voice, and
+`coached_block.focus` internal metadata (FTP provenance, week-typing
+rationale) rendered verbatim into the athlete's Week-1 note. Computable
+gate: `ae_lint.lint_voice` (rule tag `AE-9.11`), on by default, no flag —
+see `athletes/scripts/ae_lint.py`.
+
+**AE-9.11a — the voice rule governs narrative copy, not tactical
+instruction.** Numbered and bulleted instruction lines are exempt from the
+impersonal-construction check. A tactical card — a race-day brief, a set of
+numbered race instructions — states facts and gives direction: "Wind decides
+this, not the climbs. Sit in and don't pull for free." There is no coaching
+judgment in a line like that to attribute to anyone, so there is no natural
+place for the coach's "I", and forcing one in produces worse copy. The rule
+exists for the prose that FRAMES a block and says what the coach wants —
+"I've built more work into this week than you're used to." The
+first-person marker still counts wherever it appears in the card; only the
+second-person address that *demands* one is restricted to prose lines.
+
+Source: Matti Rowe, 2026-08-29, verbatim — "The rule is over broad." The
+trigger was Eric Quiat's Mad Gravel race-day brief (TP note 95329009): a
+card of facts plus four numbered race instructions that Matti had just
+hand-edited into exactly the shape he wanted, which AE-9.11 then flagged
+because his edits removed the last first-person marker. Implementation:
+`ae_lint._prose_only` strips list lines before the second-person search.
+Measured effect at ratification — Eric's brief 1 finding → 0; the 524-item
+ZWO library unchanged at 1; Judd Pulley's v2 payloads unchanged at 5 (all
+five are genuine narrative prose lacking voice, correctly still caught).
+
 ## 9b. Hook → module map
 
 The section-heading hook names are conceptual; the concrete modules (all
@@ -864,3 +929,89 @@ Verification debts (round 2): Moore's W′bal critique NOT found (expected
 but unlocated — needs podcast transcripts); hard-start VO2 claims
 UNVERIFIED (blocked fetches); ramp-test critique rationale is community
 paraphrase only. None of these may be cited as Moore's position.
+
+---
+
+## 12. OPEN CONTRADICTIONS — surfaced, not resolved
+
+Live disagreements between a ratified rule and shipping behavior. Recorded
+here rather than settled unilaterally, per the house rule that
+contradictions go to Matti and are never silently resolved.
+
+### C1 — AE-9.11 vs. the third-person PURPOSE line (opened 2026-08-29)
+
+**The conflict.** AE-9.11 names "workout descriptions" as an athlete-facing
+surface that must be written in the coach's first person, and calls
+third-person construction a defect. But the `PURPOSE:` line inside those
+descriptions is third-person explanatory prose, and it ships that way today:
+
+- "Maximum aerobic power—the engine that drives race-winning attacks."
+- "Easy riding builds mitochondrial density and fat oxidation — the
+  foundation everything else rests on."
+
+Both are current engine output, reachable by athletes and now also by the
+public plan preview (`webhook/preview_contract.py`, which binds preview copy
+to the engine's real authored PURPOSE text rather than composing its own —
+better provenance, and the reason this surfaced).
+
+**Why the gate is silent.** `ae_lint.lint_voice` only warns on
+*second-person* prose lacking a first-person marker
+(`athletes/scripts/ae_lint.py`). A purely third-person sentence with no
+"you" trips nothing. The rule as written is broader than the gate that
+enforces it, so "ae-lint is green" does not mean "AE-9.11 is satisfied."
+
+**Recommendation (mine, not ratified).** Carve the explanatory case out the
+same way AE-9.11a already carved out tactical instruction. AE-9.11a's
+reasoning was that a line carrying no coaching judgment has no natural place
+for the coach's "I", and forcing one produces worse copy. A statement of
+physiology — what easy riding does to mitochondria — is the same class: it
+is true regardless of who is coaching. The rule's real target is the prose
+that FRAMES the work and says what the coach wants, which is exactly where
+first person belongs and where the gate already fires.
+
+The alternative — rewriting every PURPOSE line in the library into first
+person — is a large content migration, and it would produce sentences like
+"I want your mitochondrial density raised," which reads worse than the copy
+it replaces.
+
+**Blocked on:** Matti. Until he rules, the third-person PURPOSE copy stays
+as-is (status quo, not endorsement) and this entry is the record that it was
+seen rather than missed.
+
+### C2 — AE-2.1's hard-minutes floor cannot see an open-effort test (opened 2026-08-29)
+
+**The conflict.** AE-2.1's scoping addendum (sol programming review,
+2026-08-24) says testing weeks count their test efforts toward the
+90-structured-hard-minute load-week floor, and
+`post_render_validator._step_hard_seconds` has a branch for exactly that: a
+zero-target step in a field-test session counts as hard time.
+
+That branch never fires on real plans. Field tests reach `plan_ir` with no
+structure at all — Judd Pulley's and Steve Wagner's `FTP Test` and
+`Anaerobic Test` sessions carry `structure: {}`. `_field_test_metric`
+identifies them correctly; there is simply nothing to measure. A testing
+week therefore reports near-zero hard minutes and trips the floor.
+
+**Observed.** Every load week in every current plan sits far under the
+floor: Judd W1 0.0 / W2 5.0 / W3 10.3; Forest W1 0.0 / W2 18.5 / W3 21.5;
+Steve W1 2.0 / W2 14.0 / W3 24.0 (minutes, against a 90-minute floor). The
+gate is WARNING-severity, so these ship — but a gate that fires on
+everything is a gate nobody reads.
+
+**The real question is not a bug fix.** An open-effort test is deliberately
+unstructured (AE-8.4d: no numeric target can be trusted, so none is
+written). Crediting it toward a *structured*-minutes floor needs a rule for
+how many minutes an unstructured maximal effort is worth. Options: credit
+the card's planned duration; credit a fixed nominal (e.g. 20 min for an FTP
+test protocol); or exempt testing weeks from the floor outright the way
+recovery/taper/race weeks already are.
+
+**Recommendation (mine, not ratified).** Exempt testing weeks, matching how
+every other non-load week type is handled, and keep the floor meaningful for
+the weeks it was written for. The separate finding — that genuine load weeks
+are running 10–24 hard minutes against a 90-minute floor — is a real
+programming signal and should not be dissolved by whatever fixes the testing
+week.
+
+**Blocked on:** Matti. Note the second half is the more important half: if
+those load-week numbers are right, the floor is not being met anywhere.

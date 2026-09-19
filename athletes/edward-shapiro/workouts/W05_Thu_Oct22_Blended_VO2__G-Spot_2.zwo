@@ -1,0 +1,44 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Blended VO2 + G-Spot (2 of 2)</name>
+  <description>[HIGH FUEL: Target 65g carbs/hr. Practice this prescription.]
+
+WARM-UP:
+-15min building from Z1 to Z2
+
+MAIN SET:
+- 5min @ 85% FTP (Z3, RPE 5-6)
+- 3 x (5x0:30 @ 125% FTP (Z5+, RPE 8-9), 0:30 recovery @ 50% FTP (Z1, RPE 3) + 10min @ 90% FTP (Z4, RPE 6-7) + 4min @ 55% FTP (Z2, RPE 3))
+- 5x0:30 @ 125% FTP (Z5+, RPE 8-9), 0:30 recovery @ 50% FTP (Z1, RPE 3)
+- 10min @ 90% FTP (Z4, RPE 6-7)
+-Cadence: 95-105rpm (race cadence, controlled power)
+-Position: Standing first 15sec of each interval, then seated in drops
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 5/6: Advanced - High training load, pushing limits
+-Blended VO2max and G Spot. Combines 30/30 VO2 intervals with sweet spot work in the same session. This format builds both max aerobic power and sustainable race pace in one efficient workout. Level 5: Extended sets. More work per set. This is where real adaptations lock in.
+
+EXECUTION:
+-Follow every zone change as written and let the recovery steps come all the way down. Make each transition clean before adding pressure.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.70" />
+    <SteadyState Duration="300" Power="0.85" CadenceLow="95" CadenceHigh="105" />
+    <IntervalsT Repeat="5" OnDuration="30" OnPower="1.25" CadenceLow="90" CadenceHigh="100" OffDuration="30" OffPower="0.50" />
+    <SteadyState Duration="600" Power="0.90" CadenceLow="90" CadenceHigh="100" />
+    <SteadyState Duration="240" Power="0.55" CadenceLow="90" CadenceHigh="100" />
+    <IntervalsT Repeat="5" OnDuration="30" OnPower="1.25" CadenceLow="90" CadenceHigh="100" OffDuration="30" OffPower="0.50" />
+    <SteadyState Duration="600" Power="0.90" CadenceLow="90" CadenceHigh="100" />
+    <SteadyState Duration="240" Power="0.55" CadenceLow="90" CadenceHigh="100" />
+    <IntervalsT Repeat="5" OnDuration="30" OnPower="1.25" CadenceLow="90" CadenceHigh="100" OffDuration="30" OffPower="0.50" />
+    <SteadyState Duration="600" Power="0.90" CadenceLow="90" CadenceHigh="100" />
+    <SteadyState Duration="240" Power="0.55" CadenceLow="90" CadenceHigh="100" />
+    <IntervalsT Repeat="5" OnDuration="30" OnPower="1.25" CadenceLow="90" CadenceHigh="100" OffDuration="30" OffPower="0.50" />
+    <SteadyState Duration="600" Power="0.90" CadenceLow="90" CadenceHigh="100" />
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" />
+  </workout>
+</workout_file>

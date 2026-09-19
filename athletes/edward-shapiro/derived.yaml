@@ -1,0 +1,264 @@
+tier: finisher
+plan_weeks: 7
+starting_phase: base_1
+strength_frequency: 0
+equipment_tier: minimal
+risk_factors: []
+exercise_exclusions: []
+bike_constraints: []
+key_day_candidates:
+- saturday
+- sunday
+strength_day_candidates: []
+derived_date: '2026-09-17 12:50:20'
+_derived:
+- id: CLASSIFICATION_BIKE_CONSTRAINTS
+  field: bike_constraints
+  class: inferred
+  basis: current knee injury severity/affects_cycling and injury/movement-limitation
+    notes
+  inputs:
+    rule_set: derive_classifications/bike-constraints-v1
+  sensitivity: sensitive
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_EQUIPMENT_TIER
+  field: equipment_tier
+  class: inferred
+  basis: athlete-reported strength equipment inventory
+  inputs:
+    equipment: null
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_EXCLUSIONS
+  field: exercise_exclusions
+  class: inferred
+  basis: health limitations and available equipment
+  inputs:
+    rule_set: derive_classifications/exclusions-v1
+  sensitivity: sensitive
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_KEY_DAYS
+  field: key_day_candidates
+  class: inferred
+  basis: day availability and key-session suitability
+  inputs:
+    preferred_days:
+    - friday
+    - monday
+    - saturday
+    - sunday
+    - thursday
+    - tuesday
+    - wednesday
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_PLAN_END
+  field: plan_end
+  class: inferred
+  basis: final calendar end boundary
+  inputs:
+    race_date: '2026-11-07'
+    preferred_start: '2026-09-21'
+    calendar_plan_weeks: 7
+    coached_block:
+      phase: build
+      week_types:
+      - load
+      - load
+      - recovery
+      - load
+      - load
+      - taper
+      - race
+      focus: Seven weeks to Shawangunk Grit (50 mi, 4,000 ft, New Paltz). Durability
+        on the Saturday long ride, controlled threshold and climbing-repeat work midweek,
+        one dress rehearsal, then a real taper.
+      coach_notes: 'Age 59 (born ~1967, workbook), TTer phenotype, FTP 270 W (TP threshold,
+        coach-confirmed NP-270-for-an-hour 2026-07-14). Weight ~174 lb / 79 kg (late
+        2025). Long rides land on Saturday in his data (6 of 8 Saturdays since Jun
+        15 were 2.5h+; Sunday only SBT). Rest Mon + Fri as executed all September.
+        Aug 27 email: NOT riding Nationals, family came Sep 7-13 (recovery week already
+        done). Demonstrated load: 7-12 h/wk, Sep block planned ~450-520 TSS/wk, completed
+        76-95%. CTL 58 on Sep 6. Health context: achilles flared on low-cadence work
+        Jul 2025 (torque work reintroduced Sep 2025 and executed cleanly since, incl.
+        Torque - Cadence Clown 2026-09-16); left hamstring = watch item (Aug 2026);
+        toe surgery Dec 2025 healed; TRT since Jan 2026 (context only). Travels for
+        work at short notice (Miami, Paris) -- travel-week cards should survive being
+        cut in half. Workouts must be %FTP (Matti ruling 2026-09-17).'
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_PLAN_START
+  field: plan_start
+  class: inferred
+  basis: final calendar start boundary
+  inputs:
+    race_date: '2026-11-07'
+    preferred_start: '2026-09-21'
+    calendar_plan_weeks: 7
+    coached_block:
+      phase: build
+      week_types:
+      - load
+      - load
+      - recovery
+      - load
+      - load
+      - taper
+      - race
+      focus: Seven weeks to Shawangunk Grit (50 mi, 4,000 ft, New Paltz). Durability
+        on the Saturday long ride, controlled threshold and climbing-repeat work midweek,
+        one dress rehearsal, then a real taper.
+      coach_notes: 'Age 59 (born ~1967, workbook), TTer phenotype, FTP 270 W (TP threshold,
+        coach-confirmed NP-270-for-an-hour 2026-07-14). Weight ~174 lb / 79 kg (late
+        2025). Long rides land on Saturday in his data (6 of 8 Saturdays since Jun
+        15 were 2.5h+; Sunday only SBT). Rest Mon + Fri as executed all September.
+        Aug 27 email: NOT riding Nationals, family came Sep 7-13 (recovery week already
+        done). Demonstrated load: 7-12 h/wk, Sep block planned ~450-520 TSS/wk, completed
+        76-95%. CTL 58 on Sep 6. Health context: achilles flared on low-cadence work
+        Jul 2025 (torque work reintroduced Sep 2025 and executed cleanly since, incl.
+        Torque - Cadence Clown 2026-09-16); left hamstring = watch item (Aug 2026);
+        toe surgery Dec 2025 healed; TRT since Jan 2026 (context only). Travels for
+        work at short notice (Miami, Paris) -- travel-week cards should survive being
+        cut in half. Workouts must be %FTP (Matti ruling 2026-09-17).'
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_PLAN_WEEKS
+  field: plan_weeks
+  class: inferred
+  basis: final calendar week count after start-date constraints
+  inputs:
+    race_date: '2026-11-07'
+    preferred_start: '2026-09-21'
+    calendar_plan_weeks: 7
+    coached_block:
+      phase: build
+      week_types:
+      - load
+      - load
+      - recovery
+      - load
+      - load
+      - taper
+      - race
+      focus: Seven weeks to Shawangunk Grit (50 mi, 4,000 ft, New Paltz). Durability
+        on the Saturday long ride, controlled threshold and climbing-repeat work midweek,
+        one dress rehearsal, then a real taper.
+      coach_notes: 'Age 59 (born ~1967, workbook), TTer phenotype, FTP 270 W (TP threshold,
+        coach-confirmed NP-270-for-an-hour 2026-07-14). Weight ~174 lb / 79 kg (late
+        2025). Long rides land on Saturday in his data (6 of 8 Saturdays since Jun
+        15 were 2.5h+; Sunday only SBT). Rest Mon + Fri as executed all September.
+        Aug 27 email: NOT riding Nationals, family came Sep 7-13 (recovery week already
+        done). Demonstrated load: 7-12 h/wk, Sep block planned ~450-520 TSS/wk, completed
+        76-95%. CTL 58 on Sep 6. Health context: achilles flared on low-cadence work
+        Jul 2025 (torque work reintroduced Sep 2025 and executed cleanly since, incl.
+        Torque - Cadence Clown 2026-09-16); left hamstring = watch item (Aug 2026);
+        toe surgery Dec 2025 healed; TRT since Jan 2026 (context only). Travels for
+        work at short notice (Miami, Paris) -- travel-week cards should survive being
+        cut in half. Workouts must be %FTP (Matti ruling 2026-09-17).'
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_RACE_WEEKDAY
+  field: race_weekday
+  class: inferred
+  basis: weekday derived from the target race date
+  inputs:
+    race_date: '2026-11-07'
+    preferred_start: '2026-09-21'
+    calendar_plan_weeks: 7
+    coached_block:
+      phase: build
+      week_types:
+      - load
+      - load
+      - recovery
+      - load
+      - load
+      - taper
+      - race
+      focus: Seven weeks to Shawangunk Grit (50 mi, 4,000 ft, New Paltz). Durability
+        on the Saturday long ride, controlled threshold and climbing-repeat work midweek,
+        one dress rehearsal, then a real taper.
+      coach_notes: 'Age 59 (born ~1967, workbook), TTer phenotype, FTP 270 W (TP threshold,
+        coach-confirmed NP-270-for-an-hour 2026-07-14). Weight ~174 lb / 79 kg (late
+        2025). Long rides land on Saturday in his data (6 of 8 Saturdays since Jun
+        15 were 2.5h+; Sunday only SBT). Rest Mon + Fri as executed all September.
+        Aug 27 email: NOT riding Nationals, family came Sep 7-13 (recovery week already
+        done). Demonstrated load: 7-12 h/wk, Sep block planned ~450-520 TSS/wk, completed
+        76-95%. CTL 58 on Sep 6. Health context: achilles flared on low-cadence work
+        Jul 2025 (torque work reintroduced Sep 2025 and executed cleanly since, incl.
+        Torque - Cadence Clown 2026-09-16); left hamstring = watch item (Aug 2026);
+        toe surgery Dec 2025 healed; TRT since Jan 2026 (context only). Travels for
+        work at short notice (Miami, Paris) -- travel-week cards should survive being
+        cut in half. Workouts must be %FTP (Matti ruling 2026-09-17).'
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_RISK_FACTORS
+  field: risk_factors
+  class: inferred
+  basis: sleep, stress, injury, and training-history safety rules
+  inputs:
+    rule_set: derive_classifications/risk-v1
+  sensitivity: sensitive
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_STARTING_PHASE
+  field: starting_phase
+  class: inferred
+  basis: plan length and recent training state
+  inputs:
+    plan_weeks: 7
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_STRENGTH_DAYS
+  field: strength_day_candidates
+  class: inferred
+  basis: strength frequency with key-day spacing constraints
+  inputs:
+    strength_frequency: 0
+    key_days:
+    - saturday
+    - sunday
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_STRENGTH_FREQUENCY
+  field: strength_frequency
+  class: inferred
+  basis: tier, experience, recovery, and equipment policy
+  inputs:
+    tier: finisher
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_TIER
+  field: tier
+  class: inferred
+  basis: weekly cycling hours constrained by goal and training history
+  inputs:
+    cycling_hours_target: 9.5
+    goal_type: podium
+    years_structured: 5
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_TIMESTAMP
+  field: derived_date
+  class: inferred
+  basis: classification owner execution time
+  inputs:
+    owner: derive_classifications.py
+  sensitivity: internal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+plan_start: '2026-09-21'
+plan_end: '2026-11-08'
+race_weekday: Saturday

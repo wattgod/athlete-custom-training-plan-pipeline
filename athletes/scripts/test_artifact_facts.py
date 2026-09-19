@@ -192,7 +192,8 @@ def test_race_day_ceiling_note_uses_longest_training_ride_and_threshold():
     assert "RACE-DAY CEILING:" in ceiling
     assert "Final Rehearsal (4.1 hours)" in ceiling
     assert "expected to take 9.3 hours" in ceiling
-    assert "First third conservative, fuel on the timer" in ceiling
+    assert "I want the first third" in ceiling
+    assert "fuel on the timer" in ceiling
     assert "coverable in pieces" in ceiling
 
     documents, manifest, dates = _delivery_calendar(race_hours=6.0)

@@ -466,6 +466,7 @@ def _segment_from_dict(segment: Dict[str, Any]) -> Segment:
 TP_WORKOUT_TYPE_VALUE_ID = {
     'bike': 2,
     'race': 2,   # A-race is a FreeRide-equivalent bike workout in TP terms
+    'run': 3,    # dual-sport athletes: a run is TP workoutTypeId 3, not a bike
     'strength': 9,
     'day_off': 7,
 }
@@ -480,6 +481,8 @@ def _default_tp_kind(session_type: str) -> str:
         return "strength"
     if session_type == "race":
         return "race"
+    if session_type == "run":
+        return "run"
     return "bike"
 
 
@@ -766,9 +769,17 @@ def _build_weeks(
             for day in week_data.get('days', []):
                 if str(day.get('day_name', day.get('day', '')))[:3].title() != raw.get('day'):
                     continue
+                # Dual-sport athletes declare non-bike fixed blocks with
+                # `sport: run` on the recurring session.  Hardcoding cycling
+                # here silently turned every declared run into a bike card --
+                # the reason a runner-cyclist's block could come out bike-only.
+                raw_sport = str(raw.get('sport') or 'cycling').strip().lower()
+                is_run = raw_sport in ('run', 'running')
                 week.sessions.append(Session(
                     date=day.get('date'), title=raw.get('title') or 'Fixed external session',
-                    sport='cycling', type='external_fixed', origin='athlete_fixed',
+                    sport='running' if is_run else 'cycling',
+                    type='external_fixed', origin='athlete_fixed',
+                    tp_kind='run' if is_run else 'bike',
                     duration_s=int(raw.get('duration_min', 0)) * 60,
                     tss=int(raw.get('tss', 0) or 0), source_file=None,
                 ))
@@ -1012,7 +1023,7 @@ def project_tp_manifest(plan_ir: PlanIR) -> Dict[str, Any]:
     PlanIR, never a parallel truth -- this function reads PlanIR.Session's
     D1 extension fields only; it never re-derives plan facts.
     """
-    counts = {"bike": 0, "strength": 0, "day_off": 0, "race": 0}
+    counts = {"bike": 0, "run": 0, "strength": 0, "day_off": 0, "race": 0}
     sessions: List[Dict[str, Any]] = []
     for week in plan_ir.weeks:
         for session in week.sessions:
@@ -1068,6 +1079,7 @@ def project_tp_manifest(plan_ir: PlanIR) -> Dict[str, Any]:
         },
         "expected": {
             "bike": counts["bike"],
+            "run": counts["run"],
             "strength": counts["strength"],
             "day_off": counts["day_off"],
             "race": counts["race"],

@@ -524,6 +524,34 @@ def test_hard_minutes_below_floor_warns_on_a_load_week():
     assert item['review_value']['hard_minutes'] == 30.0
 
 
+def test_hard_minutes_expands_repetition_blocks():
+    """A TP `repetition` block lists its steps ONCE and states the rep count
+    in length.value. Counting those steps a single time read a 6x3min set as
+    one 3-minute rep -- a 6x undercount on any repetition-shaped structure.
+
+    Motoren's own projector emits fully-unrolled `step` blocks, so no
+    generated plan's numbers moved when this was fixed; the exposure is the
+    TP-curated library path, where readback structures DO carry repetition
+    blocks (ae_lint._steps expands them for exactly this reason).
+    """
+    document = _document()
+    document['plan_ir']['weeks'][1]['week_type'] = 'load'
+    session = _session('2026-08-11', 'Ronnestad 30-15')
+    session['structure'] = {'structure': [{
+        'type': 'repetition',
+        'length': {'value': 6, 'unit': 'repetition'},
+        'steps': [_step(180, 108, 112), _step(180, 50, 55, 'rest')],
+    }]}
+    document['plan_ir']['weeks'][1]['sessions'] = [session]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    item = next(issue for issue in issues
+                if issue['id'].startswith('HARD_MINUTES_BELOW_FLOOR')
+                and issue['review_value']['week'] == 1)
+    # 6 reps x 180s = 18.0 min, not the 3.0 min a single pass would report.
+    assert item['review_value']['hard_minutes'] == 18.0
+
+
 def test_short_taper_endurance_is_still_reviewed_without_an_exempt_role():
     document = _document()
     session = _session('2026-09-15', 'Endurance', hours=0.5)
@@ -689,3 +717,41 @@ def test_hard_minutes_below_floor_reports_every_offending_week_distinctly():
     assert set(matches) == {'HARD_MINUTES_BELOW_FLOOR_W01', 'HARD_MINUTES_BELOW_FLOOR_W02'}
     assert matches['HARD_MINUTES_BELOW_FLOOR_W01']['review_value']['hard_minutes'] == 30.0
     assert matches['HARD_MINUTES_BELOW_FLOOR_W02']['review_value']['hard_minutes'] == 10.0
+
+
+def test_locked_run_sessions_project_as_tp_run_not_bike():
+    """A dual-sport athlete declares a fixed run with `sport: run` on a
+    recurring session. Both compilers (canonical_training_model and plan_ir)
+    used to hardcode sport='cycling'/tp_kind='bike'/type=2 for every locked
+    session, so a runner-cyclist's declared runs silently became bike cards
+    and the block came out bike-only. TP workoutTypeId 3 = run.
+    """
+    import plan_ir as P
+    assert P.TP_WORKOUT_TYPE_VALUE_ID['run'] == 3
+    assert P._default_tp_kind('run') == 'run'
+    # A bike recurring session must be untouched by the run branch.
+    assert P._default_tp_kind('endurance') == 'bike'
+
+    import apply_contract as A
+    assert 3 in A.SUPPORTED_TP_WORKOUT_TYPES, (
+        "delivery contract must accept run (3) or dual-sport plans cannot ship")
+    assert 3 in A.LEGACY_PRIOR_TP_WORKOUT_TYPES
+
+
+def test_optional_days_prefixes_only_prescribed_work():
+    """schedule_constraints.optional_days marks a whole weekday's PRESCRIBED
+    work optional without deleting it. The athlete's own locked blocks, rest
+    days and strength are never touched -- those are his commitments, not the
+    coach's prescription. Uses the existing "OPTIONAL:" convention from
+    dual_sport_week.yaml.
+    """
+    import canonical_training_model as C
+    src = __import__('inspect').getsource(C)
+    assert 'optional_days' in src
+    assert 'OPTIONAL: ' in src
+    # The guard must exclude the athlete's own fixed blocks and non-bike kinds.
+    assert '"athlete_fixed"' in src and '("day_off", "strength")' in src
+    # `date` must be imported at module scope -- it is used inside the
+    # session loop, and a local-only datetime import raises NameError there
+    # (which fails the whole canonical build, not just the prefix).
+    assert 'from datetime import date\n' in src

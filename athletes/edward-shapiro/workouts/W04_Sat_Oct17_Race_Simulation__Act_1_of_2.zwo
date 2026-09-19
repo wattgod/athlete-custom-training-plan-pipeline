@@ -1,0 +1,44 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Race Simulation — Act 1 of 2</name>
+  <description>FUEL:
+Target 60g carbs/hr. Practice this prescription.
+MAIN SET:
+- 15min @ 65% FTP (Z2, RPE 3)
+- 3 x (0:30 @ 120% FTP (Z5+, RPE 8-9) + 3min @ 105% FTP (Z5, RPE 8-9) + 8min @ 85% FTP (Z3, RPE 5-6) + 40min @ 66% FTP (Z2, RPE 3))
+- 0:30 @ 120% FTP (Z5+, RPE 8-9)
+- 3min @ 105% FTP (Z5, RPE 8-9)
+- 8min @ 85% FTP (Z3, RPE 5-6)
+- 39min @ 66% FTP (Z2, RPE 3)
+- 10min @ 50% FTP (Z1, RPE 3)
+
+RACE SIMULATION — ACT 1 OF 2
+
+THE UNIT: 0:30 @116-124% (attack the base) → 3:00 @102-109% (sustain the climb) → 8:00 @83-88% (tempo over the top) — this is the crux demand of the race: attack a shorter climb, sustain it, then hold tempo over the top.
+
+THE SHAPE: 4 units across 2.6hr of Z2 — Act 1 of 2. Each act packs them tighter; I've built it so race day is the only day you do the full count.
+
+AUDIBLE: if the legs are gone after unit 3, skip the remaining attacks and ride the climbs at tempo — then finish the Z2.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <SteadyState Duration="900" Power="0.65" />
+    <SteadyState Duration="30" Power="1.20" />
+    <SteadyState Duration="180" Power="1.05" />
+    <SteadyState Duration="480" Power="0.85" />
+    <SteadyState Duration="2400" Power="0.66" />
+    <SteadyState Duration="30" Power="1.20" />
+    <SteadyState Duration="180" Power="1.05" />
+    <SteadyState Duration="480" Power="0.85" />
+    <SteadyState Duration="2400" Power="0.66" />
+    <SteadyState Duration="30" Power="1.20" />
+    <SteadyState Duration="180" Power="1.05" />
+    <SteadyState Duration="480" Power="0.85" />
+    <SteadyState Duration="2400" Power="0.66" />
+    <SteadyState Duration="30" Power="1.20" />
+    <SteadyState Duration="180" Power="1.05" />
+    <SteadyState Duration="480" Power="0.85" />
+    <SteadyState Duration="2340" Power="0.66" />
+    <SteadyState Duration="600" Power="0.50" />
+  </workout>
+</workout_file>
