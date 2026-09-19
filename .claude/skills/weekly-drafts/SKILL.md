@@ -67,12 +67,14 @@ ari-shapiro 4439069, judd-pulley 4032686.
 - No athlete source text in the repo. History and receipts stay in the private dir.
 - Adversarial review before any change to the engine or the transport.
 
-## Guard limits (security review, PR #260)
+## Guard (security review, PR #260)
 
-`.claude/hooks/tp_write_guard.py` scans only the `code` string passed to `mcp__playwriter__execute`. A wrapper that
-reads a script from disk and evaluates it is invisible to that hook, so the plans/v1-only and never-fitness/* rails
-are enforced by the scripts themselves, not by the guard. Rules that follow from this:
-- Evaluate only the two named scripts: `plan-builds/_shared/upsert_draft_plan.js` (writes plans/v1 only, refuses
-  any plan not titled DRAFT) and `tools/tp_weekly_packet.js` (read-only). Never evaluate ad-hoc JS in the TP tab.
-- Read the script from its known path in the same `execute` call that evaluates it; do not modify it in the session.
-- Follow-up owed: extend `tp_write_guard.py` to resolve `readFileSync` paths and scan the loaded file.
+`.claude/hooks/tp_write_guard.py` scans the `code` string passed to `mcp__playwriter__execute` AND every `*.js`
+file that code loads by literal path (`readFileSync` / `require` / `import`, one nested level). A loaded script with
+a POST/PUT/PATCH/DELETE against a TrainingPeaks endpoint is denied unless its path ends in one of
+`TRUSTED_LOADED_SCRIPTS`: `plan-builds/_shared/upsert_draft_plan.js` (plans/v1 writes only, refuses any plan not
+titled DRAFT) and `tools/tp_weekly_packet.js` (read-only; its one POST is TP's PMC reporting query). Rules:
+- Evaluate only those two scripts in the TP tab. Never evaluate ad-hoc JS there; a copy under another name is denied.
+- Load them by a literal path (absolute, `~`, or relative to the repo). A template-literal or missing path is denied.
+- Do not modify either script in the session; adding a path to `TRUSTED_LOADED_SCRIPTS` is a reviewed change.
+- The blessed-write marker is honored only in the `code` string, never inside a loaded file.

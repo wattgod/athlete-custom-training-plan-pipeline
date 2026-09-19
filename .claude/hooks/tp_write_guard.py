@@ -45,6 +45,27 @@ has parsed successfully -- see "Fail closed" below):
    are the reviewed, proven transport this repo's skills already delegate
    real writes to.
 
+Loaded scripts (security review, PR #260): a wrapper that reads a ``.js``
+file from disk and evaluates it in the TP tab carries no write signal of
+its own, so scanning only ``code`` missed the real write. The guard now
+also resolves every literal script path handed to ``readFileSync`` /
+``readFile`` / ``require`` / ``import`` (``*.js``, ``*.mjs``, ``*.cjs``;
+``.json`` and other data files are ignored), reads the file, and applies
+the same write-signal + TP-reference scan to its contents, following one
+further level of loads inside it. Rules:
+  - a path that cannot be resolved (template literal, variable, missing
+    file, unreadable) is a DENY -- a script the guard cannot inspect must
+    not run against TrainingPeaks; pass a literal path (absolute, ``~``,
+    or relative to ``$CLAUDE_PROJECT_DIR`` / the cwd).
+  - the GG_BLESSED_TP_WRITE marker is only honored in ``code`` itself,
+    never inside a loaded file (an agent could write it into a file).
+  - ``TRUSTED_LOADED_SCRIPTS`` names the two reviewed weekly-drafts
+    scripts by path suffix: ``plan-builds/_shared/upsert_draft_plan.js``
+    (plans/v1 writes only, refuses any plan not titled DRAFT) and
+    ``tools/tp_weekly_packet.js`` (read-only; its one ``POST`` is the TP
+    PMC reporting query, which takes a body). They are allowed as-is.
+    Adding a path here is a reviewed change, not a session-time edit.
+
 Fail CLOSED, not open: any exception while parsing stdin, malformed JSON,
 a non-object payload, or a missing/non-string ``code`` on a call this hook
 must evaluate (i.e. not already known to be some OTHER tool) emits a DENY
@@ -67,8 +88,10 @@ directly, or a script run outside of mcp__playwriter__execute).
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
+from pathlib import Path
 
 WRITE_VERB_RE = re.compile(
     r"""("""
@@ -97,6 +120,20 @@ KERNEL_READ_RE = re.compile(
     re.IGNORECASE,
 )
 
+LOADED_SCRIPT_RE = re.compile(
+    r"""(?:readFileSync|readFile|require|import)\(\s*([`'"])([^`'"]+?\.[cm]?js)\1""",
+    re.IGNORECASE,
+)
+# Path SUFFIXES of the reviewed weekly-drafts transport scripts. Matched
+# against the resolved, normalised path, so an absolute or relative spelling
+# of the same file both qualify. Keep this list short and reviewed.
+TRUSTED_LOADED_SCRIPTS = (
+    "TrainingPeaksPublisher/plan-builds/_shared/upsert_draft_plan.js",
+    "tools/tp_weekly_packet.js",
+)
+MAX_LOAD_DEPTH = 2
+_MAX_SCRIPT_BYTES = 2_000_000
+
 GUARDED_TOOL = "mcp__playwriter__execute"
 
 
@@ -116,6 +153,78 @@ def _deny(reason: str) -> dict:
     }
 
 
+def _resolve_script_path(raw: str) -> Path | None:
+    """Turn a literal path from a load call into a Path. ``None`` when the
+    literal is not resolvable without running JS (template interpolation)."""
+    if "${" in raw:
+        return None
+    raw = os.path.expanduser(raw)
+    candidate = Path(raw)
+    if candidate.is_absolute():
+        return candidate
+    bases = []
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+    if project_dir:
+        bases.append(Path(project_dir))
+    bases.append(Path.cwd())
+    for base in bases:
+        joined = base / candidate
+        if joined.exists():
+            return joined
+    return bases[0] / candidate
+
+
+def _is_trusted_script(path: Path) -> bool:
+    normalised = path.as_posix()
+    return any(normalised.endswith(suffix) for suffix in TRUSTED_LOADED_SCRIPTS)
+
+
+def scan_loaded_scripts(code: str, depth: int = 1,
+                        seen: set[str] | None = None) -> tuple[list[str], list[str]]:
+    """Resolve every literal ``*.js`` path loaded by ``code`` and scan the
+    file the way ``code`` itself is scanned. Returns ``(denials, trusted)``:
+    denial reasons (empty when clean) and the trusted scripts that were
+    loaded (for the audit message)."""
+    seen = set() if seen is None else seen
+    denials: list[str] = []
+    trusted: list[str] = []
+    for match in LOADED_SCRIPT_RE.finditer(code):
+        raw = match.group(2)
+        path = _resolve_script_path(raw)
+        if path is None:
+            denials.append(
+                f"loaded script path {raw!r} is a template literal the guard cannot "
+                "resolve -- pass a literal path so the file can be scanned")
+            continue
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        if _is_trusted_script(path):
+            trusted.append(path.as_posix())
+            continue
+        try:
+            if path.stat().st_size > _MAX_SCRIPT_BYTES:
+                raise OSError("file too large to scan")
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            denials.append(
+                f"loaded script {raw!r} could not be read ({exc.__class__.__name__}) "
+                "-- a script the guard cannot inspect must not run against TrainingPeaks")
+            continue
+        if WRITE_VERB_RE.search(content) and TP_HOST_RE.search(content):
+            denials.append(
+                f"loaded script {path.as_posix()} contains a raw TP write "
+                "(POST/PUT/PATCH/DELETE against a TrainingPeaks endpoint)")
+            continue
+        if depth < MAX_LOAD_DEPTH:
+            nested_denials, nested_trusted = scan_loaded_scripts(
+                content, depth + 1, seen)
+            denials.extend(nested_denials)
+            trusted.extend(nested_trusted)
+    return denials, trusted
+
+
 def evaluate(tool_name: str, tool_input: dict) -> dict:
     if tool_name and tool_name != GUARDED_TOOL:
         return _allow()
@@ -130,6 +239,14 @@ def evaluate(tool_name: str, tool_input: dict) -> dict:
         return _allow(
             "tp_write_guard: kernel-script read (*-publish/) detected -- guard bypassed.")
 
+    denials, trusted = scan_loaded_scripts(code)
+    if denials:
+        return _deny(
+            "tp_write_guard: blocked because " + "; ".join(denials) + ". "
+            "Only the reviewed scripts named in TRUSTED_LOADED_SCRIPTS may be "
+            "evaluated in the TP tab -- see .claude/hooks/tp_write_guard.py."
+        )
+
     if WRITE_VERB_RE.search(code) and TP_HOST_RE.search(code):
         return _deny(
             "tp_write_guard: blocked a raw TP write (POST/PUT/PATCH/DELETE) against a "
@@ -138,6 +255,9 @@ def evaluate(tool_name: str, tool_input: dict) -> dict:
             ".claude/hooks/tp_write_guard.py for the escape hatches."
         )
 
+    if trusted:
+        return _allow(
+            "tp_write_guard: trusted loaded script(s) allowed: " + ", ".join(trusted))
     return _allow()
 
 
