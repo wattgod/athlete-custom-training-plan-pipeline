@@ -299,7 +299,8 @@ def _build_day_template(
         # adjacency (e.g. Tue intervals, Wed long, Thu/Sat easy). R01
         # (no back-to-back INTENSITY days) still holds -- two explicit
         # days that touch each other are reduced to the first.
-        for d in sorted(preferred_intensity_days or [], key=DAY_ORDER.index):
+        for d in sorted((d for d in (preferred_intensity_days or []) if d in DAY_ORDER),
+                        key=DAY_ORDER.index):
             if len(intensity_days) >= max_intensity:
                 break
             if d in roles or d not in available:

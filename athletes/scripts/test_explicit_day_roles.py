@@ -46,10 +46,37 @@ def test_strength_default_avoids_intensity_days():
 
 def test_strength_stacked_on_intensity_days_when_requested():
     # What generate_athlete_package passes with strength_on_interval_days.
-    days = place_strength_days(_avail, 2, strength_only_abbrevs=['Tue', 'Fri'], avoid_days=set())
+    days = place_strength_days(_avail, 2, preferred_days=['Tue', 'Fri'], avoid_days=set())
     assert days == ['Tue', 'Fri']
 
 
 def test_strength_stacking_still_respects_hard_blocks():
-    days = place_strength_days(_avail, 2, blocked_days={'Tue'}, strength_only_abbrevs=['Tue', 'Fri'], avoid_days=set())
+    days = place_strength_days(_avail, 2, blocked_days={'Tue'}, preferred_days=['Tue', 'Fri'], avoid_days=set())
     assert 'Tue' not in days and 'Fri' in days and len(days) == 2
+
+
+def test_preferred_days_never_land_on_unavailable_day():
+    # Review 2026-09-19 finding 4: the strength_only fallback used to place
+    # strength on an unavailable day when it was the only intensity day.
+    days = place_strength_days(lambda d: d not in {'Sun', 'Wed', 'Tue'}, 1, preferred_days=['Tue'], avoid_days=set())
+    assert days and 'Tue' not in days
+
+
+def test_unmapped_day_strings_are_ignored():
+    roles = _build_day_template(['Sun'], 'Sat', 2, preferred_intensity_days=['Tues', 'TUE', 'Fri'])
+    assert roles['Fri'] == 'intensity'
+
+
+def test_explicit_days_around_a_simulation_do_not_rearm_the_runway():
+    from block_chain import protect_post_simulation_recovery
+    from block_compliance import r01_no_back_to_back_intensity as r01
+    roles = _build_day_template(['Sun'], 'Wed', 2, preferred_intensity_days=['Tue', 'Thu'])
+    days = [{'day': d, 'role': r, 'name': {'intensity': 'VO2max', 'long_ride': 'Endurance', 'filler': 'Endurance', 'off': 'Rest'}[r],
+             'level': 1, 'duration': 60, 'tss': 50} for d, r in roles.items()]
+    days[2].update(is_simulation=True, duration=240, act_simulation={'dress_rehearsal': True})
+    plan = {'weeks': [{'plan_week': 1, 'week_type': 'load', 'phase': 'build', 'days': days}]}
+    protect_post_simulation_recovery(plan, ['Tue', 'Thu'])
+    got = {d['day']: d['role'] for d in plan['weeks'][0]['days']}
+    assert got['Tue'] != 'intensity' and got['Thu'] != 'intensity'
+    ok, _ = r01(plan['weeks'])
+    assert ok

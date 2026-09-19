@@ -227,7 +227,12 @@ def protect_post_simulation_recovery(
             for candidate in next_week.get('days', []):
                 if (candidate.get('day') not in preferred_interval_days
                         or candidate.get('role') in ('off', 'long_ride', 'race')
-                        or candidate.get('post_sim_recovery')):
+                        or candidate.get('post_sim_recovery')
+                        # The pre-sim runway (cleared above) must not be
+                        # re-armed with the displaced session (review
+                        # 2026-09-19: explicit Tue/Thu around a Wed sim).
+                        or candidate.get('pre_sim_recovery')
+                        or candidate.get('is_simulation')):
                     continue
                 candidate.update(
                     name=displaced['name'], level=displaced.get('level', 1),
