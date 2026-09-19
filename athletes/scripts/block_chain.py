@@ -331,6 +331,7 @@ def build_plan_from_calendar(
     stress_level: Optional[str] = None,
     session_floor_min: int = 60,
     grow_to_weekday_target: bool = True,
+    preferred_intensity_days: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -439,6 +440,7 @@ def build_plan_from_calendar(
         prescribed_hours = max(0.0, hours_per_week - fixed_minutes / (60 * target_multiplier))
 
         week = build_calendar_week(
+            preferred_intensity_days=preferred_intensity_days,
             week_type=week_type,
             phase=bb_phase,
             archetype=archetype,

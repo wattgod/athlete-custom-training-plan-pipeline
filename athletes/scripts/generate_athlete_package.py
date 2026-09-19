@@ -1927,6 +1927,19 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     schedule_constraints = profile.get('schedule_constraints', {}) if profile else {}
     preferred_long_day = schedule_constraints.get('preferred_long_day', 'saturday')
     strength_only_days = schedule_constraints.get('strength_only_days', [])
+    # Opt-in switches (profile schedule_constraints). Both default OFF so
+    # every existing profile builds exactly as before.
+    #   explicit_interval_days: availability_roles.interval_days are placed
+    #     as the week's intensity days even next to the long ride.
+    #   strength_on_interval_days: strength is stacked onto the intensity
+    #     days instead of avoiding them (AE-8.4 default) -- "harder days
+    #     harder, easier days easier".
+    _explicit_interval_days = bool(schedule_constraints.get('explicit_interval_days'))
+    _strength_on_interval_days = bool(schedule_constraints.get('strength_on_interval_days'))
+    _explicit_interval_abbrevs = [
+        DAY_FULL_TO_ABBREV.get(str(d).lower(), str(d))
+        for d in ((profile or {}).get('availability_roles') or {}).get('interval_days', [])
+    ] if _explicit_interval_days else []
 
     # Use centralized day mappings from constants.py
     strength_only_abbrevs = [DAY_FULL_TO_ABBREV.get(d.lower(), d) for d in strength_only_days]
@@ -2123,6 +2136,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             training_age=_bb_training_age,
             athlete_age=athlete_age,
             stress_level=(profile.get('health_factors', {}) or {}).get('stress_level'),
+            preferred_intensity_days=_explicit_interval_abbrevs or None,
         )
 
         # T4: Build/peak long rides are not generic surge loops.  Mark the
@@ -5372,8 +5386,17 @@ GO GET IT, {athlete_name.upper()}!
                               # Poor adjacency: no loaded strength the day
                               # immediately after a race (B-race or A-race).
                               | _post_race_day_abbrevs_by_week.get(week_num, set())),
-                strength_only_abbrevs=strength_only_abbrevs,
-                avoid_days=_intensity_avoid_day_abbrevs_by_week.get(week_num, set()),
+                # strength_on_interval_days: the week's intensity days become
+                # the preferred pair and are no longer avoided; the hard
+                # blocks (tests, race -1/-2, post-race, long ride) still hold.
+                strength_only_abbrevs=(
+                    sorted(_intensity_avoid_day_abbrevs_by_week.get(week_num, set()),
+                           key=DAY_ORDER.index)
+                    if _strength_on_interval_days
+                    and _intensity_avoid_day_abbrevs_by_week.get(week_num)
+                    else strength_only_abbrevs),
+                avoid_days=(set() if _strength_on_interval_days
+                            else _intensity_avoid_day_abbrevs_by_week.get(week_num, set())),
             )
 
             for strength_day in strength_days:
