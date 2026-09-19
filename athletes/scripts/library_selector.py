@@ -1782,7 +1782,16 @@ def profile_excluded_item_ids(index: Mapping[str, Any], title_patterns) -> froze
     knee-safety / structure-less / banned-concept sets: removed at
     selection so the build never picks them. Pinned tests are exempt.
     Patterns are case-insensitive and searched in the item's base name."""
-    patterns = [re.compile(str(pat), re.IGNORECASE) for pat in (title_patterns or []) if str(pat).strip()]
+    patterns = []
+    for pat in (title_patterns or []):
+        if not str(pat).strip():
+            continue
+        try:
+            patterns.append(re.compile(str(pat), re.IGNORECASE))
+        except re.error as exc:
+            # A mistyped coach pattern must not kill the build (Devin, PR
+            # #263): skip it loudly and keep the valid ones.
+            print(f"  WARNING library_exclusions.title_regex {pat!r} is not a valid regex ({exc}); ignored")
     if not patterns or "items" not in index:
         return frozenset()
     pinned = set(PINNED_TEST_ITEM_IDS.values())

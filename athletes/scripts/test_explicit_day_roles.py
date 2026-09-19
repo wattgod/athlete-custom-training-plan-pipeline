@@ -87,3 +87,17 @@ def test_explicit_days_around_a_simulation_do_not_rearm_the_runway():
     ok5, msg = r05(plan['weeks'])
     assert ok5, msg
     assert [d['day'] for d in plan['weeks'][0]['days'] if d['role'] == 'intensity'] in (['Fri'], ['Mon'])
+
+
+def test_explicit_sunday_and_monday_do_not_both_become_intensity():
+    # Devin (PR #263): the template repeats weekly, so Sun -> next Mon is back-to-back.
+    roles = _build_day_template(['Wed'], 'Sat', 2, preferred_intensity_days=['Mon', 'Sun'])
+    hard = [d for d, r in roles.items() if r == 'intensity']
+    assert not ({'Mon', 'Sun'} <= set(hard))
+
+
+def test_invalid_exclusion_regex_is_skipped_not_fatal(capsys):
+    from library_selector import profile_excluded_item_ids
+    index = {"items": [{"item_id": 1, "name_base": "Float Sets", "structure": {"structure": [1]}}]}
+    assert profile_excluded_item_ids(index, ['[', '^Float']) == frozenset({1})
+    assert "not a valid regex" in capsys.readouterr().out

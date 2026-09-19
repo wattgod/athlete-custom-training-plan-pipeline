@@ -305,7 +305,10 @@ def _build_day_template(
                 break
             if d in roles or d not in available:
                 continue
-            if any(abs(DAY_ORDER.index(x) - DAY_ORDER.index(d)) <= 1
+            # Cyclic adjacency: the weekday template repeats, so an explicit
+            # Sunday touches the next Monday (R01 checks across week seams).
+            if any(min(abs(DAY_ORDER.index(x) - DAY_ORDER.index(d)),
+                       7 - abs(DAY_ORDER.index(x) - DAY_ORDER.index(d))) <= 1
                    for x in intensity_days):
                 continue
             intensity_days.append(d)
