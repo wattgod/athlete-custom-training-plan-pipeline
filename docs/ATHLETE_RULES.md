@@ -88,6 +88,11 @@ to be an engine concern.
   day; a synthetic Rest Day card is noise).
 - **`drop_notes`**: `[{date, title_contains}]`. Drop any note whose
   `noteDate == date` and whose title contains `title_contains`.
+- **`drop_workouts`**: `[{date, title_contains}]`. Drop any workout whose
+  day is `date` and whose title contains `title_contains` -- for a day a
+  TP event already owns (the engine does not consume C events and fills
+  the day with a Rest Day card). Applied after
+  `drop_rest_on_multi_session_days`.
 - **`note_prefix`**: `{title_regex, exclude_title_contains: [str], text}`.
   For every note whose title matches `title_regex` and does not contain
   any string in `exclude_title_contains`, prepend `text` unless the

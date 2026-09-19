@@ -1776,6 +1776,35 @@ def banned_concept_item_ids(index: Mapping[str, Any]) -> frozenset:
     return frozenset(out)
 
 
+def profile_excluded_item_ids(index: Mapping[str, Any], title_patterns) -> frozenset:
+    """Curated items a coach has excluded for one athlete by title regex
+    (profile ``library_exclusions.title_regex``). Same mechanism as the
+    knee-safety / structure-less / banned-concept sets: removed at
+    selection so the build never picks them. Pinned tests are exempt.
+    Patterns are case-insensitive and searched in the item's base name."""
+    patterns = []
+    for pat in (title_patterns or []):
+        if not str(pat).strip():
+            continue
+        try:
+            patterns.append(re.compile(str(pat), re.IGNORECASE))
+        except re.error as exc:
+            # A mistyped coach pattern must not kill the build (Devin, PR
+            # #263): skip it loudly and keep the valid ones.
+            print(f"  WARNING library_exclusions.title_regex {pat!r} is not a valid regex ({exc}); ignored")
+    if not patterns or "items" not in index:
+        return frozenset()
+    pinned = set(PINNED_TEST_ITEM_IDS.values())
+    out = []
+    for item in index["items"]:
+        if item["item_id"] in pinned:
+            continue
+        name = str(item.get("name_base") or item.get("name") or "")
+        if any(pat.search(name) for pat in patterns):
+            out.append(item["item_id"])
+    return frozenset(out)
+
+
 def structureless_item_ids(index: Mapping[str, Any]) -> frozenset:
     """Curated items with no executable structure. They ship as a blank
     graph on the athlete's calendar (sol review 2026-09-17: "Muscle

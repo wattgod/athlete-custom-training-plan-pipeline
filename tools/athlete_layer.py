@@ -83,6 +83,11 @@ athlete, not to a missing engine feature):
       Drop any note whose noteDate == date and whose title contains
       title_contains.
 
+  drop_workouts: [{date: YYYY-MM-DD, title_contains: str}]
+      Drop any workout whose day == date and whose title contains
+      title_contains (e.g. the engine's Rest Day filler on a day a TP
+      event already owns).
+
   note_prefix: {title_regex: str, exclude_title_contains: [str], text: str}
       For every note whose title matches title_regex and does not contain
       any of exclude_title_contains, prepend `text` (blank line separated)
@@ -320,6 +325,20 @@ def _apply_drop_rest_on_multi_session_days(plan: list[Workout], rules: dict, cha
     return kept
 
 
+def _apply_drop_workouts(plan: list[Workout], rules: dict, changed: ChangeLog) -> list[Workout]:
+    drops = rules.get("drop_workouts") or []
+    if not drops:
+        return plan
+    kept = []
+    for w in plan:
+        drop = any(_day(w) == d["date"] and d["title_contains"] in (w.get("title") or "") for d in drops)
+        if drop:
+            changed.append((_day(w), "dropped workout", w.get("title", "")))
+            continue
+        kept.append(w)
+    return kept
+
+
 def _apply_drop_notes(notes: list[Note], rules: dict, changed: ChangeLog) -> list[Note]:
     drops = rules.get("drop_notes") or []
     if not drops:
@@ -393,6 +412,7 @@ def apply(plan: list[Workout], notes: list[Note], rules: dict) -> tuple[list[Wor
     _apply_guardrails(plan, rules, changed)
     _apply_race_card(plan, rules, changed)
     plan = _apply_drop_rest_on_multi_session_days(plan, rules, changed)
+    plan = _apply_drop_workouts(plan, rules, changed)
 
     notes = _apply_drop_notes(notes, rules, changed)
     _apply_note_prefix(notes, rules, changed)

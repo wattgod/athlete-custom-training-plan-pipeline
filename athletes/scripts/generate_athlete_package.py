@@ -1093,7 +1093,7 @@ def _delivery_role(archetype_id: str, builder_role: str, week_type: str,
 
 def place_strength_days(is_available, requested_sessions: int,
                         blocked_days=None, strength_only_abbrevs=None,
-                        avoid_days=None) -> list:
+                        avoid_days=None, preferred_days=None) -> list:
     """Place the requested sessions without using off/long/blocked days.
 
     ``select_strength_days`` supplies the coach-preferred pair. If an FTP
@@ -1108,7 +1108,15 @@ def place_strength_days(is_available, requested_sessions: int,
     """
     blocked = set(blocked_days or [])
     avoid = set(avoid_days or []) - blocked
-    preferred = select_strength_days(is_available, strength_only_abbrevs)
+    if preferred_days:
+        # strength_on_interval_days: the week's intensity days lead, but
+        # only when the athlete is available for strength on them; the
+        # ordinary pairing logic fills any remainder.
+        preferred = [d for d in preferred_days if is_available(d)]
+        preferred += [d for d in select_strength_days(is_available, strength_only_abbrevs)
+                      if d not in preferred]
+    else:
+        preferred = select_strength_days(is_available, strength_only_abbrevs)
     candidates = preferred + [
         day for day in DAY_ORDER if day not in preferred and is_available(day)
     ]
@@ -1531,7 +1539,8 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
                                athlete_seed=None, session_floor_min: int = 0,
                                excluded_calendar_slots: Optional[set] = None,
                                index=None, discipline: Optional[str] = None,
-                               bike_constraints: Optional[list] = None) -> list:
+                               bike_constraints: Optional[list] = None,
+                               excluded_title_patterns: Optional[list] = None) -> list:
     """C4/D1/D2: resolve in-scope block-builder days to curated TP library
     items via ``library_selector.select``.
 
@@ -1591,7 +1600,10 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
     # sol review): they ship as a blank graph. Same mechanism as knee-safety.
     _extra_excluded_ids = (frozenset(_extra_excluded_ids)
                            | library_selector.structureless_item_ids(idx)
-                           | library_selector.banned_concept_item_ids(idx))
+                           | library_selector.banned_concept_item_ids(idx)
+                           # Coach-excluded titles for this athlete (profile
+                           # library_exclusions.title_regex, 2026-09-19).
+                           | library_selector.profile_excluded_item_ids(idx, excluded_title_patterns))
 
     # Variety policy block identity: the engine's block_number advances
     # only at a PHASE change (a 12-week base is one block_number; a 4-week
@@ -1927,6 +1939,19 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     schedule_constraints = profile.get('schedule_constraints', {}) if profile else {}
     preferred_long_day = schedule_constraints.get('preferred_long_day', 'saturday')
     strength_only_days = schedule_constraints.get('strength_only_days', [])
+    # Opt-in switches (profile schedule_constraints). Both default OFF so
+    # every existing profile builds exactly as before.
+    #   explicit_interval_days: availability_roles.interval_days are placed
+    #     as the week's intensity days even next to the long ride.
+    #   strength_on_interval_days: strength is stacked onto the intensity
+    #     days instead of avoiding them (AE-8.4 default) -- "harder days
+    #     harder, easier days easier".
+    _explicit_interval_days = bool(schedule_constraints.get('explicit_interval_days'))
+    _strength_on_interval_days = bool(schedule_constraints.get('strength_on_interval_days'))
+    _explicit_interval_abbrevs = [
+        DAY_FULL_TO_ABBREV.get(str(d).lower(), str(d))
+        for d in ((profile or {}).get('availability_roles') or {}).get('interval_days', [])
+    ] if _explicit_interval_days else []
 
     # Use centralized day mappings from constants.py
     strength_only_abbrevs = [DAY_FULL_TO_ABBREV.get(d.lower(), d) for d in strength_only_days]
@@ -2123,6 +2148,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             training_age=_bb_training_age,
             athlete_age=athlete_age,
             stress_level=(profile.get('health_factors', {}) or {}).get('stress_level'),
+            preferred_intensity_days=_explicit_interval_abbrevs or None,
         )
 
         # T4: Build/peak long rides are not generic surge loops.  Mark the
@@ -2295,6 +2321,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 excluded_calendar_slots=_library_excluded_slots,
                 discipline=_bb_discipline,
                 bike_constraints=(derived or {}).get('bike_constraints', []),
+                excluded_title_patterns=((profile or {}).get('library_exclusions') or {}).get('title_regex', []),
             ))
             # NOTE: `athlete_dir` here is the caller's parameter -- in the
             # production authoring flow that's a SHORT-LIVED temp directory
@@ -2343,6 +2370,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 used_items=_sel_state.get('used_items', {}), index=_tp_index,
                 lint_exclusions={}, discipline=_bb_discipline,
                 extra_excluded_ids=(library_selector_module.structureless_item_ids(_tp_index)
+                                    | library_selector_module.profile_excluded_item_ids(_tp_index, ((profile or {}).get('library_exclusions') or {}).get('title_regex', []))
                                     | library_selector_module.banned_concept_item_ids(_tp_index)
                                     | (library_selector_module.seated_only_excluded_ids(_tp_index)
                                        if 'seated_only' in ((derived or {}).get('bike_constraints') or [])
@@ -5372,8 +5400,17 @@ GO GET IT, {athlete_name.upper()}!
                               # Poor adjacency: no loaded strength the day
                               # immediately after a race (B-race or A-race).
                               | _post_race_day_abbrevs_by_week.get(week_num, set())),
+                # strength_on_interval_days: the week's intensity days become
+                # the preferred pair and are no longer avoided; the hard
+                # blocks (tests, race -1/-2, post-race, long ride) still hold.
                 strength_only_abbrevs=strength_only_abbrevs,
-                avoid_days=_intensity_avoid_day_abbrevs_by_week.get(week_num, set()),
+                preferred_days=(
+                    sorted(_intensity_avoid_day_abbrevs_by_week.get(week_num, set()),
+                           key=DAY_ORDER.index)
+                    if _strength_on_interval_days and not strength_only_abbrevs
+                    else None),
+                avoid_days=(set() if _strength_on_interval_days and not strength_only_abbrevs
+                            else _intensity_avoid_day_abbrevs_by_week.get(week_num, set())),
             )
 
             for strength_day in strength_days:
@@ -5439,7 +5476,9 @@ GO GET IT, {athlete_name.upper()}!
             if str(date_full) in _hard_bike_dates:
                 full_description += ("\n\nSEQUENCING:\nToday also carries your hard ride, so I want "
                                      "it sequenced right. Ride first; lift at least 4 hours later — "
-                                     "or move this lift to tomorrow if the day is tight.")
+                                     + ("if the day is tight, drop the lift, not the ride."
+                                        if _strength_on_interval_days else
+                                        "or move this lift to tomorrow if the day is tight."))
 
             zwo_content = ZWO_TEMPLATE.format(
                 author=_workout_author,

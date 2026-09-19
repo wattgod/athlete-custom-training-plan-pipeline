@@ -176,6 +176,7 @@ def build_calendar_week(
     stress_level: Optional[str] = None,
     session_floor_min: int = SESSION_FLOOR_MIN,
     grow_to_weekday_target: bool = True,
+    preferred_intensity_days: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Build one week whose type and phase come from the calendar (plan_dates).
 
@@ -193,7 +194,8 @@ def build_calendar_week(
         series_tracker = SeriesTracker()
         series_tracker.start_block()
 
-    day_roles = _build_day_template(off_days, long_ride_day, max_intensity, week_type=week_type)
+    day_roles = _build_day_template(off_days, long_ride_day, max_intensity, week_type=week_type,
+                                    preferred_intensity_days=preferred_intensity_days)
 
     week = _build_week(
         week_num=week_in_block,
@@ -230,6 +232,7 @@ def _build_day_template(
     long_ride_day: str,
     max_intensity: int,
     week_type: Optional[str] = None,
+    preferred_intensity_days: Optional[List[str]] = None,
 ) -> Dict[str, str]:
     """Build a day-by-day role template from athlete preferences.
 
@@ -289,6 +292,28 @@ def _build_day_template(
         # adjacent to other intensity days OR to the long ride day.
         hard_days = [long_ride_day]  # Long ride counts as "hard" for adjacency
         intensity_days = []
+        # Explicit coach/athlete-stated interval days (profile
+        # availability_roles.interval_days with schedule_constraints.
+        # explicit_interval_days) are taken first, in calendar order, and
+        # are allowed next to the long ride: the athlete asked for that
+        # adjacency (e.g. Tue intervals, Wed long, Thu/Sat easy). R01
+        # (no back-to-back INTENSITY days) still holds -- two explicit
+        # days that touch each other are reduced to the first.
+        for d in sorted((d for d in (preferred_intensity_days or []) if d in DAY_ORDER),
+                        key=DAY_ORDER.index):
+            if len(intensity_days) >= max_intensity:
+                break
+            if d in roles or d not in available:
+                continue
+            # Cyclic adjacency: the weekday template repeats, so an explicit
+            # Sunday touches the next Monday (R01 checks across week seams).
+            if any(min(abs(DAY_ORDER.index(x) - DAY_ORDER.index(d)),
+                       7 - abs(DAY_ORDER.index(x) - DAY_ORDER.index(d))) <= 1
+                   for x in intensity_days):
+                continue
+            intensity_days.append(d)
+            hard_days.append(d)
+            roles[d] = 'intensity'
         for d in available:
             if len(intensity_days) >= max_intensity:
                 break

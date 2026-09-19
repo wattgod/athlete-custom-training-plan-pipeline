@@ -227,7 +227,48 @@ def protect_post_simulation_recovery(
             for candidate in next_week.get('days', []):
                 if (candidate.get('day') not in preferred_interval_days
                         or candidate.get('role') in ('off', 'long_ride', 'race')
-                        or candidate.get('post_sim_recovery')):
+                        or candidate.get('post_sim_recovery')
+                        # The pre-sim runway (cleared above) must not be
+                        # re-armed with the displaced session (review
+                        # 2026-09-19: explicit Tue/Thu around a Wed sim).
+                        or candidate.get('pre_sim_recovery')
+                        or candidate.get('is_simulation')):
+                    continue
+                candidate.update(
+                    name=displaced['name'], level=displaced.get('level', 1),
+                    duration=displaced.get('duration', 0),
+                    tss=displaced.get('tss', 0), role='intensity')
+                changed_weeks.add(id(next_week))
+                displaced = None
+                break
+        if displaced:
+            # No stated interval day survived the filter (explicit days
+            # straddling the simulation are both consumed by the runway
+            # and the recovery day). Rather than drop the week's only
+            # sharp session (R05: 0 intensity), place it on any filler day
+            # of that week that is not adjacent to the simulation or to
+            # another intensity day (review 2026-09-19, round 2).
+            from constants import DAY_ORDER
+            week_days = next_week.get('days', [])
+            def _idx(d):
+                try:
+                    return DAY_ORDER.index(d.get('day'))
+                except ValueError:
+                    return None
+            hard_idx = [_idx(d) for d in week_days
+                        if d.get('role') == 'intensity' or d.get('is_simulation')]
+            if next_week is week:
+                hard_idx.append(_idx(day))
+            elif day.get('day') == DAY_ORDER[-1]:
+                hard_idx.append(-1)  # Sunday simulation: Monday is adjacent
+            hard_idx = [i for i in hard_idx if i is not None]
+            for candidate in sorted(week_days, key=lambda d: _idx(d) if _idx(d) is not None else 99):
+                ci = _idx(candidate)
+                if (ci is None or candidate.get('role') != 'filler'
+                        or candidate.get('pre_sim_recovery')
+                        or candidate.get('post_sim_recovery')
+                        or candidate.get('is_simulation')
+                        or any(abs(ci - h) <= 1 for h in hard_idx)):
                     continue
                 candidate.update(
                     name=displaced['name'], level=displaced.get('level', 1),
@@ -331,6 +372,7 @@ def build_plan_from_calendar(
     stress_level: Optional[str] = None,
     session_floor_min: int = 60,
     grow_to_weekday_target: bool = True,
+    preferred_intensity_days: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -439,6 +481,7 @@ def build_plan_from_calendar(
         prescribed_hours = max(0.0, hours_per_week - fixed_minutes / (60 * target_multiplier))
 
         week = build_calendar_week(
+            preferred_intensity_days=preferred_intensity_days,
             week_type=week_type,
             phase=bb_phase,
             archetype=archetype,
