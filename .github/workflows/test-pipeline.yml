@@ -84,6 +84,10 @@ jobs:
           # the fast layer: unit tests + all the content/PDF/compliance guards.
           python -m pytest . -q --ignore=test_order_acceptance.py
 
+      - name: Run TP write-guard hook tests
+        # .claude/ is a dot-dir, so the root pytest run never collects these.
+        run: python -m pytest .claude/hooks -q
+
       - name: Run recurring testing-process unit tests
         env:
           PYTHONPATH: ${{ github.workspace }}
