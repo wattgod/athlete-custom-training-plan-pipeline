@@ -81,3 +81,9 @@ def test_explicit_days_around_a_simulation_do_not_rearm_the_runway():
     assert got['Tue'] != 'intensity' and got['Thu'] != 'intensity'
     ok, _ = r01(plan['weeks'])
     assert ok
+    # Round-2 finding: the displaced session must not be dropped -- the
+    # week still needs its sharp day (R05), relocated to a safe filler.
+    from block_compliance import r05_intensity_count as r05
+    ok5, msg = r05(plan['weeks'])
+    assert ok5, msg
+    assert [d['day'] for d in plan['weeks'][0]['days'] if d['role'] == 'intensity'] in (['Fri'], ['Mon'])
