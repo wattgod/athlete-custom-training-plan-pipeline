@@ -753,3 +753,101 @@ class TestLoadedScripts:
         packet = repo_root / "tools" / "tp_weekly_packet.js"
         assert (guard.content_digest(packet.read_bytes())
                 == guard.TRUSTED_SCRIPT_HASHES["tp_weekly_packet.js"])
+
+
+# ------------------------------------------- PR #262 bot review (Cursor/Devin)
+class TestPr262BotFindings:
+    T = "mcp__playwriter__execute"
+
+    def _reason(self, result) -> str:
+        return result["hookSpecificOutput"]["permissionDecisionReason"]
+
+    def test_non_js_loaded_file_is_scanned(self, tmp_path):
+        # Cursor HIGH: a POST in a .txt / .js.bak / extensionless file was skipped.
+        for name in ("payload.txt", "upsert.js.bak", "script"):
+            f = tmp_path / name
+            f.write_text(RAW_POST)
+            code = f"const src = fs.readFileSync('{f}', 'utf8'); await page.evaluate(src);"
+            result = guard.evaluate(self.T, {"code": code})
+            assert _is_deny(result), name
+
+    def test_json_payload_must_be_json(self, tmp_path):
+        good = tmp_path / "plan_payload_final.json"
+        good.write_text('{"title": "DRAFT — x", "url": "https://tpapi.trainingpeaks.com/plans/v1/plans"}')
+        result = guard.evaluate(self.T, {"code": f"JSON.parse(fs.readFileSync('{good}', 'utf8'))"})
+        assert not _is_deny(result)
+        bad = tmp_path / "sneaky.json"
+        bad.write_text(RAW_POST)
+        result = guard.evaluate(self.T, {"code": f"const src = fs.readFileSync('{bad}', 'utf8'); await page.evaluate(src);"})
+        assert _is_deny(result)
+        assert "not JSON" in self._reason(result)
+
+    def test_bind_call_apply_denied(self, tmp_path):
+        # Cursor MEDIUM: fs.readFileSync.bind(fs)(path) left a '.' after the loader.
+        script = tmp_path / "evil.js"; script.write_text(RAW_POST)
+        for form in (f"const src = fs.readFileSync.bind(fs)('{script}', 'utf8');",
+                     f"const src = fs.readFileSync.call(fs, '{script}', 'utf8');",
+                     f"const src = fs.readFileSync.apply(fs, ['{script}', 'utf8']);",
+                     f"require.resolve('{script}')"):
+            result = guard.evaluate(self.T, {"code": form})
+            assert _is_deny(result), form
+
+    def test_copy_then_load_in_one_call_denied(self, tmp_path, monkeypatch):
+        # Cursor HIGH: copyFileSync onto the trusted path, then load it --
+        # the hash matched at hook time, the replacement ran at runtime.
+        root = tmp_path / "TrainingPeaksPublisher"
+        shared = root / "plan-builds" / "_shared"; shared.mkdir(parents=True)
+        trusted = shared / "upsert_draft_plan.js"; trusted.write_text(GET_ONLY)
+        evil = tmp_path / "evil.js"; evil.write_text(RAW_POST)
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(root))
+        monkeypatch.setitem(guard.TRUSTED_SCRIPT_HASHES, "upsert_draft_plan.js", _sha(GET_ONLY))
+        code = (f"fs.copyFileSync('{evil}', '{trusted}'); "
+                f"const src = fs.readFileSync('{trusted}', 'utf8'); await page.evaluate(src);")
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+        assert "copyFileSync" in self._reason(result)
+
+    def test_mutation_without_load_allowed(self, tmp_path):
+        # The packet-save step writes a file and loads nothing.
+        code = ("const outDir = `${process.env.HOME}/x`; fs.mkdirSync(outDir, { recursive: true, mode: 0o700 }); "
+                "fs.writeFileSync(`${outDir}/weekly_packet.json`, JSON.stringify(packet, null, 2) + '\\n', { mode: 0o600 });")
+        result = guard.evaluate(self.T, {"code": code})
+        assert not _is_deny(result)
+
+    def test_spawn_with_load_denied(self, tmp_path):
+        script = tmp_path / "read.js"; script.write_text(GET_ONLY)
+        code = f"require('child_process').execSync('cp a b'); const src = fs.readFileSync('{script}', 'utf8');"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    def test_relative_require_inside_module_resolves_against_module_dir(self, tmp_path, monkeypatch):
+        # Devin: './sibling' inside a loaded module resolved against the project dir.
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path / "proj"))
+        (tmp_path / "proj").mkdir()
+        mod_dir = tmp_path / "lib"; mod_dir.mkdir()
+        (mod_dir / "sibling.js").write_text(RAW_POST)
+        entry = mod_dir / "entry.js"; entry.write_text("const s = require('./sibling'); s();")
+        result = guard.evaluate(self.T, {"code": f"require('{entry}')"})
+        assert _is_deny(result)
+        assert "sibling.js" in self._reason(result)
+
+    def test_static_import_inside_module_scanned(self, tmp_path):
+        # Devin: static `import x from './y'` was invisible to LOAD_CALL_RE.
+        mod_dir = tmp_path / "lib"; mod_dir.mkdir()
+        (mod_dir / "writer.mjs").write_text(RAW_POST)
+        entry = mod_dir / "entry.mjs"
+        entry.write_text("import { go } from './writer.mjs';\nexport * from './writer.mjs';\ngo();")
+        result = guard.evaluate(self.T, {"code": f"await import('{entry}')"})
+        assert _is_deny(result)
+        assert "writer.mjs" in self._reason(result)
+
+    def test_static_import_bare_specifier_ignored(self, tmp_path):
+        entry = tmp_path / "entry.mjs"
+        entry.write_text("import fs from 'node:fs';\nimport path from 'path';\nexport default 1;")
+        result = guard.evaluate(self.T, {"code": f"await import('{entry}')"})
+        assert not _is_deny(result)
+
+    def test_workflow_triggers_on_hook_changes(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        wf = (repo_root / ".github" / "workflows" / "test-pipeline.yml").read_text()
+        assert wf.count("- '.claude/hooks/**'") == 2

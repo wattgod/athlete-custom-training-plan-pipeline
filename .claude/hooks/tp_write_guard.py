@@ -74,6 +74,19 @@ Rules:
     are scripts whatever their extension (Node resolves ``.js``).
     ``readFileSync``/``readFile`` literals are scripts only when they end
     in ``.js``/``.mjs``/``.cjs`` -- ``.json`` payloads are ignored.
+  - a ``readFileSync``/``readFile`` literal that is not a script is still
+    read: ``.json`` must parse as JSON (data cannot be evaluated), every
+    other extension is scanned exactly like a script -- a TP write in a
+    ``.txt`` or extensionless file is the same write.
+  - inside a loaded module, ``./`` and ``../`` ``require``/``import``
+    literals resolve against THAT module's directory (Node semantics);
+    static ``import x from '...'`` / ``export ... from '...'`` count as
+    loads too.
+  - a call that loads any file from disk must not also modify the
+    filesystem or spawn a process (``writeFileSync``, ``copyFileSync``,
+    ``rename``, ``symlink``, ``child_process``, ``execSync`` ...): the
+    scan happens before the call runs, so a copy-then-load in one call
+    would evaluate bytes the guard never saw. Split it into two calls.
   - a missing or unreadable script is a DENY.
   - Playwright's own injection calls are loads too: ``addScriptTag`` /
     ``addInitScript`` / ``addStyleTag`` are allowed only as
@@ -174,8 +187,18 @@ FILE_URL_FETCH_RE = re.compile(r"""fetch\(\s*[`'"]file:""", re.IGNORECASE)
 # Token-shaped (must be followed by JS punctuation) so prose in a comment or
 # string ("you require a token") does not trip it.
 LOADER_ALIAS_RE = re.compile(
-    r"""\b(readFileSync|readFile|require)\b\s*(?=[;,)\]}=]|$)|\bcreateRequire\b|\bfs\s*\[""",
+    r"""\b(readFileSync|readFile|require)\b\s*(?=[;,)\]}=.]|$)|\bcreateRequire\b|\bfs\s*\[""",
     re.IGNORECASE | re.MULTILINE,
+)
+# ES module static loads inside a loaded file.
+STATIC_IMPORT_RE = re.compile(
+    r"""\b(?:import\s+(?:[\w$*\s{},]+?\s+from\s+)?|export\s+[\w$*\s{},]+?\s+from\s+)([`'"])([^`'"]+)\1"""
+)
+# Filesystem mutation / process spawning. Forbidden in the same call as a load.
+MUTATION_RE = re.compile(
+    r"""\b(writeFileSync|writeFile|copyFileSync|copyFile|renameSync|rename|appendFileSync|appendFile"""
+    r"""|symlinkSync|symlink|linkSync|truncateSync|truncate|createWriteStream|rmSync|rmdirSync|unlinkSync|unlink"""
+    r"""|chmodSync|chmod|child_process|execSync|execFileSync|spawnSync|spawn|execFile|cpSync)\s*\(""",
 )
 # Playwright file injection: page.addScriptTag({ path }) etc. Only the
 # ``{ path: '<literal>' }`` form is followable; everything else is denied.
@@ -267,7 +290,20 @@ def _loads(code: str) -> tuple[list[tuple[str, str, bool]], list[str]]:
             loads.append((call, literal, True))
         else:
             loads.append((call, literal, literal.lower().endswith(SCRIPT_SUFFIXES)))
+    for match in STATIC_IMPORT_RE.finditer(code):
+        literal = match.group(2)
+        if not _is_bare_specifier(literal):
+            loads.append(("import", literal, True))
     return loads, problems
+
+
+def _resolve_load(call: str, literal: str, origin_dir: Path | None) -> Path | None:
+    """``./``/``../`` module specifiers inside a loaded module resolve
+    against that module's directory; everything else as a plain path."""
+    if origin_dir is not None and call.lower() in ("require", "import") \
+            and literal.startswith(("./", "../")):
+        return (origin_dir / literal).resolve()
+    return _resolve_script_path(literal)
 
 
 def content_digest(content_bytes: bytes) -> str:
@@ -285,20 +321,24 @@ def scan_loaded_scripts(code: str) -> tuple[list[str], list[str]]:
     trusted: list[str] = []
     seen: set[Path] = set()
     trusted_set = trusted_script_paths()
-    worklist = [("code", code)]
+    worklist: list[tuple[str, str, Path | None]] = [("code", code, None)]
     while worklist:
-        origin, text = worklist.pop(0)
+        origin, text, origin_dir = worklist.pop(0)
         loads, problems = _loads(text)
         denials.extend(f"{origin}: {problem}" for problem in problems)
+        if loads:
+            mutation = MUTATION_RE.search(text)
+            if mutation:
+                denials.append(
+                    f"{origin}: loads a file and also calls {mutation.group(1)}(...) -- the "
+                    "scan runs before the call, so a file changed in the same call would be "
+                    "evaluated unscanned; split the write and the load into two calls")
         for call, literal, is_script in loads:
-            path = _resolve_script_path(literal)
+            path = _resolve_load(call, literal, origin_dir)
             if path is None:
-                if is_script:
-                    denials.append(
-                        f"{origin}: {call}({literal!r}) is a template literal the guard "
-                        "cannot resolve -- pass a literal path so the file can be scanned")
-                continue
-            if not is_script:
+                denials.append(
+                    f"{origin}: {call}({literal!r}) is a template literal the guard "
+                    "cannot resolve -- pass a literal path so the file can be scanned")
                 continue
             if call.lower() in ("require", "import") and not path.exists():
                 with_js = path.with_name(path.name + ".js")
@@ -308,7 +348,7 @@ def scan_loaded_scripts(code: str) -> tuple[list[str], list[str]]:
                 continue
             seen.add(path)
             if len(seen) > MAX_LOADED_FILES:
-                denials.append(f"more than {MAX_LOADED_FILES} scripts loaded -- refusing to scan")
+                denials.append(f"more than {MAX_LOADED_FILES} files loaded -- refusing to scan")
                 return denials, trusted
             try:
                 if path.stat().st_size > _MAX_SCRIPT_BYTES:
@@ -316,8 +356,8 @@ def scan_loaded_scripts(code: str) -> tuple[list[str], list[str]]:
                 content_bytes = path.read_bytes()
             except OSError as exc:
                 denials.append(
-                    f"{origin}: loaded script {literal!r} could not be read "
-                    f"({exc.__class__.__name__}) -- a script the guard cannot inspect "
+                    f"{origin}: loaded file {literal!r} could not be read "
+                    f"({exc.__class__.__name__}) -- a file the guard cannot inspect "
                     "must not run against TrainingPeaks")
                 continue
             if path in trusted_set:
@@ -332,12 +372,19 @@ def scan_loaded_scripts(code: str) -> tuple[list[str], list[str]]:
                         "TRUSTED_SCRIPT_HASHES")
                 continue
             content = content_bytes.decode("utf-8", errors="replace")
+            if not is_script and path.suffix.lower() == ".json":
+                try:
+                    json.loads(content)
+                except ValueError:
+                    denials.append(
+                        f"loaded file {path.as_posix()} is named .json but is not JSON")
+                continue
             if WRITE_VERB_RE.search(content) and TP_HOST_RE.search(content):
                 denials.append(
-                    f"loaded script {path.as_posix()} contains a raw TP write "
+                    f"loaded file {path.as_posix()} contains a raw TP write "
                     "(POST/PUT/PATCH/DELETE against a TrainingPeaks endpoint)")
                 continue
-            worklist.append((path.as_posix(), content))
+            worklist.append((path.as_posix(), content, path.parent))
     return denials, trusted
 
 

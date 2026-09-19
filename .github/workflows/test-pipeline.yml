@@ -17,6 +17,7 @@ on:
       - 'config.yaml'
       - 'requirements.txt'
       - '.github/workflows/**'
+      - '.claude/hooks/**'
   pull_request:
     branches: [main]
     paths:
@@ -26,6 +27,7 @@ on:
       - 'delivery/**'
       - 'tools/**'
       - 'scripts/**'
+      - '.claude/hooks/**'
       - 'tests/fixtures/**'
       - 'tests/test_state_audit_workflow.py'
       - 'config.yaml'
