@@ -5476,7 +5476,7 @@ GO GET IT, {athlete_name.upper()}!
             if str(date_full) in _hard_bike_dates:
                 full_description += ("\n\nSEQUENCING:\nToday also carries your hard ride, so I want "
                                      "it sequenced right. Ride first; lift at least 4 hours later — "
-                                     + ("if the day is tight, drop the lift, not the ride. Tomorrow is easy on purpose."
+                                     + ("if the day is tight, drop the lift, not the ride."
                                         if _strength_on_interval_days else
                                         "or move this lift to tomorrow if the day is tight."))
 
