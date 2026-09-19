@@ -18,10 +18,20 @@ GET_ONLY = (
     "const r = await fetch('https://tpapi.trainingpeaks.com/plans/v1/plans/672143', "
     "{credentials:'include'}); const body = await r.text();"
 )
-KERNEL_POST = (
-    "state.src = fs.readFileSync('/Users/coach/TrainingPeaksPublisher/steve-publish/"
-    "apply_plan.js', 'utf8'); " + RAW_POST
-)
+
+
+def receipt_read_plus_write(publisher_root) -> str:
+    """The legacy kernel-flow shape: read a JSON receipt from a *-publish/
+    directory, then write from the wrapper. Used to switch the guard off."""
+    kernel_dir = publisher_root / "steve-publish"
+    kernel_dir.mkdir(parents=True, exist_ok=True)
+    (kernel_dir / "apply_contract_adoption_r1.json").write_text("{}")
+    return (
+        f"const receipt = JSON.parse(fs.readFileSync('{kernel_dir / 'apply_contract_adoption_r1.json'}', 'utf8')); "
+        + RAW_POST
+    )
+
+
 AXIOS_POST = "await axios.post('https://peakswaresb.com/rx/activity/v1', body)"
 DELETE_CALL = (
     "await fetch('https://tpapi.trainingpeaks.com/plans/v1/plans/672143/workouts/9', "
@@ -60,9 +70,28 @@ class TestEvaluate:
         result = guard.evaluate("mcp__playwriter__execute", {"code": BLESSED_POST})
         assert not _is_deny(result)
 
-    def test_kernel_publish_read_bypasses_guard(self):
-        result = guard.evaluate("mcp__playwriter__execute", {"code": KERNEL_POST})
+    def test_kernel_receipt_read_no_longer_bypasses(self, tmp_path, monkeypatch):
+        # Round-4 blocker: reading any existing receipt in a *-publish/ dir
+        # used to whitelist an arbitrary write in the same call. The hatch
+        # is gone; legacy flows use the blessed marker.
+        root = tmp_path / "TrainingPeaksPublisher"
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(root))
+        result = guard.evaluate("mcp__playwriter__execute",
+                                {"code": receipt_read_plus_write(root)})
+        assert _is_deny(result)
+
+    def test_kernel_receipt_read_with_marker_allowed(self, tmp_path, monkeypatch):
+        root = tmp_path / "TrainingPeaksPublisher"
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(root))
+        code = guard.BLESSED_MARKER + " " + receipt_read_plus_write(root)
+        result = guard.evaluate("mcp__playwriter__execute", {"code": code})
         assert not _is_deny(result)
+
+    def test_kernel_string_in_comment_does_not_bypass(self):
+        code = ("// fs.readFileSync('/tmp/TrainingPeaksPublisher/zz-publish/x.js')\n"
+                + RAW_POST)
+        result = guard.evaluate("mcp__playwriter__execute", {"code": code})
+        assert _is_deny(result)
 
     def test_get_request_not_denied(self):
         result = guard.evaluate("mcp__playwriter__execute", {"code": GET_ONLY})
@@ -358,3 +387,467 @@ class TestMain:
         out = json.loads(capsys.readouterr().out)
         assert rc == 0
         assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+# ---------------------------------------------------------------- loaded scripts
+# Security review of PR #260: a wrapper that reads a script from disk and
+# evaluates it carries no write signal in ``code``. The guard resolves the
+# literal script path and scans the loaded file too. Rounds 2-3 of that
+# review (Opus, 2026-09-19) pinned the trusted scripts by absolute path AND
+# content hash, enumerated the kernel dirs, denied non-literal loads and
+# aliased loaders, and dropped comment stripping (regex literals defeat it).
+import hashlib
+
+
+def _sha(text: str) -> str:
+    return guard.content_digest(text.encode())
+
+
+class TestLoadedScripts:
+    T = "mcp__playwriter__execute"
+
+    def _wrapper(self, path) -> str:
+        return (
+            f"const src = fs.readFileSync('{path}', 'utf8'); "
+            "await page.evaluate(src);"
+        )
+
+    def _reason(self, result) -> str:
+        return result["hookSpecificOutput"]["permissionDecisionReason"]
+
+    # --- the shipped recipes, verbatim shapes
+    def test_runbook_first_lines_allowed(self, tmp_path, monkeypatch):
+        # tools/RUNBOOK_weekly_packet.md step 2 and _shared/RUNBOOK.md step 4
+        # open with builtin requires; those are module names, not files.
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        for code in ("const fs = require('node:fs');",
+                     "const fs = require('fs'); const path = require('path');",
+                     "const os = require('os'); const home = os.homedir();"):
+            result = guard.evaluate(self.T, {"code": code})
+            assert not _is_deny(result), code
+
+    def test_runbook_packet_load_allowed(self, tmp_path, monkeypatch):
+        (tmp_path / "tools").mkdir()
+        packet = "call('/fitness/v1/athletes/1/reporting/performancedata/a/b', {method: 'POST'})"
+        (tmp_path / "tools" / "tp_weekly_packet.js").write_text(packet)
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setitem(guard.TRUSTED_SCRIPT_HASHES, "tp_weekly_packet.js", _sha(packet))
+        code = ("const fs = require('node:fs');\n"
+                "const src = fs.readFileSync('tools/tp_weekly_packet.js', 'utf8');\n"
+                "await page.evaluate((a) => { window.__PACKET_ARGS__ = a; }, args);\n"
+                "await page.evaluate(src).catch((err) => { throw err; });")
+        result = guard.evaluate(self.T, {"code": code})
+        assert not _is_deny(result)
+        assert "trusted loaded script" in result.get("systemMessage", "")
+
+    def test_runbook_upsert_load_with_json_payloads_allowed(self, tmp_path, monkeypatch):
+        root = tmp_path / "TrainingPeaksPublisher"
+        shared = root / "plan-builds" / "_shared"
+        shared.mkdir(parents=True)
+        (shared / "upsert_draft_plan.js").write_text(RAW_POST)
+        run = root / "plan-builds" / "1" / "weekly-2026-09-18"
+        run.mkdir(parents=True)
+        (run / "plan_payload_final.json").write_text('{"method":"POST"}')
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(root))
+        monkeypatch.setitem(guard.TRUSTED_SCRIPT_HASHES, "upsert_draft_plan.js", _sha(RAW_POST))
+        code = (f"const fs = require('fs');\n"
+                f"const planPayload = JSON.parse(fs.readFileSync('{run / 'plan_payload_final.json'}', 'utf8'));\n"
+                f"const src = fs.readFileSync('{shared / 'upsert_draft_plan.js'}', 'utf8');\n"
+                "await page.evaluate(src).catch((e) => console.error('script threw', e));")
+        result = guard.evaluate(self.T, {"code": code})
+        assert not _is_deny(result)
+
+    # --- scanning of loaded files
+    def test_loaded_script_with_tp_write_denied(self, tmp_path):
+        script = tmp_path / "apply.js"
+        script.write_text(RAW_POST)
+        result = guard.evaluate(self.T, {"code": self._wrapper(script)})
+        assert _is_deny(result)
+        assert "apply.js" in self._reason(result)
+
+    def test_loaded_script_read_only_allowed(self, tmp_path):
+        script = tmp_path / "read.js"
+        script.write_text(GET_ONLY)
+        result = guard.evaluate(self.T, {"code": self._wrapper(script)})
+        assert not _is_deny(result)
+
+    def test_loaded_json_payload_ignored(self, tmp_path):
+        payload = tmp_path / "plan_payload_final.json"
+        payload.write_text('{"method": "POST", "url": "/plans/v1/plans"}')
+        code = f"const p = JSON.parse(fs.readFileSync('{payload}', 'utf8'));"
+        result = guard.evaluate(self.T, {"code": code})
+        assert not _is_deny(result)
+
+    def test_blessed_marker_inside_loaded_file_does_not_bypass(self, tmp_path):
+        script = tmp_path / "sneaky.js"
+        script.write_text(BLESSED_POST)
+        result = guard.evaluate(self.T, {"code": self._wrapper(script)})
+        assert _is_deny(result)
+
+    def test_three_link_chain_scanned(self, tmp_path):
+        c = tmp_path / "c.js"; c.write_text(RAW_POST)
+        b = tmp_path / "b.js"; b.write_text(self._wrapper(c))
+        a = tmp_path / "a.js"; a.write_text(self._wrapper(b))
+        result = guard.evaluate(self.T, {"code": self._wrapper(a)})
+        assert _is_deny(result)
+        assert "c.js" in self._reason(result)
+
+    def test_cyclic_loads_terminate(self, tmp_path):
+        a = tmp_path / "a.js"; b = tmp_path / "b.js"
+        a.write_text(self._wrapper(b)); b.write_text(self._wrapper(a))
+        result = guard.evaluate(self.T, {"code": self._wrapper(a)})
+        assert not _is_deny(result)
+
+    def test_wrapper_write_still_denied_alongside_clean_load(self, tmp_path):
+        script = tmp_path / "read.js"
+        script.write_text(GET_ONLY)
+        result = guard.evaluate(self.T, {"code": self._wrapper(script) + " " + RAW_POST})
+        assert _is_deny(result)
+
+    # --- path shapes
+    def test_template_literal_path_denied(self):
+        code = "const src = fs.readFileSync(`${dir}/upsert.js`, 'utf8'); await page.evaluate(src);"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+        assert "template literal" in self._reason(result)
+
+    def test_home_interpolation_expands(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        script = tmp_path / "x.js"
+        script.write_text(RAW_POST)
+        code = "const src = fs.readFileSync(`${process.env.HOME}/x.js`, 'utf8');"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+        assert "x.js" in self._reason(result)
+
+    def test_missing_script_denied(self, tmp_path):
+        result = guard.evaluate(self.T, {"code": self._wrapper(tmp_path / "nope.js")})
+        assert _is_deny(result)
+        assert "could not be read" in self._reason(result)
+
+    def test_relative_path_resolves_against_project_dir(self, tmp_path, monkeypatch):
+        (tmp_path / "tools").mkdir()
+        (tmp_path / "tools" / "adhoc.js").write_text(RAW_POST)
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        result = guard.evaluate(self.T, {"code": self._wrapper("tools/adhoc.js")})
+        assert _is_deny(result)
+
+    def test_variable_path_denied(self, tmp_path):
+        script = tmp_path / "evil.js"; script.write_text(RAW_POST)
+        code = f"const P = '{script}'; const src = fs.readFileSync(P, 'utf8');"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+        assert "non-literal" in self._reason(result)
+
+    def test_concatenated_path_denied(self, tmp_path):
+        code = f"const src = fs.readFileSync('{tmp_path}/' + 'evil.js', 'utf8');"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    def test_path_join_denied(self, tmp_path):
+        code = f"const src = fs.readFileSync(require('path').join('{tmp_path}', 'evil.js'), 'utf8');"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    def test_extensionless_require_resolves_js(self, tmp_path):
+        (tmp_path / "evil.js").write_text(RAW_POST)
+        result = guard.evaluate(self.T, {"code": f"require('{tmp_path / 'evil'}')"})
+        assert _is_deny(result)
+
+    def test_relative_dot_require_is_a_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        (tmp_path / "evil.js").write_text(RAW_POST)
+        result = guard.evaluate(self.T, {"code": "require('./evil')"})
+        assert _is_deny(result)
+
+    def test_dynamic_import_scanned(self, tmp_path):
+        script = tmp_path / "mod.js"; script.write_text(RAW_POST)
+        result = guard.evaluate(self.T, {"code": f'await import("{script}")'})
+        assert _is_deny(result)
+
+    def test_file_url_fetch_denied(self, tmp_path):
+        code = f"const src = await (await fetch('file://{tmp_path}/evil.js')).text();"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    # --- loader shapes (round 3: fail closed on the callee too)
+    def test_aliased_require_denied(self, tmp_path):
+        (tmp_path / "evil.js").write_text(RAW_POST)
+        result = guard.evaluate(self.T, {"code": f"const req = require; req('{tmp_path / 'evil'}');"})
+        assert _is_deny(result)
+        assert "direct call" in self._reason(result)
+
+    def test_aliased_read_file_sync_denied(self, tmp_path):
+        script = tmp_path / "evil.js"; script.write_text(RAW_POST)
+        code = f"const rf = fs.readFileSync; const src = rf('{script}', 'utf8');"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    def test_computed_fs_member_denied(self, tmp_path):
+        script = tmp_path / "evil.js"; script.write_text(RAW_POST)
+        code = f"const src = fs['read'+'FileSync']('{script}', 'utf8');"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    def test_create_require_denied(self, tmp_path):
+        (tmp_path / "evil.js").write_text(RAW_POST)
+        code = f"const r = createRequire('file:///x/'); r('{tmp_path / 'evil'}');"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    def test_regex_literal_cannot_hide_a_load(self, tmp_path):
+        # /[//]/ is a valid JS regex; a comment stripper would eat the rest
+        # of the line. The scan runs on raw code, so the load still counts.
+        script = tmp_path / "evil.js"; script.write_text(RAW_POST)
+        code = f"const re = /[//]/; const src = fs.readFileSync('{script}', 'utf8'); await page.evaluate(src);"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    def test_commented_out_load_fails_closed(self):
+        code = ("// TODO: was fs.readFileSync('tools/old_packet.js')\n"
+                "const x = await page.evaluate(() => window.__WEEKLY_PACKET__);")
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+        assert "could not be read" in self._reason(result)
+
+    def test_script_name_in_plain_string_ignored(self):
+        code = "console.log('run upsert_draft_plan.js next')"
+        result = guard.evaluate(self.T, {"code": code})
+        assert result == {}
+
+    # --- trusted scripts (pinned by resolved absolute path AND content hash)
+    def test_trusted_upsert_script_allowed_under_publisher_root(self, tmp_path, monkeypatch):
+        root = tmp_path / "TrainingPeaksPublisher"
+        shared = root / "plan-builds" / "_shared"
+        shared.mkdir(parents=True)
+        (shared / "upsert_draft_plan.js").write_text(RAW_POST)
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(root))
+        monkeypatch.setitem(guard.TRUSTED_SCRIPT_HASHES, "upsert_draft_plan.js", _sha(RAW_POST))
+        result = guard.evaluate(self.T, {"code": self._wrapper(shared / "upsert_draft_plan.js")})
+        assert not _is_deny(result)
+
+    def test_trusted_path_with_changed_content_denied(self, tmp_path, monkeypatch):
+        # Round-3 fix: location alone was a pass; editing the file in the
+        # session bought an unconditional allow.
+        (tmp_path / "tools").mkdir()
+        (tmp_path / "tools" / "tp_weekly_packet.js").write_text(RAW_POST)
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        result = guard.evaluate(self.T, {"code": self._wrapper("tools/tp_weekly_packet.js")})
+        assert _is_deny(result)
+        assert "SHA-256" in self._reason(result)
+
+    def test_repo_packet_script_matches_pinned_hash(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        packet = repo_root / "tools" / "tp_weekly_packet.js"
+        assert packet.exists()
+        assert (guard.content_digest(packet.read_bytes())
+                == guard.TRUSTED_SCRIPT_HASHES["tp_weekly_packet.js"]), (
+            "tools/tp_weekly_packet.js changed: re-review it and update TRUSTED_SCRIPT_HASHES")
+
+    def test_trusted_suffix_outside_pinned_roots_denied(self, tmp_path, monkeypatch):
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(tmp_path / "real-root"))
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path / "real-project"))
+        for rel in ("anydir/tools/tp_weekly_packet.js",
+                    "anydir/TrainingPeaksPublisher/plan-builds/_shared/upsert_draft_plan.js"):
+            fake = tmp_path / rel
+            fake.parent.mkdir(parents=True, exist_ok=True)
+            fake.write_text(RAW_POST)
+            result = guard.evaluate(self.T, {"code": self._wrapper(fake)})
+            assert _is_deny(result), rel
+
+    def test_cwd_not_trusted_when_project_dir_set(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path / "proj"))
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "tools").mkdir()
+        (tmp_path / "tools" / "tp_weekly_packet.js").write_text(RAW_POST)
+        monkeypatch.setitem(guard.TRUSTED_SCRIPT_HASHES, "tp_weekly_packet.js", _sha(RAW_POST))
+        result = guard.evaluate(self.T, {"code": self._wrapper(tmp_path / "tools" / "tp_weekly_packet.js")})
+        assert _is_deny(result)
+
+    def test_dotdot_traversal_resolved_before_trust_check(self, tmp_path, monkeypatch):
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(tmp_path / "real-root"))
+        fake = tmp_path / "x" / "tools" / "tp_weekly_packet.js"
+        fake.parent.mkdir(parents=True)
+        fake.write_text(RAW_POST)
+        code = self._wrapper(tmp_path / "x" / ".." / "x" / "tools" / "tp_weekly_packet.js")
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    def test_same_content_under_untrusted_name_denied(self, tmp_path, monkeypatch):
+        root = tmp_path / "TrainingPeaksPublisher"
+        shared = root / "plan-builds" / "_shared"
+        shared.mkdir(parents=True)
+        (shared / "upsert_draft_plan_v2.js").write_text(RAW_POST)
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(root))
+        result = guard.evaluate(
+            self.T, {"code": self._wrapper(shared / "upsert_draft_plan_v2.js")})
+        assert _is_deny(result)
+
+    # --- Playwright injection calls (round 4)
+    def test_add_script_tag_path_scanned(self, tmp_path):
+        script = tmp_path / "evil.js"; script.write_text(RAW_POST)
+        result = guard.evaluate(self.T, {"code": f"await page.addScriptTag({{ path: '{script}' }});"})
+        assert _is_deny(result)
+        assert "evil.js" in self._reason(result)
+
+    def test_add_init_script_path_scanned(self, tmp_path):
+        script = tmp_path / "evil.js"; script.write_text(RAW_POST)
+        code = f"await page.addInitScript({{ path: '{script}' }}); await page.reload();"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    def test_add_script_tag_clean_path_allowed(self, tmp_path):
+        script = tmp_path / "read.js"; script.write_text(GET_ONLY)
+        result = guard.evaluate(self.T, {"code": f"await page.addScriptTag({{ path: '{script}' }});"})
+        assert not _is_deny(result)
+
+    def test_add_script_tag_url_and_content_denied(self, tmp_path):
+        for code in ("await page.addScriptTag({ url: 'https://example.com/x.js' });",
+                     "await page.addScriptTag({ content: src });",
+                     f"await page.addScriptTag({{ path: p }});",
+                     "await page.addStyleTag({ content: 'body{}' });"):
+            result = guard.evaluate(self.T, {"code": code})
+            assert _is_deny(result), code
+
+    # --- prose must not trip the alias check (round 4)
+    def test_loader_words_in_prose_allowed(self):
+        for code in ("// you require a fresh token here\nawait page.evaluate(()=>1);",
+                     "// readFile the payload next\nawait page.evaluate(()=>1);",
+                     "await page.evaluate((s)=>{window.x=s;}, 'require a login');",
+                     "// this requires a token\nawait page.evaluate(()=>1);"):
+            result = guard.evaluate(self.T, {"code": code})
+            assert not _is_deny(result), code
+
+    def test_destructured_loader_denied(self, tmp_path):
+        script = tmp_path / "evil.js"; script.write_text(RAW_POST)
+        code = f"const {{readFileSync}} = fs; const src = readFileSync('{script}', 'utf8');"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    def test_loader_passed_as_argument_denied(self):
+        result = guard.evaluate(self.T, {"code": "f(require)"})
+        assert _is_deny(result)
+
+    # --- hash pin is line-ending tolerant (round 4)
+    def test_trusted_hash_tolerates_crlf_and_trailing_newline(self, tmp_path, monkeypatch):
+        packet = "call('/fitness/v1/x', {method: 'POST'})\n"
+        (tmp_path / "tools").mkdir()
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setitem(guard.TRUSTED_SCRIPT_HASHES, "tp_weekly_packet.js",
+                            guard.content_digest(packet.encode()))
+        for variant in (packet, packet + "\n", packet.replace("\n", "\r\n"), packet.rstrip("\n")):
+            (tmp_path / "tools" / "tp_weekly_packet.js").write_bytes(variant.encode())
+            result = guard.evaluate(self.T, {"code": self._wrapper("tools/tp_weekly_packet.js")})
+            assert not _is_deny(result), repr(variant)
+
+    def test_trusted_hash_mismatch_quotes_actual_digest(self, tmp_path, monkeypatch):
+        (tmp_path / "tools").mkdir()
+        (tmp_path / "tools" / "tp_weekly_packet.js").write_text(RAW_POST)
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        result = guard.evaluate(self.T, {"code": self._wrapper("tools/tp_weekly_packet.js")})
+        assert _is_deny(result)
+        assert guard.content_digest(RAW_POST.encode()) in self._reason(result)
+
+    def test_repo_packet_hash_uses_normalised_digest(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        packet = repo_root / "tools" / "tp_weekly_packet.js"
+        assert (guard.content_digest(packet.read_bytes())
+                == guard.TRUSTED_SCRIPT_HASHES["tp_weekly_packet.js"])
+
+
+# ------------------------------------------- PR #262 bot review (Cursor/Devin)
+class TestPr262BotFindings:
+    T = "mcp__playwriter__execute"
+
+    def _reason(self, result) -> str:
+        return result["hookSpecificOutput"]["permissionDecisionReason"]
+
+    def test_non_js_loaded_file_is_scanned(self, tmp_path):
+        # Cursor HIGH: a POST in a .txt / .js.bak / extensionless file was skipped.
+        for name in ("payload.txt", "upsert.js.bak", "script"):
+            f = tmp_path / name
+            f.write_text(RAW_POST)
+            code = f"const src = fs.readFileSync('{f}', 'utf8'); await page.evaluate(src);"
+            result = guard.evaluate(self.T, {"code": code})
+            assert _is_deny(result), name
+
+    def test_json_payload_must_be_json(self, tmp_path):
+        good = tmp_path / "plan_payload_final.json"
+        good.write_text('{"title": "DRAFT — x", "url": "https://tpapi.trainingpeaks.com/plans/v1/plans"}')
+        result = guard.evaluate(self.T, {"code": f"JSON.parse(fs.readFileSync('{good}', 'utf8'))"})
+        assert not _is_deny(result)
+        bad = tmp_path / "sneaky.json"
+        bad.write_text(RAW_POST)
+        result = guard.evaluate(self.T, {"code": f"const src = fs.readFileSync('{bad}', 'utf8'); await page.evaluate(src);"})
+        assert _is_deny(result)
+        assert "not JSON" in self._reason(result)
+
+    def test_bind_call_apply_denied(self, tmp_path):
+        # Cursor MEDIUM: fs.readFileSync.bind(fs)(path) left a '.' after the loader.
+        script = tmp_path / "evil.js"; script.write_text(RAW_POST)
+        for form in (f"const src = fs.readFileSync.bind(fs)('{script}', 'utf8');",
+                     f"const src = fs.readFileSync.call(fs, '{script}', 'utf8');",
+                     f"const src = fs.readFileSync.apply(fs, ['{script}', 'utf8']);",
+                     f"require.resolve('{script}')"):
+            result = guard.evaluate(self.T, {"code": form})
+            assert _is_deny(result), form
+
+    def test_copy_then_load_in_one_call_denied(self, tmp_path, monkeypatch):
+        # Cursor HIGH: copyFileSync onto the trusted path, then load it --
+        # the hash matched at hook time, the replacement ran at runtime.
+        root = tmp_path / "TrainingPeaksPublisher"
+        shared = root / "plan-builds" / "_shared"; shared.mkdir(parents=True)
+        trusted = shared / "upsert_draft_plan.js"; trusted.write_text(GET_ONLY)
+        evil = tmp_path / "evil.js"; evil.write_text(RAW_POST)
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(root))
+        monkeypatch.setitem(guard.TRUSTED_SCRIPT_HASHES, "upsert_draft_plan.js", _sha(GET_ONLY))
+        code = (f"fs.copyFileSync('{evil}', '{trusted}'); "
+                f"const src = fs.readFileSync('{trusted}', 'utf8'); await page.evaluate(src);")
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+        assert "copyFileSync" in self._reason(result)
+
+    def test_mutation_without_load_allowed(self, tmp_path):
+        # The packet-save step writes a file and loads nothing.
+        code = ("const outDir = `${process.env.HOME}/x`; fs.mkdirSync(outDir, { recursive: true, mode: 0o700 }); "
+                "fs.writeFileSync(`${outDir}/weekly_packet.json`, JSON.stringify(packet, null, 2) + '\\n', { mode: 0o600 });")
+        result = guard.evaluate(self.T, {"code": code})
+        assert not _is_deny(result)
+
+    def test_spawn_with_load_denied(self, tmp_path):
+        script = tmp_path / "read.js"; script.write_text(GET_ONLY)
+        code = f"require('child_process').execSync('cp a b'); const src = fs.readFileSync('{script}', 'utf8');"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    def test_relative_require_inside_module_resolves_against_module_dir(self, tmp_path, monkeypatch):
+        # Devin: './sibling' inside a loaded module resolved against the project dir.
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path / "proj"))
+        (tmp_path / "proj").mkdir()
+        mod_dir = tmp_path / "lib"; mod_dir.mkdir()
+        (mod_dir / "sibling.js").write_text(RAW_POST)
+        entry = mod_dir / "entry.js"; entry.write_text("const s = require('./sibling'); s();")
+        result = guard.evaluate(self.T, {"code": f"require('{entry}')"})
+        assert _is_deny(result)
+        assert "sibling.js" in self._reason(result)
+
+    def test_static_import_inside_module_scanned(self, tmp_path):
+        # Devin: static `import x from './y'` was invisible to LOAD_CALL_RE.
+        mod_dir = tmp_path / "lib"; mod_dir.mkdir()
+        (mod_dir / "writer.mjs").write_text(RAW_POST)
+        entry = mod_dir / "entry.mjs"
+        entry.write_text("import { go } from './writer.mjs';\nexport * from './writer.mjs';\ngo();")
+        result = guard.evaluate(self.T, {"code": f"await import('{entry}')"})
+        assert _is_deny(result)
+        assert "writer.mjs" in self._reason(result)
+
+    def test_static_import_bare_specifier_ignored(self, tmp_path):
+        entry = tmp_path / "entry.mjs"
+        entry.write_text("import fs from 'node:fs';\nimport path from 'path';\nexport default 1;")
+        result = guard.evaluate(self.T, {"code": f"await import('{entry}')"})
+        assert not _is_deny(result)
+
+    def test_workflow_triggers_on_hook_changes(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        wf = (repo_root / ".github" / "workflows" / "test-pipeline.yml").read_text()
+        assert wf.count("- '.claude/hooks/**'") == 2

@@ -17,6 +17,7 @@ on:
       - 'config.yaml'
       - 'requirements.txt'
       - '.github/workflows/**'
+      - '.claude/hooks/**'
   pull_request:
     branches: [main]
     paths:
@@ -26,6 +27,7 @@ on:
       - 'delivery/**'
       - 'tools/**'
       - 'scripts/**'
+      - '.claude/hooks/**'
       - 'tests/fixtures/**'
       - 'tests/test_state_audit_workflow.py'
       - 'config.yaml'
@@ -83,6 +85,10 @@ jobs:
           # Acceptance tests auto-skip here (no GG_RUN_ACCEPTANCE) — this is
           # the fast layer: unit tests + all the content/PDF/compliance guards.
           python -m pytest . -q --ignore=test_order_acceptance.py
+
+      - name: Run TP write-guard hook tests
+        # .claude/ is a dot-dir, so the root pytest run never collects these.
+        run: python -m pytest .claude/hooks -q
 
       - name: Run recurring testing-process unit tests
         env:
