@@ -18,10 +18,20 @@ GET_ONLY = (
     "const r = await fetch('https://tpapi.trainingpeaks.com/plans/v1/plans/672143', "
     "{credentials:'include'}); const body = await r.text();"
 )
-KERNEL_POST = (
-    "state.src = fs.readFileSync('/Users/coach/TrainingPeaksPublisher/steve-publish/"
-    "apply_plan.js', 'utf8'); " + RAW_POST
-)
+
+
+def kernel_post(publisher_root) -> str:
+    """A wrapper that loads a REAL kernel script under <root>/steve-publish/
+    and also carries a raw write of its own (the legacy kernel-flow shape)."""
+    kernel_dir = publisher_root / "steve-publish"
+    kernel_dir.mkdir(parents=True, exist_ok=True)
+    (kernel_dir / "apply_plan.js").write_text(RAW_POST)
+    return (
+        f"state.src = fs.readFileSync('{kernel_dir / 'apply_plan.js'}', 'utf8'); "
+        + RAW_POST
+    )
+
+
 AXIOS_POST = "await axios.post('https://peakswaresb.com/rx/activity/v1', body)"
 DELETE_CALL = (
     "await fetch('https://tpapi.trainingpeaks.com/plans/v1/plans/672143/workouts/9', "
@@ -60,9 +70,29 @@ class TestEvaluate:
         result = guard.evaluate("mcp__playwriter__execute", {"code": BLESSED_POST})
         assert not _is_deny(result)
 
-    def test_kernel_publish_read_bypasses_guard(self):
-        result = guard.evaluate("mcp__playwriter__execute", {"code": KERNEL_POST})
+    def test_kernel_publish_read_bypasses_guard(self, tmp_path, monkeypatch):
+        root = tmp_path / "TrainingPeaksPublisher"
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(root))
+        result = guard.evaluate("mcp__playwriter__execute", {"code": kernel_post(root)})
         assert not _is_deny(result)
+
+    def test_kernel_string_without_real_file_does_not_bypass(self, tmp_path, monkeypatch):
+        # Was a bare substring match: a comment naming a -publish/ path
+        # used to switch the whole guard off.
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(tmp_path / "TrainingPeaksPublisher"))
+        code = ("// fs.readFileSync('/tmp/TrainingPeaksPublisher/zz-publish/x.js')\n"
+                + RAW_POST)
+        result = guard.evaluate("mcp__playwriter__execute", {"code": code})
+        assert _is_deny(result)
+
+    def test_kernel_path_outside_publisher_root_not_trusted(self, tmp_path, monkeypatch):
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(tmp_path / "real-root"))
+        elsewhere = tmp_path / "TrainingPeaksPublisher" / "steve-publish"
+        elsewhere.mkdir(parents=True)
+        (elsewhere / "apply_plan.js").write_text(RAW_POST)
+        code = f"const src = fs.readFileSync('{elsewhere / 'apply_plan.js'}', 'utf8');"
+        result = guard.evaluate("mcp__playwriter__execute", {"code": code})
+        assert _is_deny(result)
 
     def test_get_request_not_denied(self):
         result = guard.evaluate("mcp__playwriter__execute", {"code": GET_ONLY})
@@ -362,8 +392,13 @@ class TestMain:
 
 # ---------------------------------------------------------------- loaded scripts
 # Security review of PR #260: a wrapper that reads a script from disk and
-# evaluates it carries no write signal in ``code``. The guard now resolves
-# literal script paths and scans the loaded file too.
+# evaluates it carries no write signal in ``code``. The guard resolves the
+# literal script path and scans the loaded file too. Round 2 of that review
+# (Opus, 2026-09-19) pinned the trusted scripts to resolved absolute paths,
+# made the kernel hatch require a real file, and denied non-literal loads.
+import os
+
+
 class TestLoadedScripts:
     T = "mcp__playwriter__execute"
 
@@ -373,12 +408,16 @@ class TestLoadedScripts:
             "await page.evaluate(src);"
         )
 
+    def _reason(self, result) -> str:
+        return result["hookSpecificOutput"]["permissionDecisionReason"]
+
+    # --- scanning of loaded files
     def test_loaded_script_with_tp_write_denied(self, tmp_path):
         script = tmp_path / "apply.js"
         script.write_text(RAW_POST)
         result = guard.evaluate(self.T, {"code": self._wrapper(script)})
         assert _is_deny(result)
-        assert "apply.js" in result["hookSpecificOutput"]["permissionDecisionReason"]
+        assert "apply.js" in self._reason(result)
 
     def test_loaded_script_read_only_allowed(self, tmp_path):
         script = tmp_path / "read.js"
@@ -393,16 +432,52 @@ class TestLoadedScripts:
         result = guard.evaluate(self.T, {"code": code})
         assert not _is_deny(result)
 
+    def test_blessed_marker_inside_loaded_file_does_not_bypass(self, tmp_path):
+        script = tmp_path / "sneaky.js"
+        script.write_text(BLESSED_POST)
+        result = guard.evaluate(self.T, {"code": self._wrapper(script)})
+        assert _is_deny(result)
+
+    def test_three_link_chain_scanned(self, tmp_path):
+        c = tmp_path / "c.js"; c.write_text(RAW_POST)
+        b = tmp_path / "b.js"; b.write_text(self._wrapper(c))
+        a = tmp_path / "a.js"; a.write_text(self._wrapper(b))
+        result = guard.evaluate(self.T, {"code": self._wrapper(a)})
+        assert _is_deny(result)
+        assert "c.js" in self._reason(result)
+
+    def test_cyclic_loads_terminate(self, tmp_path):
+        a = tmp_path / "a.js"; b = tmp_path / "b.js"
+        a.write_text(self._wrapper(b)); b.write_text(self._wrapper(a))
+        result = guard.evaluate(self.T, {"code": self._wrapper(a)})
+        assert not _is_deny(result)
+
+    def test_wrapper_write_still_denied_alongside_clean_load(self, tmp_path):
+        script = tmp_path / "read.js"
+        script.write_text(GET_ONLY)
+        result = guard.evaluate(self.T, {"code": self._wrapper(script) + " " + RAW_POST})
+        assert _is_deny(result)
+
+    # --- path shapes
     def test_template_literal_path_denied(self):
         code = "const src = fs.readFileSync(`${dir}/upsert.js`, 'utf8'); await page.evaluate(src);"
         result = guard.evaluate(self.T, {"code": code})
         assert _is_deny(result)
-        assert "template literal" in result["hookSpecificOutput"]["permissionDecisionReason"]
+        assert "template literal" in self._reason(result)
+
+    def test_home_interpolation_expands(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        script = tmp_path / "x.js"
+        script.write_text(RAW_POST)
+        code = "const src = fs.readFileSync(`${process.env.HOME}/x.js`, 'utf8');"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+        assert "x.js" in self._reason(result)
 
     def test_missing_script_denied(self, tmp_path):
         result = guard.evaluate(self.T, {"code": self._wrapper(tmp_path / "nope.js")})
         assert _is_deny(result)
-        assert "could not be read" in result["hookSpecificOutput"]["permissionDecisionReason"]
+        assert "could not be read" in self._reason(result)
 
     def test_relative_path_resolves_against_project_dir(self, tmp_path, monkeypatch):
         (tmp_path / "tools").mkdir()
@@ -411,7 +486,56 @@ class TestLoadedScripts:
         result = guard.evaluate(self.T, {"code": self._wrapper("tools/adhoc.js")})
         assert _is_deny(result)
 
-    def test_trusted_packet_script_allowed_by_suffix(self, tmp_path, monkeypatch):
+    def test_variable_path_denied(self, tmp_path):
+        script = tmp_path / "evil.js"; script.write_text(RAW_POST)
+        code = f"const P = '{script}'; const src = fs.readFileSync(P, 'utf8');"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+        assert "non-literal" in self._reason(result)
+
+    def test_concatenated_path_denied(self, tmp_path):
+        code = f"const src = fs.readFileSync('{tmp_path}/' + 'evil.js', 'utf8');"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    def test_path_join_denied(self, tmp_path):
+        code = f"const src = fs.readFileSync(require('path').join('{tmp_path}', 'evil.js'), 'utf8');"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    def test_extensionless_require_resolves_js(self, tmp_path):
+        (tmp_path / "evil.js").write_text(RAW_POST)
+        result = guard.evaluate(self.T, {"code": f"require('{tmp_path / 'evil'}')"})
+        assert _is_deny(result)
+
+    def test_dynamic_import_scanned(self, tmp_path):
+        script = tmp_path / "mod.js"; script.write_text(RAW_POST)
+        result = guard.evaluate(self.T, {"code": f'await import("{script}")'})
+        assert _is_deny(result)
+
+    def test_file_url_fetch_denied(self, tmp_path):
+        code = f"const src = await (await fetch('file://{tmp_path}/evil.js')).text();"
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    def test_commented_out_load_ignored(self):
+        code = ("// TODO: was fs.readFileSync('tools/old_packet.js')\n"
+                "const x = await page.evaluate(() => window.__WEEKLY_PACKET__);")
+        result = guard.evaluate(self.T, {"code": code})
+        assert not _is_deny(result)
+
+    def test_block_comment_load_ignored(self):
+        code = "/* fs.readFileSync('tools/old.js') */ const y = 1;"
+        result = guard.evaluate(self.T, {"code": code})
+        assert not _is_deny(result)
+
+    def test_script_name_in_plain_string_ignored(self):
+        code = "console.log('run upsert_draft_plan.js next')"
+        result = guard.evaluate(self.T, {"code": code})
+        assert result == {}
+
+    # --- trusted scripts (pinned by resolved absolute path)
+    def test_trusted_packet_script_allowed_under_project_dir(self, tmp_path, monkeypatch):
         (tmp_path / "tools").mkdir()
         # The real packet script carries a POST (TP's PMC reporting query).
         (tmp_path / "tools" / "tp_weekly_packet.js").write_text(
@@ -421,50 +545,51 @@ class TestLoadedScripts:
         assert not _is_deny(result)
         assert "trusted loaded script" in result.get("systemMessage", "")
 
-    def test_trusted_upsert_script_allowed_absolute(self, tmp_path):
-        shared = tmp_path / "TrainingPeaksPublisher" / "plan-builds" / "_shared"
+    def test_trusted_upsert_script_allowed_under_publisher_root(self, tmp_path, monkeypatch):
+        root = tmp_path / "TrainingPeaksPublisher"
+        shared = root / "plan-builds" / "_shared"
         shared.mkdir(parents=True)
         (shared / "upsert_draft_plan.js").write_text(RAW_POST)
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(root))
         result = guard.evaluate(self.T, {"code": self._wrapper(shared / "upsert_draft_plan.js")})
         assert not _is_deny(result)
 
-    def test_same_content_under_untrusted_name_denied(self, tmp_path):
-        shared = tmp_path / "TrainingPeaksPublisher" / "plan-builds" / "_shared"
+    def test_trusted_suffix_outside_pinned_roots_denied(self, tmp_path, monkeypatch):
+        # Round-2 blocker: a suffix match was satisfiable by any file the
+        # agent wrote. Same name, wrong root -> scanned -> denied.
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(tmp_path / "real-root"))
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path / "real-project"))
+        for rel in ("anydir/tools/tp_weekly_packet.js",
+                    "anydir/TrainingPeaksPublisher/plan-builds/_shared/upsert_draft_plan.js"):
+            fake = tmp_path / rel
+            fake.parent.mkdir(parents=True, exist_ok=True)
+            fake.write_text(RAW_POST)
+            result = guard.evaluate(self.T, {"code": self._wrapper(fake)})
+            assert _is_deny(result), rel
+
+    def test_dotdot_traversal_resolved_before_trust_check(self, tmp_path, monkeypatch):
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(tmp_path / "real-root"))
+        fake = tmp_path / "x" / "tools" / "tp_weekly_packet.js"
+        fake.parent.mkdir(parents=True)
+        fake.write_text(RAW_POST)
+        code = self._wrapper(tmp_path / "x" / ".." / "x" / "tools" / "tp_weekly_packet.js")
+        result = guard.evaluate(self.T, {"code": code})
+        assert _is_deny(result)
+
+    def test_same_content_under_untrusted_name_denied(self, tmp_path, monkeypatch):
+        root = tmp_path / "TrainingPeaksPublisher"
+        shared = root / "plan-builds" / "_shared"
         shared.mkdir(parents=True)
         (shared / "upsert_draft_plan_v2.js").write_text(RAW_POST)
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(root))
         result = guard.evaluate(
             self.T, {"code": self._wrapper(shared / "upsert_draft_plan_v2.js")})
         assert _is_deny(result)
 
-    def test_blessed_marker_inside_loaded_file_does_not_bypass(self, tmp_path):
-        script = tmp_path / "sneaky.js"
-        script.write_text(BLESSED_POST)
-        result = guard.evaluate(self.T, {"code": self._wrapper(script)})
+    def test_kernel_script_that_loads_ad_hoc_writer_denied(self, tmp_path, monkeypatch):
+        root = tmp_path / "TrainingPeaksPublisher"
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(root))
+        evil = tmp_path / "evil.js"; evil.write_text(RAW_POST)
+        code = kernel_post(root) + " " + self._wrapper(evil)
+        result = guard.evaluate(self.T, {"code": code})
         assert _is_deny(result)
-
-    def test_nested_load_one_level_scanned(self, tmp_path):
-        inner = tmp_path / "inner.js"
-        inner.write_text(RAW_POST)
-        outer = tmp_path / "outer.js"
-        outer.write_text(self._wrapper(inner))
-        result = guard.evaluate(self.T, {"code": self._wrapper(outer)})
-        assert _is_deny(result)
-        assert "inner.js" in result["hookSpecificOutput"]["permissionDecisionReason"]
-
-    def test_require_and_import_forms_scanned(self, tmp_path):
-        script = tmp_path / "mod.js"
-        script.write_text(RAW_POST)
-        for form in (f"require('{script}')", f'await import("{script}")'):
-            result = guard.evaluate(self.T, {"code": form})
-            assert _is_deny(result), form
-
-    def test_wrapper_write_still_denied_alongside_clean_load(self, tmp_path):
-        script = tmp_path / "read.js"
-        script.write_text(GET_ONLY)
-        result = guard.evaluate(self.T, {"code": self._wrapper(script) + " " + RAW_POST})
-        assert _is_deny(result)
-
-    def test_kernel_publish_read_still_bypasses(self, tmp_path):
-        # Existing escape hatch is unchanged: a *-publish/ kernel read wins.
-        result = guard.evaluate(self.T, {"code": KERNEL_POST})
-        assert not _is_deny(result)

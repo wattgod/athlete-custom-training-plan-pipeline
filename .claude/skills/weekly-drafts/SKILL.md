@@ -69,12 +69,17 @@ ari-shapiro 4439069, judd-pulley 4032686.
 
 ## Guard (security review, PR #260)
 
-`.claude/hooks/tp_write_guard.py` scans the `code` string passed to `mcp__playwriter__execute` AND every `*.js`
-file that code loads by literal path (`readFileSync` / `require` / `import`, one nested level). A loaded script with
-a POST/PUT/PATCH/DELETE against a TrainingPeaks endpoint is denied unless its path ends in one of
-`TRUSTED_LOADED_SCRIPTS`: `plan-builds/_shared/upsert_draft_plan.js` (plans/v1 writes only, refuses any plan not
-titled DRAFT) and `tools/tp_weekly_packet.js` (read-only; its one POST is TP's PMC reporting query). Rules:
-- Evaluate only those two scripts in the TP tab. Never evaluate ad-hoc JS there; a copy under another name is denied.
-- Load them by a literal path (absolute, `~`, or relative to the repo). A template-literal or missing path is denied.
-- Do not modify either script in the session; adding a path to `TRUSTED_LOADED_SCRIPTS` is a reviewed change.
+`.claude/hooks/tp_write_guard.py` scans the `code` string passed to `mcp__playwriter__execute` AND every script that
+code loads (`readFileSync` / `readFile` / `require` / `import`, followed transitively, comments stripped). A loaded
+script with a POST/PUT/PATCH/DELETE against a TrainingPeaks endpoint is denied unless it IS one of the two reviewed
+files, matched by resolved absolute path: `~/Library/Application Support/GravelGod/TrainingPeaksPublisher/plan-builds/
+_shared/upsert_draft_plan.js` (plans/v1 writes only, refuses any plan not titled DRAFT) and `<repo>/tools/
+tp_weekly_packet.js` (read-only; its one POST is TP's PMC reporting query). Rules:
+- Evaluate only those two scripts in the TP tab. Never evaluate ad-hoc JS there. The same content at any other path is
+  scanned and denied; a `-publish/` kernel path counts only if it is a real file under the publisher root.
+- Load them by ONE literal path (absolute, `~`, `${process.env.HOME}`, or relative to the repo). A variable,
+  concatenation, `path.join`, other template interpolation, or missing file is denied.
+- Do not modify either script in the session; changing the trusted paths is a reviewed change to the hook.
 - The blessed-write marker is honored only in the `code` string, never inside a loaded file.
+- The guard is a regex tripwire for straightforward and accidental writes, not a defence against deliberate
+  obfuscation. The "only the named scripts" rule above is the real control.

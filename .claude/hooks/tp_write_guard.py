@@ -38,33 +38,53 @@ has parsed successfully -- see "Fail closed" below):
    writes that reach for this marker still need explicit, coach-visible
    justification (say so in the session transcript) -- the marker is an
    audit trail, not a rubber stamp.
-2. **Kernel-driven flows.** Code that reads a script out of a
-   ``TrainingPeaksPublisher/*-publish/`` directory (the proven kernel
-   scripts referenced by the coaching-ops skills, e.g. ``sonja-publish/``,
-   ``steve-publish/``, ``cheesehead-publish/``) is trusted -- those scripts
-   are the reviewed, proven transport this repo's skills already delegate
-   real writes to.
+2. **Kernel-driven flows.** Code that loads an EXISTING script from a
+   ``<publisher root>/*-publish/`` directory (the proven kernel scripts the
+   coaching-ops skills delegate real writes to, e.g. ``sonja-publish/``,
+   ``steve-publish/``, ``cheesehead-publish/``) is trusted. The publisher
+   root is ``~/Library/Application Support/GravelGod/TrainingPeaksPublisher``
+   (override with ``$GG_TP_PUBLISHER_ROOT`` for tests). A ``-publish/``
+   string that does not resolve to a real file under that root is NOT a
+   kernel read -- it was once a bare substring match, which a comment
+   could satisfy.
 
 Loaded scripts (security review, PR #260): a wrapper that reads a ``.js``
 file from disk and evaluates it in the TP tab carries no write signal of
 its own, so scanning only ``code`` missed the real write. The guard now
-also resolves every literal script path handed to ``readFileSync`` /
-``readFile`` / ``require`` / ``import`` (``*.js``, ``*.mjs``, ``*.cjs``;
-``.json`` and other data files are ignored), reads the file, and applies
-the same write-signal + TP-reference scan to its contents, following one
-further level of loads inside it. Rules:
-  - a path that cannot be resolved (template literal, variable, missing
-    file, unreadable) is a DENY -- a script the guard cannot inspect must
-    not run against TrainingPeaks; pass a literal path (absolute, ``~``,
-    or relative to ``$CLAUDE_PROJECT_DIR`` / the cwd).
+parses every ``readFileSync`` / ``readFile`` / ``require`` / ``import`` /
+``createRequire`` call (comments stripped first), resolves the literal
+path, reads the file, applies the same write-signal + TP-reference scan
+to its contents, and follows loads inside loaded files transitively
+(cycle-safe, hard cap of 64 files). Rules:
+  - the path argument must be ONE string literal followed by ``,`` or
+    ``)``. A variable, concatenation, ``path.join(...)``, template
+    interpolation (other than ``${process.env.HOME}`` / ``${os.homedir()}``,
+    which expand to ``~``) or ``fetch('file:...')`` is a DENY -- a script
+    the guard cannot locate must not run against TrainingPeaks. Pass a
+    literal path (absolute, ``~``, or relative to ``$CLAUDE_PROJECT_DIR`` /
+    the cwd).
+  - ``require``/``import`` literals are scripts whatever their extension
+    (Node resolves ``.js``); ``readFileSync``/``readFile`` literals are
+    scripts only when they end in ``.js``/``.mjs``/``.cjs`` -- ``.json``
+    payloads and other data files are ignored.
+  - a missing or unreadable script is a DENY.
   - the GG_BLESSED_TP_WRITE marker is only honored in ``code`` itself,
     never inside a loaded file (an agent could write it into a file).
-  - ``TRUSTED_LOADED_SCRIPTS`` names the two reviewed weekly-drafts
-    scripts by path suffix: ``plan-builds/_shared/upsert_draft_plan.js``
-    (plans/v1 writes only, refuses any plan not titled DRAFT) and
-    ``tools/tp_weekly_packet.js`` (read-only; its one ``POST`` is the TP
-    PMC reporting query, which takes a body). They are allowed as-is.
-    Adding a path here is a reviewed change, not a session-time edit.
+  - ``trusted_script_paths()`` names the two reviewed weekly-drafts
+    scripts by RESOLVED ABSOLUTE PATH, not by name: ``<publisher root>/
+    plan-builds/_shared/upsert_draft_plan.js`` (plans/v1 writes only,
+    refuses any plan not titled DRAFT) and ``<project dir>/tools/
+    tp_weekly_packet.js`` (read-only; its one ``POST`` is the TP PMC
+    reporting query, which takes a body). Those two files are allowed
+    as-is; the same content anywhere else is scanned and denied. Adding a
+    path is a reviewed change to this file, not a session-time edit.
+
+What this guard is: a tripwire against straightforward and accidental
+raw TP writes from an agent session. It is regex-based; an author who
+deliberately obfuscates (``eval(atob(...))``, ``data:`` imports, string-
+built verbs and hosts) can get past it. The skills' "only the named
+scripts, never ad-hoc JS in the TP tab" rule is the real control; this
+hook catches the honest mistakes.
 
 Fail CLOSED, not open: any exception while parsing stdin, malformed JSON,
 a non-object payload, or a missing/non-string ``code`` on a call this hook
@@ -115,26 +135,165 @@ TP_HOST_RE = re.compile(
     re.IGNORECASE,
 )
 BLESSED_MARKER = "/* GG_BLESSED_TP_WRITE */"
-KERNEL_READ_RE = re.compile(
-    r"""readFileSync\(\s*[`'"][^`'"]*TrainingPeaksPublisher/[^`'"/]+-publish/""",
-    re.IGNORECASE,
-)
+GUARDED_TOOL = "mcp__playwriter__execute"
 
-LOADED_SCRIPT_RE = re.compile(
-    r"""(?:readFileSync|readFile|require|import)\(\s*([`'"])([^`'"]+?\.[cm]?js)\1""",
-    re.IGNORECASE,
-)
-# Path SUFFIXES of the reviewed weekly-drafts transport scripts. Matched
-# against the resolved, normalised path, so an absolute or relative spelling
-# of the same file both qualify. Keep this list short and reviewed.
-TRUSTED_LOADED_SCRIPTS = (
-    "TrainingPeaksPublisher/plan-builds/_shared/upsert_draft_plan.js",
-    "tools/tp_weekly_packet.js",
-)
-MAX_LOAD_DEPTH = 2
+PUBLISHER_ROOT_ENV = "GG_TP_PUBLISHER_ROOT"
+DEFAULT_PUBLISHER_ROOT = "~/Library/Application Support/GravelGod/TrainingPeaksPublisher"
+SCRIPT_SUFFIXES = (".js", ".mjs", ".cjs")
+MAX_LOADED_FILES = 64
 _MAX_SCRIPT_BYTES = 2_000_000
 
-GUARDED_TOOL = "mcp__playwriter__execute"
+# JS string literals (kept) vs. line/block comments (dropped) -- used so a
+# commented-out load does not count, while a URL inside a string survives.
+_STRING_OR_COMMENT_RE = re.compile(
+    r"""("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)"""
+    r"""|//[^\n]*|/\*[\s\S]*?\*/"""
+)
+LOAD_CALL_RE = re.compile(
+    r"""\b(readFileSync|readFile|require|import|createRequire)\s*\(""",
+    re.IGNORECASE,
+)
+_LITERAL_ARG_RE = re.compile(r"""\s*([`'"])((?:(?!\1).)*)\1\s*([,)])""")
+FILE_URL_FETCH_RE = re.compile(r"""fetch\(\s*[`'"]file:""", re.IGNORECASE)
+_HOME_INTERPOLATION_RE = re.compile(
+    r"""\$\{\s*(?:process\.env\.HOME|os\.homedir\(\)|require\(['"]os['"]\)\.homedir\(\))\s*\}"""
+)
+
+
+def _strip_comments(code: str) -> str:
+    return _STRING_OR_COMMENT_RE.sub(lambda m: m.group(1) or " ", code)
+
+
+def _publisher_root() -> Path:
+    raw = os.environ.get(PUBLISHER_ROOT_ENV) or DEFAULT_PUBLISHER_ROOT
+    return Path(os.path.expanduser(raw)).resolve()
+
+
+def _project_dirs() -> list[Path]:
+    dirs = []
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+    if project_dir:
+        dirs.append(Path(project_dir))
+    dirs.append(Path.cwd())
+    return dirs
+
+
+def trusted_script_paths() -> set[Path]:
+    """The two reviewed weekly-drafts scripts, by resolved absolute path."""
+    trusted = {_publisher_root() / "plan-builds" / "_shared" / "upsert_draft_plan.js"}
+    for base in _project_dirs():
+        trusted.add((base / "tools" / "tp_weekly_packet.js").resolve())
+    return trusted
+
+
+def _is_kernel_script(path: Path) -> bool:
+    root = _publisher_root()
+    try:
+        rel = path.relative_to(root)
+    except ValueError:
+        return False
+    return bool(rel.parts) and rel.parts[0].endswith("-publish") and path.is_file()
+
+
+def _resolve_script_path(raw: str) -> Path | None:
+    """Turn a literal path into a resolved Path; ``None`` when the literal
+    still needs JS evaluation (template interpolation)."""
+    raw = _HOME_INTERPOLATION_RE.sub("~", raw)
+    if "${" in raw:
+        return None
+    candidate = Path(os.path.expanduser(raw))
+    if candidate.is_absolute():
+        return candidate.resolve()
+    bases = _project_dirs()
+    for base in bases:
+        joined = base / candidate
+        if joined.exists():
+            return joined.resolve()
+    return (bases[0] / candidate).resolve()
+
+
+def _script_loads(code: str) -> tuple[list[tuple[str, str]], list[str]]:
+    """Parse the load calls in ``code``. Returns ``(loads, problems)`` where
+    ``loads`` is ``[(call, literal)]`` for loads that name a script and
+    ``problems`` explains every call whose argument is not one literal."""
+    stripped = _strip_comments(code)
+    loads: list[tuple[str, str]] = []
+    problems: list[str] = []
+    if FILE_URL_FETCH_RE.search(stripped):
+        problems.append("fetch('file:...') is not an inspectable script load")
+    for match in LOAD_CALL_RE.finditer(stripped):
+        call = match.group(1)
+        arg = _LITERAL_ARG_RE.match(stripped, match.end())
+        if arg is None:
+            problems.append(
+                f"{call}(...) takes a non-literal path (variable, concatenation, "
+                "path.join, ...) -- pass one literal path so the file can be scanned")
+            continue
+        literal = arg.group(2)
+        if call.lower() == "createrequire":
+            continue  # its argument is a base URL, not a script
+        if call.lower() in ("require", "import"):
+            loads.append((call, literal))
+        elif literal.lower().endswith(SCRIPT_SUFFIXES):
+            loads.append((call, literal))
+    return loads, problems
+
+
+def scan_loaded_scripts(code: str) -> tuple[list[str], list[str], list[str]]:
+    """Resolve every script loaded by ``code`` (transitively) and scan each
+    the way ``code`` itself is scanned. Returns ``(denials, trusted, kernel)``:
+    denial reasons (empty when clean), trusted scripts that were loaded, and
+    kernel (*-publish/) scripts that were loaded."""
+    denials: list[str] = []
+    trusted: list[str] = []
+    kernel: list[str] = []
+    seen: set[Path] = set()
+    trusted_set = trusted_script_paths()
+    worklist = [("code", code)]
+    while worklist:
+        origin, text = worklist.pop(0)
+        loads, problems = _script_loads(text)
+        denials.extend(f"{origin}: {problem}" for problem in problems)
+        for call, literal in loads:
+            path = _resolve_script_path(literal)
+            if path is None:
+                denials.append(
+                    f"{origin}: {call}({literal!r}) is a template literal the guard "
+                    "cannot resolve -- pass a literal path so the file can be scanned")
+                continue
+            if call.lower() in ("require", "import") and not path.exists():
+                with_js = path.with_name(path.name + ".js")
+                if with_js.exists():
+                    path = with_js
+            if path in seen:
+                continue
+            seen.add(path)
+            if len(seen) > MAX_LOADED_FILES:
+                denials.append(f"more than {MAX_LOADED_FILES} scripts loaded -- refusing to scan")
+                return denials, trusted, kernel
+            if path in trusted_set:
+                trusted.append(path.as_posix())
+                continue
+            if _is_kernel_script(path):
+                kernel.append(path.as_posix())
+                continue
+            try:
+                if path.stat().st_size > _MAX_SCRIPT_BYTES:
+                    raise OSError("file too large to scan")
+                content = path.read_text(encoding="utf-8", errors="replace")
+            except OSError as exc:
+                denials.append(
+                    f"{origin}: loaded script {literal!r} could not be read "
+                    f"({exc.__class__.__name__}) -- a script the guard cannot inspect "
+                    "must not run against TrainingPeaks")
+                continue
+            if WRITE_VERB_RE.search(content) and TP_HOST_RE.search(content):
+                denials.append(
+                    f"loaded script {path.as_posix()} contains a raw TP write "
+                    "(POST/PUT/PATCH/DELETE against a TrainingPeaks endpoint)")
+                continue
+            worklist.append((path.as_posix(), content))
+    return denials, trusted, kernel
 
 
 def _allow(message: str | None = None) -> dict:
@@ -153,78 +312,6 @@ def _deny(reason: str) -> dict:
     }
 
 
-def _resolve_script_path(raw: str) -> Path | None:
-    """Turn a literal path from a load call into a Path. ``None`` when the
-    literal is not resolvable without running JS (template interpolation)."""
-    if "${" in raw:
-        return None
-    raw = os.path.expanduser(raw)
-    candidate = Path(raw)
-    if candidate.is_absolute():
-        return candidate
-    bases = []
-    project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
-    if project_dir:
-        bases.append(Path(project_dir))
-    bases.append(Path.cwd())
-    for base in bases:
-        joined = base / candidate
-        if joined.exists():
-            return joined
-    return bases[0] / candidate
-
-
-def _is_trusted_script(path: Path) -> bool:
-    normalised = path.as_posix()
-    return any(normalised.endswith(suffix) for suffix in TRUSTED_LOADED_SCRIPTS)
-
-
-def scan_loaded_scripts(code: str, depth: int = 1,
-                        seen: set[str] | None = None) -> tuple[list[str], list[str]]:
-    """Resolve every literal ``*.js`` path loaded by ``code`` and scan the
-    file the way ``code`` itself is scanned. Returns ``(denials, trusted)``:
-    denial reasons (empty when clean) and the trusted scripts that were
-    loaded (for the audit message)."""
-    seen = set() if seen is None else seen
-    denials: list[str] = []
-    trusted: list[str] = []
-    for match in LOADED_SCRIPT_RE.finditer(code):
-        raw = match.group(2)
-        path = _resolve_script_path(raw)
-        if path is None:
-            denials.append(
-                f"loaded script path {raw!r} is a template literal the guard cannot "
-                "resolve -- pass a literal path so the file can be scanned")
-            continue
-        key = str(path)
-        if key in seen:
-            continue
-        seen.add(key)
-        if _is_trusted_script(path):
-            trusted.append(path.as_posix())
-            continue
-        try:
-            if path.stat().st_size > _MAX_SCRIPT_BYTES:
-                raise OSError("file too large to scan")
-            content = path.read_text(encoding="utf-8", errors="replace")
-        except OSError as exc:
-            denials.append(
-                f"loaded script {raw!r} could not be read ({exc.__class__.__name__}) "
-                "-- a script the guard cannot inspect must not run against TrainingPeaks")
-            continue
-        if WRITE_VERB_RE.search(content) and TP_HOST_RE.search(content):
-            denials.append(
-                f"loaded script {path.as_posix()} contains a raw TP write "
-                "(POST/PUT/PATCH/DELETE against a TrainingPeaks endpoint)")
-            continue
-        if depth < MAX_LOAD_DEPTH:
-            nested_denials, nested_trusted = scan_loaded_scripts(
-                content, depth + 1, seen)
-            denials.extend(nested_denials)
-            trusted.extend(nested_trusted)
-    return denials, trusted
-
-
 def evaluate(tool_name: str, tool_input: dict) -> dict:
     if tool_name and tool_name != GUARDED_TOOL:
         return _allow()
@@ -235,17 +322,18 @@ def evaluate(tool_name: str, tool_input: dict) -> dict:
         return _allow(
             "tp_write_guard: GG_BLESSED_TP_WRITE marker present -- guard bypassed.")
 
-    if KERNEL_READ_RE.search(code):
-        return _allow(
-            "tp_write_guard: kernel-script read (*-publish/) detected -- guard bypassed.")
-
-    denials, trusted = scan_loaded_scripts(code)
+    denials, trusted, kernel = scan_loaded_scripts(code)
     if denials:
         return _deny(
             "tp_write_guard: blocked because " + "; ".join(denials) + ". "
-            "Only the reviewed scripts named in TRUSTED_LOADED_SCRIPTS may be "
+            "Only the reviewed scripts named by trusted_script_paths() may be "
             "evaluated in the TP tab -- see .claude/hooks/tp_write_guard.py."
         )
+
+    if kernel:
+        return _allow(
+            "tp_write_guard: kernel-script read (*-publish/) detected -- guard bypassed: "
+            + ", ".join(kernel))
 
     if WRITE_VERB_RE.search(code) and TP_HOST_RE.search(code):
         return _deny(
