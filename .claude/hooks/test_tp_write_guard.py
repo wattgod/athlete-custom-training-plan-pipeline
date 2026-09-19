@@ -20,10 +20,9 @@ GET_ONLY = (
 )
 
 
-def kernel_post(publisher_root) -> str:
-    """A wrapper that loads a REAL file from <root>/steve-publish/ (the real
-    kernel dirs hold JSON receipts, not scripts) and carries the raw write
-    itself (the legacy kernel-flow shape)."""
+def receipt_read_plus_write(publisher_root) -> str:
+    """The legacy kernel-flow shape: read a JSON receipt from a *-publish/
+    directory, then write from the wrapper. Used to switch the guard off."""
     kernel_dir = publisher_root / "steve-publish"
     kernel_dir.mkdir(parents=True, exist_ok=True)
     (kernel_dir / "apply_contract_adoption_r1.json").write_text("{}")
@@ -71,27 +70,26 @@ class TestEvaluate:
         result = guard.evaluate("mcp__playwriter__execute", {"code": BLESSED_POST})
         assert not _is_deny(result)
 
-    def test_kernel_publish_read_bypasses_guard(self, tmp_path, monkeypatch):
+    def test_kernel_receipt_read_no_longer_bypasses(self, tmp_path, monkeypatch):
+        # Round-4 blocker: reading any existing receipt in a *-publish/ dir
+        # used to whitelist an arbitrary write in the same call. The hatch
+        # is gone; legacy flows use the blessed marker.
         root = tmp_path / "TrainingPeaksPublisher"
         monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(root))
-        result = guard.evaluate("mcp__playwriter__execute", {"code": kernel_post(root)})
-        assert not _is_deny(result)
-
-    def test_kernel_string_without_real_file_does_not_bypass(self, tmp_path, monkeypatch):
-        # Was a bare substring match: a comment naming a -publish/ path
-        # used to switch the whole guard off.
-        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(tmp_path / "TrainingPeaksPublisher"))
-        code = ("// fs.readFileSync('/tmp/TrainingPeaksPublisher/zz-publish/x.js')\n"
-                + RAW_POST)
-        result = guard.evaluate("mcp__playwriter__execute", {"code": code})
+        result = guard.evaluate("mcp__playwriter__execute",
+                                {"code": receipt_read_plus_write(root)})
         assert _is_deny(result)
 
-    def test_kernel_path_outside_publisher_root_not_trusted(self, tmp_path, monkeypatch):
-        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(tmp_path / "real-root"))
-        elsewhere = tmp_path / "TrainingPeaksPublisher" / "steve-publish"
-        elsewhere.mkdir(parents=True)
-        (elsewhere / "apply_plan.js").write_text(RAW_POST)
-        code = f"const src = fs.readFileSync('{elsewhere / 'apply_plan.js'}', 'utf8');"
+    def test_kernel_receipt_read_with_marker_allowed(self, tmp_path, monkeypatch):
+        root = tmp_path / "TrainingPeaksPublisher"
+        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(root))
+        code = guard.BLESSED_MARKER + " " + receipt_read_plus_write(root)
+        result = guard.evaluate("mcp__playwriter__execute", {"code": code})
+        assert not _is_deny(result)
+
+    def test_kernel_string_in_comment_does_not_bypass(self):
+        code = ("// fs.readFileSync('/tmp/TrainingPeaksPublisher/zz-publish/x.js')\n"
+                + RAW_POST)
         result = guard.evaluate("mcp__playwriter__execute", {"code": code})
         assert _is_deny(result)
 
@@ -402,7 +400,7 @@ import hashlib
 
 
 def _sha(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
+    return guard.content_digest(text.encode())
 
 
 class TestLoadedScripts:
@@ -642,7 +640,7 @@ class TestLoadedScripts:
         repo_root = Path(__file__).resolve().parents[2]
         packet = repo_root / "tools" / "tp_weekly_packet.js"
         assert packet.exists()
-        assert (hashlib.sha256(packet.read_bytes()).hexdigest()
+        assert (guard.content_digest(packet.read_bytes())
                 == guard.TRUSTED_SCRIPT_HASHES["tp_weekly_packet.js"]), (
             "tools/tp_weekly_packet.js changed: re-review it and update TRUSTED_SCRIPT_HASHES")
 
@@ -685,22 +683,73 @@ class TestLoadedScripts:
             self.T, {"code": self._wrapper(shared / "upsert_draft_plan_v2.js")})
         assert _is_deny(result)
 
-    # --- kernel directories (enumerated)
-    def test_agent_made_publish_dir_not_a_kernel(self, tmp_path, monkeypatch):
-        root = tmp_path / "TrainingPeaksPublisher"
-        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(root))
-        made = root / "agent-made-publish"
-        made.mkdir(parents=True)
-        (made / "ok.json").write_text("{}")
-        code = f"const s = fs.readFileSync('{made / 'ok.json'}', 'utf8'); " + RAW_POST
+    # --- Playwright injection calls (round 4)
+    def test_add_script_tag_path_scanned(self, tmp_path):
+        script = tmp_path / "evil.js"; script.write_text(RAW_POST)
+        result = guard.evaluate(self.T, {"code": f"await page.addScriptTag({{ path: '{script}' }});"})
+        assert _is_deny(result)
+        assert "evil.js" in self._reason(result)
+
+    def test_add_init_script_path_scanned(self, tmp_path):
+        script = tmp_path / "evil.js"; script.write_text(RAW_POST)
+        code = f"await page.addInitScript({{ path: '{script}' }}); await page.reload();"
         result = guard.evaluate(self.T, {"code": code})
         assert _is_deny(result)
 
-    def test_kernel_file_that_loads_ad_hoc_writer_denied(self, tmp_path, monkeypatch):
-        root = tmp_path / "TrainingPeaksPublisher"
-        monkeypatch.setenv(guard.PUBLISHER_ROOT_ENV, str(root))
-        evil = tmp_path / "evil.js"; evil.write_text(RAW_POST)
-        code = kernel_post(root) + " " + self._wrapper(evil)
+    def test_add_script_tag_clean_path_allowed(self, tmp_path):
+        script = tmp_path / "read.js"; script.write_text(GET_ONLY)
+        result = guard.evaluate(self.T, {"code": f"await page.addScriptTag({{ path: '{script}' }});"})
+        assert not _is_deny(result)
+
+    def test_add_script_tag_url_and_content_denied(self, tmp_path):
+        for code in ("await page.addScriptTag({ url: 'https://example.com/x.js' });",
+                     "await page.addScriptTag({ content: src });",
+                     f"await page.addScriptTag({{ path: p }});",
+                     "await page.addStyleTag({ content: 'body{}' });"):
+            result = guard.evaluate(self.T, {"code": code})
+            assert _is_deny(result), code
+
+    # --- prose must not trip the alias check (round 4)
+    def test_loader_words_in_prose_allowed(self):
+        for code in ("// you require a fresh token here\nawait page.evaluate(()=>1);",
+                     "// readFile the payload next\nawait page.evaluate(()=>1);",
+                     "await page.evaluate((s)=>{window.x=s;}, 'require a login');",
+                     "// this requires a token\nawait page.evaluate(()=>1);"):
+            result = guard.evaluate(self.T, {"code": code})
+            assert not _is_deny(result), code
+
+    def test_destructured_loader_denied(self, tmp_path):
+        script = tmp_path / "evil.js"; script.write_text(RAW_POST)
+        code = f"const {{readFileSync}} = fs; const src = readFileSync('{script}', 'utf8');"
         result = guard.evaluate(self.T, {"code": code})
         assert _is_deny(result)
 
+    def test_loader_passed_as_argument_denied(self):
+        result = guard.evaluate(self.T, {"code": "f(require)"})
+        assert _is_deny(result)
+
+    # --- hash pin is line-ending tolerant (round 4)
+    def test_trusted_hash_tolerates_crlf_and_trailing_newline(self, tmp_path, monkeypatch):
+        packet = "call('/fitness/v1/x', {method: 'POST'})\n"
+        (tmp_path / "tools").mkdir()
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setitem(guard.TRUSTED_SCRIPT_HASHES, "tp_weekly_packet.js",
+                            guard.content_digest(packet.encode()))
+        for variant in (packet, packet + "\n", packet.replace("\n", "\r\n"), packet.rstrip("\n")):
+            (tmp_path / "tools" / "tp_weekly_packet.js").write_bytes(variant.encode())
+            result = guard.evaluate(self.T, {"code": self._wrapper("tools/tp_weekly_packet.js")})
+            assert not _is_deny(result), repr(variant)
+
+    def test_trusted_hash_mismatch_quotes_actual_digest(self, tmp_path, monkeypatch):
+        (tmp_path / "tools").mkdir()
+        (tmp_path / "tools" / "tp_weekly_packet.js").write_text(RAW_POST)
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        result = guard.evaluate(self.T, {"code": self._wrapper("tools/tp_weekly_packet.js")})
+        assert _is_deny(result)
+        assert guard.content_digest(RAW_POST.encode()) in self._reason(result)
+
+    def test_repo_packet_hash_uses_normalised_digest(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        packet = repo_root / "tools" / "tp_weekly_packet.js"
+        assert (guard.content_digest(packet.read_bytes())
+                == guard.TRUSTED_SCRIPT_HASHES["tp_weekly_packet.js"])

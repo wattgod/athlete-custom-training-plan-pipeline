@@ -38,18 +38,12 @@ has parsed successfully -- see "Fail closed" below):
    writes that reach for this marker still need explicit, coach-visible
    justification (say so in the session transcript) -- the marker is an
    audit trail, not a rubber stamp.
-2. **Kernel-driven flows.** Code that loads an EXISTING file from one of
-   the enumerated kernel directories ``KERNEL_PUBLISH_DIRS`` under the
-   publisher root (``~/Library/Application Support/GravelGod/
-   TrainingPeaksPublisher``; ``$GG_TP_PUBLISHER_ROOT`` overrides it for
-   tests) is trusted -- those are the proven kernel flows the coaching-ops
-   skills delegate real calendar writes to, and their writes live in the
-   wrapper, so the hatch excuses the whole call. It used to be a bare
-   ``-publish/`` substring match on ``code`` (a comment satisfied it);
-   now the directory name must be in the list and the file must exist.
-   Residual hole, accepted and documented: an agent that writes a file
-   INTO an existing kernel directory and loads it gets the hatch. Adding a
-   kernel directory is a reviewed change to this file.
+2. (Removed 2026-09-19.) A ``*-publish/`` kernel-directory read used to
+   switch the guard off for the whole call. Those directories hold JSON
+   receipts, not scripts, so the hatch amounted to "read any existing
+   receipt, then write anything" -- reachable by one ``ls``. Legacy
+   kernel flows that write from the wrapper now use the marker above,
+   which is the coach-visible audit trail they should have had.
 
 Loaded scripts (security review, PR #260): a wrapper that reads a ``.js``
 file from disk and evaluates it in the TP tab carries no write signal of
@@ -81,6 +75,10 @@ Rules:
     ``readFileSync``/``readFile`` literals are scripts only when they end
     in ``.js``/``.mjs``/``.cjs`` -- ``.json`` payloads are ignored.
   - a missing or unreadable script is a DENY.
+  - Playwright's own injection calls are loads too: ``addScriptTag`` /
+    ``addInitScript`` / ``addStyleTag`` are allowed only as
+    ``({ path: '<literal>' })`` (the file is scanned like any script);
+    ``url:``, ``content:`` and non-literal forms are a DENY.
   - the GG_BLESSED_TP_WRITE marker is only honored in ``code`` itself,
     never inside a loaded file (an agent could write it into a file).
   - ``trusted_script_paths()`` names the two reviewed weekly-drafts
@@ -89,9 +87,12 @@ Rules:
     upsert_draft_plan.js`` (plans/v1 writes only, refuses any plan not
     titled DRAFT) and ``<project dir>/tools/tp_weekly_packet.js``
     (read-only; its one ``POST`` is the TP PMC reporting query, which
-    takes a body). A trusted path whose content does not match its hash
-    is a DENY -- editing either script means re-reviewing it and updating
-    the hash here. The same content anywhere else is scanned and denied.
+    takes a body). Hashing normalises CRLF and the trailing newline so an
+    editor save is not a false alarm. A trusted path whose content does
+    not match its hash is a DENY that quotes the actual digest -- editing
+    either script means re-reviewing it and updating the hash here
+    (``python3 tp_write_guard.py --print-hashes`` prints both). The same
+    content anywhere else is scanned and denied.
 
 What this guard is: a tripwire against straightforward and accidental
 raw TP writes from an agent session. It is regex-based; an author who
@@ -154,13 +155,6 @@ GUARDED_TOOL = "mcp__playwriter__execute"
 
 PUBLISHER_ROOT_ENV = "GG_TP_PUBLISHER_ROOT"
 DEFAULT_PUBLISHER_ROOT = "~/Library/Application Support/GravelGod/TrainingPeaksPublisher"
-# Kernel flow directories under the publisher root. Reviewed list.
-KERNEL_PUBLISH_DIRS = (
-    "cheesehead-publish",
-    "sonja-publish",
-    "steve-publish",
-    "forest-hietpas-publish",
-)
 # SHA-256 of the two trusted scripts' contents. Editing a script = re-review + update here.
 TRUSTED_SCRIPT_HASHES = {
     "upsert_draft_plan.js": "4507002ab7172530f67cdf29671217e6b7cc25b550974aab7b4817e8893f4078",
@@ -176,11 +170,18 @@ LOAD_CALL_RE = re.compile(
 )
 _LITERAL_ARG_RE = re.compile(r"""\s*([`'"])((?:(?!\1).)*)\1\s*([,)])""")
 FILE_URL_FETCH_RE = re.compile(r"""fetch\(\s*[`'"]file:""", re.IGNORECASE)
-# A loader named but not called right there: aliased, passed, .resolve'd.
+# A loader named but not called right there: aliased, destructured, passed.
+# Token-shaped (must be followed by JS punctuation) so prose in a comment or
+# string ("you require a token") does not trip it.
 LOADER_ALIAS_RE = re.compile(
-    r"""\b(readFileSync|readFile|require)\b(?!\s*\()|\bcreateRequire\b|\bfs\s*\[""",
-    re.IGNORECASE,
+    r"""\b(readFileSync|readFile|require)\b\s*(?=[;,)\]}=]|$)|\bcreateRequire\b|\bfs\s*\[""",
+    re.IGNORECASE | re.MULTILINE,
 )
+# Playwright file injection: page.addScriptTag({ path }) etc. Only the
+# ``{ path: '<literal>' }`` form is followable; everything else is denied.
+INJECT_CALL_RE = re.compile(r"""\b(addScriptTag|addInitScript|addStyleTag)\s*\(""")
+_INJECT_PATH_ARG_RE = re.compile(
+    r"""\s*\{\s*path\s*:\s*([`'"])((?:(?!\1).)*)\1\s*,?\s*\}\s*\)""")
 _HOME_INTERPOLATION_RE = re.compile(
     r"""\$\{\s*(?:process\.env\.HOME|os\.homedir\(\)|require\(['"]os['"]\)\.homedir\(\))\s*\}"""
 )
@@ -202,14 +203,6 @@ def trusted_script_paths() -> set[Path]:
     for base in _project_dirs():
         trusted.add((base / "tools" / "tp_weekly_packet.js").resolve())
     return trusted
-
-
-def _is_kernel_file(path: Path) -> bool:
-    try:
-        rel = path.relative_to(_publisher_root())
-    except ValueError:
-        return False
-    return len(rel.parts) >= 2 and rel.parts[0] in KERNEL_PUBLISH_DIRS and path.is_file()
 
 
 def _is_bare_specifier(literal: str) -> bool:
@@ -250,6 +243,15 @@ def _loads(code: str) -> tuple[list[tuple[str, str, bool]], list[str]]:
         problems.append(
             f"loader referenced without a direct call ({alias.group(0).strip()!r}) -- "
             "call readFileSync/readFile/require directly with one literal path")
+    for match in INJECT_CALL_RE.finditer(code):
+        call = match.group(1)
+        arg = _INJECT_PATH_ARG_RE.match(code, match.end())
+        if arg is None:
+            problems.append(
+                f"{call}(...) is only allowed as {{ path: '<literal>' }} -- url:, "
+                "content: and non-literal forms cannot be scanned")
+            continue
+        loads.append((call, arg.group(2), True))
     for match in LOAD_CALL_RE.finditer(code):
         call = match.group(1)
         arg = _LITERAL_ARG_RE.match(code, match.end())
@@ -268,14 +270,19 @@ def _loads(code: str) -> tuple[list[tuple[str, str, bool]], list[str]]:
     return loads, problems
 
 
-def scan_loaded_scripts(code: str) -> tuple[list[str], list[str], list[str]]:
+def content_digest(content_bytes: bytes) -> str:
+    """SHA-256 of a script with CRLF and the trailing newline normalised."""
+    normalised = content_bytes.replace(b"\r\n", b"\n").rstrip(b"\n") + b"\n"
+    return hashlib.sha256(normalised).hexdigest()
+
+
+def scan_loaded_scripts(code: str) -> tuple[list[str], list[str]]:
     """Resolve every file loaded by ``code`` (scripts transitively) and scan
     each script the way ``code`` itself is scanned. Returns ``(denials,
-    trusted, kernel)``: denial reasons (empty when clean), trusted scripts
-    that were loaded, and kernel-directory files that were loaded."""
+    trusted)``: denial reasons (empty when clean) and the trusted scripts
+    that were loaded."""
     denials: list[str] = []
     trusted: list[str] = []
-    kernel: list[str] = []
     seen: set[Path] = set()
     trusted_set = trusted_script_paths()
     worklist = [("code", code)]
@@ -291,9 +298,6 @@ def scan_loaded_scripts(code: str) -> tuple[list[str], list[str], list[str]]:
                         f"{origin}: {call}({literal!r}) is a template literal the guard "
                         "cannot resolve -- pass a literal path so the file can be scanned")
                 continue
-            if _is_kernel_file(path):
-                kernel.append(path.as_posix())
-                continue
             if not is_script:
                 continue
             if call.lower() in ("require", "import") and not path.exists():
@@ -305,7 +309,7 @@ def scan_loaded_scripts(code: str) -> tuple[list[str], list[str], list[str]]:
             seen.add(path)
             if len(seen) > MAX_LOADED_FILES:
                 denials.append(f"more than {MAX_LOADED_FILES} scripts loaded -- refusing to scan")
-                return denials, trusted, kernel
+                return denials, trusted
             try:
                 if path.stat().st_size > _MAX_SCRIPT_BYTES:
                     raise OSError("file too large to scan")
@@ -318,12 +322,14 @@ def scan_loaded_scripts(code: str) -> tuple[list[str], list[str], list[str]]:
                 continue
             if path in trusted_set:
                 expected = TRUSTED_SCRIPT_HASHES.get(path.name)
-                if expected and hashlib.sha256(content_bytes).hexdigest() == expected:
+                actual = content_digest(content_bytes)
+                if expected and actual == expected:
                     trusted.append(path.as_posix())
                 else:
                     denials.append(
                         f"trusted script {path.as_posix()} does not match its reviewed "
-                        "SHA-256 -- re-review it and update TRUSTED_SCRIPT_HASHES")
+                        f"SHA-256 (actual {actual}) -- re-review it and update "
+                        "TRUSTED_SCRIPT_HASHES")
                 continue
             content = content_bytes.decode("utf-8", errors="replace")
             if WRITE_VERB_RE.search(content) and TP_HOST_RE.search(content):
@@ -332,7 +338,7 @@ def scan_loaded_scripts(code: str) -> tuple[list[str], list[str], list[str]]:
                     "(POST/PUT/PATCH/DELETE against a TrainingPeaks endpoint)")
                 continue
             worklist.append((path.as_posix(), content))
-    return denials, trusted, kernel
+    return denials, trusted
 
 
 def _allow(message: str | None = None) -> dict:
@@ -361,18 +367,13 @@ def evaluate(tool_name: str, tool_input: dict) -> dict:
         return _allow(
             "tp_write_guard: GG_BLESSED_TP_WRITE marker present -- guard bypassed.")
 
-    denials, trusted, kernel = scan_loaded_scripts(code)
+    denials, trusted = scan_loaded_scripts(code)
     if denials:
         return _deny(
             "tp_write_guard: blocked because " + "; ".join(denials) + ". "
             "Only the reviewed scripts named by trusted_script_paths() may be "
             "evaluated in the TP tab -- see .claude/hooks/tp_write_guard.py."
         )
-
-    if kernel:
-        return _allow(
-            "tp_write_guard: kernel-directory read detected -- guard bypassed: "
-            + ", ".join(kernel))
 
     if WRITE_VERB_RE.search(code) and TP_HOST_RE.search(code):
         return _deny(
@@ -431,5 +432,16 @@ def main() -> int:
     return 0
 
 
+def print_hashes() -> int:
+    for path in sorted(trusted_script_paths()):
+        try:
+            print(f"{content_digest(path.read_bytes())}  {path}")
+        except OSError as exc:
+            print(f"(unreadable: {exc.__class__.__name__})  {path}")
+    return 0
+
+
 if __name__ == "__main__":
+    if "--print-hashes" in sys.argv[1:]:
+        raise SystemExit(print_hashes())
     raise SystemExit(main())

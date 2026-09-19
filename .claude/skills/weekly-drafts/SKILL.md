@@ -70,20 +70,22 @@ ari-shapiro 4439069, judd-pulley 4032686.
 ## Guard (security review, PR #260)
 
 `.claude/hooks/tp_write_guard.py` scans the `code` string passed to `mcp__playwriter__execute` AND every script that
-code loads (`readFileSync` / `readFile` / `require` / `import`, followed transitively). A loaded script with a
-POST/PUT/PATCH/DELETE against a TrainingPeaks endpoint is denied unless it IS one of the two reviewed files, matched by
-resolved absolute path AND SHA-256 of its content: `~/Library/Application Support/GravelGod/TrainingPeaksPublisher/
-plan-builds/_shared/upsert_draft_plan.js` (plans/v1 writes only, refuses any plan not titled DRAFT) and
-`<repo>/tools/tp_weekly_packet.js` (read-only; its one POST is TP's PMC reporting query). Rules:
+code loads (`readFileSync` / `readFile` / `require` / `import` / `page.addScriptTag({ path })`, followed
+transitively). A loaded script with a POST/PUT/PATCH/DELETE against a TrainingPeaks endpoint is denied unless it IS
+one of the two reviewed files, matched by resolved absolute path AND SHA-256 of its content: `~/Library/Application
+Support/GravelGod/TrainingPeaksPublisher/plan-builds/_shared/upsert_draft_plan.js` (plans/v1 writes only, refuses any
+plan not titled DRAFT) and `<repo>/tools/tp_weekly_packet.js` (read-only; its one POST is TP's PMC reporting query).
+Rules:
 - Evaluate only those two scripts in the TP tab. Never evaluate ad-hoc JS there. The same content at any other path is
-  scanned and denied; either file edited in-session fails its hash and is denied until re-reviewed and re-pinned.
+  scanned and denied; either file edited in-session fails its hash and is denied until re-reviewed and re-pinned
+  (`python3 .claude/hooks/tp_write_guard.py --print-hashes`; CRLF and trailing-newline differences are tolerated).
 - Load them by ONE literal path (absolute, `~`, `${process.env.HOME}`, or relative to the repo) with the loader called
-  directly. A variable, concatenation, `path.join`, aliased loader (`const rf = fs.readFileSync`), `createRequire`, other
-  template interpolation, or missing file is denied. Builtin requires (`require('node:fs')`, `'fs'`, `'path'`) are fine.
+  directly. A variable, concatenation, `path.join`, aliased or destructured loader, `createRequire`, other template
+  interpolation, `addScriptTag` with `url:`/`content:`, or a missing file is denied. Builtin requires (`'node:fs'`,
+  `'fs'`, `'path'`) are fine.
 - Comments are not stripped (a JS regex literal defeats any stripper), so a load inside a comment still counts and
   fails closed. Delete the comment rather than leaving a dead load in the wrapper.
-- Kernel-flow reads (`<publisher root>/<name>-publish/`) bypass the guard only for the directories enumerated in the
-  hook; a new kernel directory is a reviewed hook change.
-- The blessed-write marker is honored only in the `code` string, never inside a loaded file.
+- There is no kernel-directory escape hatch any more. A legacy flow that writes from the wrapper needs the
+  `/* GG_BLESSED_TP_WRITE */` marker, which is the coach-visible audit trail for a hand-run write.
 - The guard is a regex tripwire for straightforward and accidental writes, not a defence against deliberate
   obfuscation. The "only the named scripts" rule above is the real control.
