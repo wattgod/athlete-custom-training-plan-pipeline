@@ -164,6 +164,21 @@ def test_explicit_no_field_tests_is_canonical_profile_control(
     }
 
 
+def test_supplied_ftp_does_not_force_a_redundant_field_test(
+    minimal_valid_parsed,
+):
+    profile = build_profile(copy.deepcopy(minimal_valid_parsed))
+    markers = profile['fitness_markers']
+    assert markers['ftp_watts'] == 250
+    assert markers['field_testing_allowed'] is True
+    assert markers['reanchor'] == {
+        'required': False,
+        'week': None,
+        'test': None,
+        'action': 'No field test scheduled; preserve the current training anchor.',
+    }
+
+
 def test_additional_notes_preserve_calendar_intent_and_referenced_dates(
     minimal_valid_parsed,
 ):

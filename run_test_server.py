@@ -6,11 +6,23 @@ Usage:
 
 Requires:
     - STRIPE_TEST_KEY env var (Stripe test secret key)
+    - STRIPE_WEBHOOK_SECRET from the active ``stripe listen`` process
     - stripe listen --forward-to localhost:5050/webhook/stripe
       (in a separate terminal for webhook testing)
 """
 import os
+import secrets
 import sys
+import tempfile
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent
+PIPELINE_SCRIPTS_DIR = REPO_ROOT / 'athletes' / 'scripts'
+TEST_DATA_ROOT = Path(
+    os.environ.get('GG_TEST_DATA_DIR')
+    or tempfile.mkdtemp(prefix='gg-stripe-test-')
+).resolve()
+PORT = int(os.environ.get('PORT', '5050'))
 
 # Set test mode environment BEFORE importing the app
 test_key = os.environ.get('STRIPE_TEST_KEY') or os.environ.get('STRIPE_SECRET_KEY')
@@ -18,15 +30,34 @@ if not test_key or not test_key.startswith('sk_test_'):
     print("ERROR: Set STRIPE_TEST_KEY env var to your Stripe test secret key")
     print("  STRIPE_TEST_KEY=sk_test_... python3 run_test_server.py")
     sys.exit(1)
+webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET', '').strip()
+if not webhook_secret.startswith('whsec_'):
+    print("ERROR: Set STRIPE_WEBHOOK_SECRET from the active stripe listener")
+    print("  stripe listen --events checkout.session.completed \\")
+    print("    --forward-to http://127.0.0.1:5050/webhook/stripe")
+    sys.exit(1)
 os.environ['STRIPE_SECRET_KEY'] = test_key
 os.environ['FLASK_ENV'] = 'development'
-os.environ['ATHLETES_DIR'] = '/tmp/gg-test-athletes'
-os.environ['SCRIPTS_DIR'] = '/tmp/gg-test-athletes/scripts'
+os.environ['ATHLETES_DIR'] = str(TEST_DATA_ROOT)
+os.environ['DATA_DIR'] = str(TEST_DATA_ROOT)
+os.environ['SCRIPTS_DIR'] = str(PIPELINE_SCRIPTS_DIR)
+os.environ['REVIEW_BASE_URL'] = f'http://127.0.0.1:{PORT}'
+for inherited_key in (
+    'DOWNLOAD_TOKEN_KEYS', 'DOWNLOAD_TOKEN_KID',
+    'DOWNLOAD_TOKEN_COACH_KID', 'DOWNLOAD_TOKEN_CUSTOMER_KID',
+    'REVIEW_TOKEN_KEYS', 'REVIEW_TOKEN_KID',
+):
+    os.environ.pop(inherited_key, None)
+os.environ['DOWNLOAD_TOKEN_SECRET'] = secrets.token_urlsafe(48)
+os.environ['REVIEW_TOKEN_SECRET'] = secrets.token_urlsafe(48)
 
-# Create temp dirs
-os.makedirs('/tmp/gg-test-athletes/scripts', exist_ok=True)
-os.makedirs('/tmp/gg-test-athletes/.logs', exist_ok=True)
-os.makedirs('/tmp/gg-test-athletes/intake', exist_ok=True)
+if not (PIPELINE_SCRIPTS_DIR / 'intake_to_plan.py').is_file():
+    print(f"ERROR: Pipeline scripts not found at {PIPELINE_SCRIPTS_DIR}")
+    sys.exit(1)
+
+# Create temp output dirs. Executable pipeline code stays in the checkout.
+os.makedirs(TEST_DATA_ROOT / '.logs', exist_ok=True)
+os.makedirs(TEST_DATA_ROOT / 'intake', exist_ok=True)
 
 # Add webhook dir to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'webhook'))
@@ -37,23 +68,9 @@ import stripe
 # Override Stripe key
 stripe.api_key = os.environ['STRIPE_SECRET_KEY']
 
-# Override price IDs with test mode prices
-app_module.TRAINING_PLAN_PRICE_IDS = {
-    4: 'price_1T2wQdLoaHDbEqSqNeQ8J90v',
-    5: 'price_1T2wQeLoaHDbEqSqIm981SFy',
-    6: 'price_1T2wQeLoaHDbEqSqAIoet5hQ',
-    7: 'price_1T2wQeLoaHDbEqSqWHjwRp9i',
-    8: 'price_1T2wQeLoaHDbEqSqDv96E8Ww',
-    9: 'price_1T2wQfLoaHDbEqSq2vx3qXab',
-    10: 'price_1T2wQfLoaHDbEqSqZGFQjehW',
-    11: 'price_1T2wQfLoaHDbEqSqOgidr42p',
-    12: 'price_1T2wQfLoaHDbEqSqgoKjkMyQ',
-    13: 'price_1T2wQgLoaHDbEqSqWTSEMScZ',
-    14: 'price_1T2wQgLoaHDbEqSqYbldf2L8',
-    15: 'price_1T2wQgLoaHDbEqSqJPlORxmJ',
-    16: 'price_1T2wQhLoaHDbEqSqm4xAeEuF',
-    17: 'price_1T2wQhLoaHDbEqSq5kxTi7HP',
-}
+# Exercise the computed training-plan price as inline test-mode price data.
+# Static test catalog IDs go stale and can make the canary fail before checkout.
+app_module.TRAINING_PLAN_PRICE_IDS = {}
 
 app_module.COACHING_PRICE_IDS = {
     'min': 'price_1T2wQhLoaHDbEqSqUBXRAch9',
@@ -81,12 +98,12 @@ print("=" * 60)
 print("GRAVEL GOD TEST SERVER")
 print("=" * 60)
 print(f"Stripe mode: TEST")
-print(f"Training plan prices: {len(app_module.TRAINING_PLAN_PRICE_IDS)} (4-17+ weeks)")
+print("Training plan prices: computed inline (4-17+ weeks)")
 print(f"Coaching prices: {len(app_module.COACHING_PRICE_IDS)} tiers")
 print(f"Consulting price: {app_module.CONSULTING_PRICE_ID}")
 print(f"Athletes dir: {os.environ['ATHLETES_DIR']}")
+print(f"Pipeline scripts: {os.environ['SCRIPTS_DIR']}")
 print()
-PORT = int(os.environ.get('PORT', '5050'))
 print("Test endpoints:")
 print(f"  POST http://localhost:{PORT}/api/create-checkout")
 print(f"  POST http://localhost:{PORT}/api/create-coaching-checkout")
@@ -100,4 +117,5 @@ print("  3D Secure: 4000 0025 0000 3155")
 print("  Exp: any future date, CVC: any 3 digits")
 print("=" * 60)
 
-app_module.app.run(host='0.0.0.0', port=PORT, debug=True)
+app_module.app.run(host='127.0.0.1', port=PORT, debug=False,
+                   use_reloader=False)

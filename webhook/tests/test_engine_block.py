@@ -488,6 +488,17 @@ class TestInvalidRequests:
 # =============================================================================
 
 class TestComplianceGate:
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "2026-09-19: after the AE-2.7 60-min floor + weekday-target growth "
+            "and the variety policy landed, a 378-config sweep (hours 3-15, "
+            "experience 0-5, base/build/peak, 2-3 weeks, ages 30-60) found NO "
+            "request that trips a CRITICAL rule through /engine/block -- the "
+            "4h beginner build block now passes R03. Kept strict so it flips "
+            "loud when a marginal config exists again; the 422 branch itself is "
+            "pinned by test_422_branch_unit."),
+    )
     def test_marginal_config_returns_422(self, client):
         """Known marginal config from the domain sweep: a 4h/week beginner in
         a 3-week build block trips the R03 recovery-ratio boundary (67% of

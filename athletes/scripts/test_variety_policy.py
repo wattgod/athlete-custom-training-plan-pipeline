@@ -159,7 +159,7 @@ def test_variety_report_counts_spread_series_and_pool_use():
 def test_a_family_is_freshly_started_at_most_twice_per_plan():
     pool = [
         make_item(1, "torque_starts_cadence", "Ladder", explicit_level=1, duration_min=60, if_planned=0.66, dimension_score=5),
-        make_item(2, "torque_starts_cadence", "Spin-Ups", explicit_level=1, duration_min=60, if_planned=0.64, dimension_score=0),
+        make_item(2, "torque_starts_cadence", "Cadence Drills", explicit_level=1, duration_min=60, if_planned=0.64, dimension_score=0),
     ]
     idx = make_index(pool)
     used = {}
@@ -169,17 +169,17 @@ def test_a_family_is_freshly_started_at_most_twice_per_plan():
                               plan_week=week, block_id=block, day="Fri"), index=idx, used_items=used)
         names.append(res["name_base"] if res else None)
     assert names[:2] == ["Ladder", "Ladder"]
-    assert names[2] == "Spin-Ups"
+    assert names[2] == "Cadence Drills"
     # item 1 is at its plan-wide reuse cap and Spin-Ups is under the block
     # spread only once -- the 4th draw takes the family still under cap
-    assert names[3] == "Spin-Ups"
+    assert names[3] == "Cadence Drills"
 
 
 def test_fresh_pick_avoids_a_family_already_placed_in_the_block():
     pool = [
         make_item(1, "torque_starts_cadence", "Ladder", explicit_level=1, duration_min=60, if_planned=0.66, dimension_score=5),
         make_item(2, "torque_starts_cadence", "Ladder", explicit_level=2, duration_min=62, if_planned=0.68, dimension_score=5),
-        make_item(3, "torque_starts_cadence", "Spin-Ups", explicit_level=1, duration_min=60, if_planned=0.64, dimension_score=0),
+        make_item(3, "torque_starts_cadence", "Cadence Drills", explicit_level=1, duration_min=60, if_planned=0.64, dimension_score=0),
     ]
     idx = make_index(pool)
     series, used = {}, {}
@@ -189,7 +189,7 @@ def test_fresh_pick_avoids_a_family_already_placed_in_the_block():
     assert (a["name_base"], b["name_base"]) == ("Ladder", "Ladder")  # the pair progresses
     c = ls.select(_slot(plan_week=3, series_key=None, canonical_name="Cadence Work", role="filler", level=1, day="Wed"),
                   index=idx, used_items=used)
-    assert c["name_base"] == "Spin-Ups"  # a fresh start in the same block takes another family
+    assert c["name_base"] == "Cadence Drills"  # a fresh start in the same block takes another family
 
 
 def test_filler_block_repeat_is_preferred_over_no_candidate_but_intensity_stays_hard():
@@ -213,3 +213,14 @@ def test_variety_report_counts_series_closed_by_the_rung_cap():
               (1, "Thu", "Y"): {"family_key": "vo2_classic||Solo", "placed": 1}}
     rep = ls.variety_report({"weeks": []}, idx, series)
     assert rep["series_sessions"] == 3 and rep["series"][0]["rungs"] == 3
+
+
+def test_endurance_slot_never_draws_an_item_over_the_ae_2_8_rate_ceiling():
+    pool = [
+        make_item(1, "endurance_with_work", "Z2 + Sprints", duration_min=108, tss=91.6, if_planned=0.71, dimension_score=5),
+        make_item(2, "endurance_with_work", "Z2 + Surges", duration_min=108, tss=85.0, if_planned=0.70, dimension_score=0),
+    ]
+    idx = make_index(pool)
+    got = ls.select(_slot(canonical_name="Endurance", role="filler", series_key=None, plan_week=1, day="Tue",
+                          budget_min=108, level=1), index=idx, used_items={})
+    assert got["name_base"] == "Z2 + Surges"  # 50.9 TSS/h is over the ceiling; 47.2 is not

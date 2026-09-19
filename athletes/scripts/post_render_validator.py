@@ -556,6 +556,16 @@ _HARD_MINUTES_FLOOR = 90.0
 # 90-minute weekly floor structurally impossible there; race week is its
 # own thing entirely.
 _HARD_MINUTES_EXEMPT_WEEK_TYPES = {"recovery", "taper", "race"}
+_VO2_FTP_THRESHOLD = 106.0
+_VO2_SECONDS_MIN = 5 * 60
+_VO2_SECONDS_MAX = 18 * 60
+_VO2_ARCHETYPES = {
+    "VO2max 30/30",
+    "VO2max 40/20",
+    "VO2max Extended",
+    "VO2max Steady Intervals",
+    "Thirty-Fifteens",
+}
 
 
 def _step_seconds(step: Dict[str, Any]) -> int:
@@ -624,6 +634,61 @@ def _session_hard_seconds(session: Dict[str, Any]) -> int:
     return total
 
 
+def _session_vo2_seconds(session: Dict[str, Any]) -> int:
+    total = 0
+    for block in (session.get("structure") or {}).get("structure") or []:
+        for step in block.get("steps") or []:
+            values = []
+            for target in step.get("targets") or []:
+                if not isinstance(target, dict) or target.get("unit"):
+                    continue
+                for field in ("minValue", "maxValue"):
+                    try:
+                        values.append(float(target[field]))
+                    except (KeyError, TypeError, ValueError):
+                        pass
+            if values and max(values) >= _VO2_FTP_THRESHOLD:
+                total += _step_seconds(step)
+    return total
+
+
+def _vo2_dose_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Fail closed if a final cycling VO2 structure escapes AE-3.1.
+
+    Library selection is the first defense, but the rendered plan is the
+    contract we deliver. This catches synthetic fallbacks and any future
+    selector path that bypasses the curated-item ceiling.
+    """
+    findings = []
+    for week_num, session in _sessions(plan_ir):
+        structure = session.get("structure") or {}
+        if (session.get("tp_kind") != "bike"
+                or session.get("archetype_id") not in _VO2_ARCHETYPES
+                or str(structure.get("primaryIntensityMetric") or "").lower()
+                != "percentofftp"):
+            continue
+        seconds = _session_vo2_seconds(session)
+        if _VO2_SECONDS_MIN <= seconds <= _VO2_SECONDS_MAX:
+            continue
+        day = str(session.get("date") or "unknown")
+        findings.append(_issue(
+            f"VO2_DOSE_OUT_OF_RANGE_W{week_num:02d}_{day}",
+            f"{day}: '{session.get('title') or session.get('display_name')}' "
+            f"contains {seconds / 60:.1f} minutes at or above "
+            f"{_VO2_FTP_THRESHOLD:.0f}% FTP; AE-3.1 requires "
+            f"{_VO2_SECONDS_MIN / 60:.0f}-{_VO2_SECONDS_MAX / 60:.0f} minutes.",
+            review_value={
+                "week": week_num,
+                "date": day,
+                "title": session.get("title") or session.get("display_name"),
+                "vo2_minutes": round(seconds / 60, 1),
+                "minimum_minutes": _VO2_SECONDS_MIN / 60,
+                "maximum_minutes": _VO2_SECONDS_MAX / 60,
+            },
+        ))
+    return findings
+
+
 def _hard_minutes_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
     """AE-2.1 (phase-scoped, sol programming review 2026-08-24): a LOAD week
     needs >=90 structured hard minutes (>=92% FTP, test efforts counted per
@@ -647,6 +712,11 @@ def _hard_minutes_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
         # actually training a periodized plan, not the lead-in.
         if str(week.get("phase") or "") == "pre_plan":
             continue
+        # Generated assessment efforts are currently honest FreeRide steps,
+        # but PlanIR does not yet carry their deterministic assessment dose.
+        # Enforcing this floor on a testing week would therefore report 0m for
+        # work the athlete actually performs. Keep the gate load-only until
+        # that metadata exists end to end.
         if week_type in _HARD_MINUTES_EXEMPT_WEEK_TYPES or week_type != "load":
             continue
         minutes = totals.get(week_num, 0.0)
@@ -761,8 +831,15 @@ def _short_quality_findings(
             continue
         title = str(session.get("title") or session.get("display_name") or "")
         title_lower = title.lower()
-        is_opener = any(
+        # Review the authored purpose, not an entire calendar phase. Blanket
+        # taper/race exemptions hid accidentally truncated endurance rides.
+        # The title fallback preserves compatibility with older packages that
+        # predate the role field.
+        role = str(session.get("role") or "").lower()
+        is_short_exempt = role in {"recovery", "opener", "activation", "skill"} or any(
             token in title_lower for token in ("opener", "tune-up", "tune up"))
+        if is_short_exempt:
+            continue
         seconds = int(session.get("duration_s") or 0)
 
         session_day = _session_date(session)
@@ -774,7 +851,7 @@ def _short_quality_findings(
             cap = None
         day_has_60min = cap is None or cap >= 60
 
-        if not is_opener and seconds and seconds < 45 * 60:
+        if seconds and seconds < 45 * 60:
             hard = False
             for segment in session.get("segments") or []:
                 for key in ("on_power", "work_percent_ftp", "power_target"):
@@ -931,6 +1008,9 @@ def validate_transitional_input(
             review_value={"race_date": race_date_raw, "race_day_entries": 0}))
     elif race_entries:
         race_week = race_entries[0][0]
+        race_week_sessions = [
+            session for week, session in sessions if week == race_week
+        ]
         counted = sum(
             1 for week, session in sessions
             if week == race_week and session.get("tp_kind") in COUNTED_RACE_WEEK_KINDS
@@ -944,6 +1024,34 @@ def validate_transitional_input(
                     "counted_entries": counted,
                     "minimum_entries": 3,
                     "counted_kinds": sorted(COUNTED_RACE_WEEK_KINDS),
+                },
+            ))
+        has_opener = any(
+            str(session.get("role") or "").lower() == "opener"
+            or OPENERS_TITLE.search(str(
+                session.get("title") or session.get("display_name") or ""))
+            for session in race_week_sessions
+        )
+        has_activation = any(
+            str(session.get("role") or "").lower() == "activation"
+            for session in race_week_sessions
+        )
+        if not has_opener:
+            issues.append(_issue(
+                "RACE_WEEK_OPENER_MISSING",
+                f"Race week W{race_week} has no pre-race opener session.",
+                review_value={
+                    "race_week": race_week,
+                    "required_role": "opener",
+                },
+            ))
+        if not has_activation:
+            issues.append(_issue(
+                "RACE_WEEK_SHARPENER_MISSING",
+                f"Race week W{race_week} has no safely spaced activation session.",
+                review_value={
+                    "race_week": race_week,
+                    "required_role": "activation",
                 },
             ))
 
@@ -1010,6 +1118,7 @@ def validate_transitional_input(
     issues.extend(_short_quality_findings(plan_ir, profile))
     issues.extend(_endurance_tss_rate_findings(plan_ir))
     issues.extend(_hard_minutes_findings(plan_ir))
+    issues.extend(_vo2_dose_findings(plan_ir))
 
     fueling = context.get("fueling") or {}
     labels = [

@@ -192,6 +192,31 @@ class TestScopePredicate:
 
 
 class TestResolveLibrarySelections:
+    def test_race_week_sharpener_stays_on_the_calibrated_synthetic_path(
+        self, monkeypatch,
+    ):
+        calls = []
+
+        def _record(slot, series_state=None, index=None, used_items=None,
+                    lint_exclusions=None):
+            calls.append(slot['canonical_name'])
+            return _fake_resolution(name_base='Glycolytic Power')
+
+        monkeypatch.setattr(library_selector, 'select', _record)
+        plan = _synthetic_bb_plan()
+        plan['weeks'][0]['week_type'] = 'race'
+        plan['weeks'][0]['phase'] = 'race'
+        sharpener = plan['weeks'][0]['days'][0]
+        sharpener.update({
+            'name': 'Stars In Your Eyes', 'role': 'intensity',
+            'duration': 30, 'tss': 25,
+        })
+
+        resolve_library_selections(plan, day_caps={}, athlete_seed='t', index={})
+
+        assert 'Stars In Your Eyes' not in calls
+        assert 'library_resolution' not in sharpener
+
     def test_in_scope_day_resolved_canonical_name_intact(self, monkeypatch):
         resolution = _fake_resolution()
         monkeypatch.setattr(library_selector, 'select',

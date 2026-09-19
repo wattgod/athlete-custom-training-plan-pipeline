@@ -299,6 +299,7 @@ def _intervals_xml(repeat: int, on_seconds: int, on_power: float, off_seconds: i
 
 def _map_single_leaf(leaf: Dict[str, Any], *, rpe: bool = False,
                       force_free_ride: bool = False,
+                      ramp_cap: Optional[float] = None,
                       ) -> Tuple[str, Optional[Dict[str, float]], int, Optional[str]]:
     """Map one leaf to (xml, expected_power_check_or_None, dropped_cadence, note).
 
@@ -330,12 +331,24 @@ def _map_single_leaf(leaf: Dict[str, Any], *, rpe: bool = False,
 
     if intensity_class == 'warmUp':
         power_low, power_high = _ramp_bounds(power_target, rising=True, rpe=rpe)
+        # A RANGE warm-up (e.g. 0-87%) ramps to its max while the block it
+        # leads into renders at its midpoint (76-87% -> 81%): the ramp then
+        # overshoots the main set (test_zwo_format, "Endurance Tempo",
+        # 2026-09-19). Cap the ramp's top at the next active leaf's
+        # rendered power; the expected-check dict follows so the round
+        # trip stays exact.
+        if ramp_cap is not None and power_high > ramp_cap >= power_low:
+            power_high = ramp_cap
         cadence = _cadence_range(cadence_target) if cadence_target else None
         xml = _ramp_xml('Warmup', seconds, power_low, power_high, cadence)
         return xml, {'power_low_pct': power_low * 100, 'power_high_pct': power_high * 100}, 0, None
 
     if intensity_class == 'coolDown':
         power_low, power_high = _ramp_bounds(power_target, rising=False, rpe=rpe)
+        # Falling ramp: power_low is the START. Same overshoot guard against
+        # the previous active leaf's rendered power.
+        if ramp_cap is not None and power_low > ramp_cap >= power_high:
+            power_low = ramp_cap
         cadence = _cadence_range(cadence_target) if cadence_target else None
         xml = _ramp_xml('Cooldown', seconds, power_low, power_high, cadence)
         return xml, {'power_low_pct': power_low * 100, 'power_high_pct': power_high * 100}, 0, None
@@ -359,6 +372,7 @@ def _map_single_leaf(leaf: Dict[str, Any], *, rpe: bool = False,
 
 def _build(
     structure: Any, *, item_id: Any = None, name_base: Optional[str] = None,
+    cap_ramps: bool = True,
 ) -> Tuple[List[str], List[Optional[Dict[str, float]]], int, List[str]]:
     """Walk every top-level block and return (xml_parts, expected_checks, dropped_cadence, notes).
 
@@ -397,7 +411,17 @@ def _build(
             "RPE-metric item ships unstructured: a leaf's own name/notes "
             "says no-power/leg-speed-only -- never fabricate %FTP")
 
-    for block in _extract_blocks(structure):
+    # Ramp caps look ACROSS blocks: curated items usually carry one leaf per
+    # block (warm-up / body / cool-down as three blocks), so the adjoining
+    # active leaf lives in the neighbouring block, not this one.
+    _blocks = _extract_blocks(structure)
+    _flat = [leaf for blk in _blocks for leaf in (blk.get('steps') or [])]
+    _block_start = []
+    _n = 0
+    for blk in _blocks:
+        _block_start.append(_n)
+        _n += len(blk.get('steps') or [])
+    for _bi, block in enumerate(_blocks):
         repeat = _block_repeat(block)
         leaves = block.get('steps') or []
 
@@ -434,10 +458,28 @@ def _build(
         # exactly 2 leaves, or repeat == 1), or the whole item is shipping
         # unstructured, UNROLL: emit every leaf, repeated `repeat` times,
         # never truncated.
+        def _active_power(neighbors):
+            for other in neighbors:
+                if other.get('intensityClass') in ('warmUp', 'coolDown', 'rest'):
+                    continue
+                t, _c, bad = _classify_leaf(other)
+                if t is not None and not bad:
+                    return _power_fraction(t, rpe=rpe)
+            return None
+
         for _ in range(repeat):
-            for leaf in leaves:
+            for idx_leaf, leaf in enumerate(leaves):
+                ic = leaf.get('intensityClass')
+                ramp_cap = None
+                gi = _block_start[_bi] + idx_leaf
+                if not cap_ramps:
+                    pass  # lint callers want the raw bookends (T29 bookend-intensity flag)
+                elif ic == 'warmUp':
+                    ramp_cap = _active_power(_flat[gi + 1:])
+                elif ic == 'coolDown':
+                    ramp_cap = _active_power(reversed(_flat[:gi]))
                 xml, exp, dropped, note = _map_single_leaf(
-                    leaf, rpe=rpe, force_free_ride=force_free_ride)
+                    leaf, rpe=rpe, force_free_ride=force_free_ride, ramp_cap=ramp_cap)
                 xml_parts.append(xml)
                 expected.append(exp)
                 dropped_cadence += dropped

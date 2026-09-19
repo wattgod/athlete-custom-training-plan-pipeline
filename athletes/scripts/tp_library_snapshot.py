@@ -474,7 +474,9 @@ def _bookend_intensity_elements(
         return []
     try:
         from tp_structure_to_zwo import _build as _tp_build
-        xml_parts, expected, _dropped, _notes = _tp_build(structure)
+        # cap_ramps=False: the lint must see the authored bookends, not the
+        # projector's capped ramps (2026-09-19).
+        xml_parts, expected, _dropped, _notes = _tp_build(structure, cap_ramps=False)
     except Exception:
         return []
     elements = []

@@ -13,18 +13,24 @@ specs/plan-delivery-on-endure/design.md (§3, ratified Jul 6 2026):
       "races": [{"name", "date", "priority",
                  "discipline"?, "distance_mi"?, "elevation_ft"?}],
       "plan": {"name", "start_date"},
+      "release": {"generation_revision", "release_manifest_digest",
+                  "model_seal", "first_block_digest"},
+      "first_block": {the exact first two plan weeks derived from the sealed
+                       apply contract},
       "intake": {raw questionnaire dict}
     }
     200: {"order_id","athlete_id","plan_id","block_id","invitation_id",
-          "status": "delivered"|"already_delivered"} | 401 | 400 | 5xx
+          "invite_url", "recipient_email_sha256", "release",
+          "status": "ready_for_review"|"already_ready_for_review"} | 401 | 400 | 5xx
 
 Design rules (order-killer-prevention):
 - The feature is entirely OFF unless BOTH ENDURE_DELIVERY_URL and
   ENDURE_DELIVERY_SECRET are set (kill switch: unset the URL on Railway).
 - Delivery NEVER fails the order. Every function here either returns a
-  result dict or raises EndureMappingError, which the caller (app.py)
-  converts to a failed-delivery record + TrainingPeaks fallback. The full
-  ZWO package is always generated regardless of target.
+  result dict or raises EndureMappingError. A failed Endure attempt stays
+  loud to the coach and never silently changes delivery platforms; any
+  TrainingPeaks fallback requires an explicit coach decision. The full ZWO
+  package is always generated regardless of target.
 - Default target stays "trainingpeaks" until Matti manually flips
   DELIVERY_TARGET_DEFAULT=endure (Decision 2: after 5 consecutive
   successful Endure deliveries). The streak counter here just informs.
@@ -33,11 +39,13 @@ Zero Flask dependencies so tests can import it standalone.
 """
 
 import json
+import hashlib
 import logging
 import os
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote, urlsplit
 
 import requests
 
@@ -54,14 +62,25 @@ STREAK_FILENAME = '.endure_delivery_streak.json'
 _streak_lock = threading.Lock()
 
 VALID_TARGETS = ('trainingpeaks', 'endure')
+ENDURE_FIRST_BLOCK_SCHEMA_VERSION = 'endure_first_block/v1'
+ENDURE_FIRST_BLOCK_WEEKS = 2
 
 
 class EndureMappingError(Exception):
     """Profile could not be mapped onto the delivery contract.
 
     Raised for missing REQUIRED contract fields (email, hours_per_week).
-    Callers treat it as a failed delivery → TrainingPeaks fallback.
+    Callers surface it as a failed Endure handoff for coach resolution.
     """
+
+
+def _monday_on_or_after(value: str) -> str:
+    try:
+        parsed = datetime.strptime(value, '%Y-%m-%d').date()
+    except (TypeError, ValueError) as exc:
+        raise EndureMappingError(
+            'plan_start.preferred_start must be YYYY-MM-DD') from exc
+    return (parsed + timedelta(days=(7 - parsed.weekday()) % 7)).isoformat()
 
 
 # =============================================================================
@@ -128,7 +147,8 @@ def resolve_delivery_target(metadata: dict = None) -> str:
 # =============================================================================
 
 def build_delivery_payload(profile: dict, order_id: str,
-                           intake: dict = None) -> dict:
+                           intake: dict = None, release: dict = None,
+                           first_block: dict = None) -> dict:
     """Map a pipeline profile.yaml dict onto the pinned contract body.
 
     Raises EndureMappingError when a REQUIRED contract field is missing
@@ -137,6 +157,25 @@ def build_delivery_payload(profile: dict, order_id: str,
     """
     if not isinstance(profile, dict) or not profile:
         raise EndureMappingError('profile is empty')
+    if not isinstance(release, dict):
+        raise EndureMappingError('approved release binding is missing')
+    generation_revision = release.get('generation_revision')
+    release_manifest_digest = str(
+        release.get('release_manifest_digest') or '').strip()
+    model_seal = str(release.get('model_seal') or '').strip()
+    if (not isinstance(generation_revision, int)
+            or isinstance(generation_revision, bool)
+            or generation_revision < 1
+            or not _is_sha256(release_manifest_digest)
+            or not _is_sha256(model_seal)):
+        raise EndureMappingError('approved release binding is invalid')
+    if (not isinstance(first_block, dict)
+            or first_block.get('schema_version')
+            != ENDURE_FIRST_BLOCK_SCHEMA_VERSION):
+        raise EndureMappingError('sealed Endure first block is missing')
+    first_block = _normalize_canonical_numbers(first_block)
+    first_block_digest = hashlib.sha256(
+        _canonical_json(first_block)).hexdigest()
 
     fitness = profile.get('fitness_markers') or {}
     availability = profile.get('weekly_availability') or {}
@@ -180,33 +219,391 @@ def build_delivery_payload(profile: dict, order_id: str,
         athlete['long_ride_day'] = long_ride_day
     limiters = (racing.get('obstacles') or '').strip()
     if limiters:
-        athlete['limiters'] = limiters
-    constraints = _build_constraints_text(profile)
+        athlete['limiters'] = [limiters]
+    constraints = _build_constraints(profile)
     if constraints:
         athlete['constraints'] = constraints
 
     races = _map_races(profile)
-    target = profile.get('target_race') or {}
-    plan_start = (profile.get('plan_start') or {}).get('preferred_start', '')
-
-    race_name = target.get('name', '')
-    plan_name = (f'Custom Training Plan — {race_name}' if race_name
-                 else f'Custom Training Plan — {athlete["name"] or email}')
+    plan_start = _monday_on_or_after(
+        (profile.get('plan_start') or {}).get('preferred_start', ''))
+    plan_identity = purchased_plan_identity(profile)
 
     return {
         'order_id': order_id or '',
         'athlete': athlete,
         'races': races,
         'plan': {
-            'name': plan_name,
+            'name': plan_identity['plan_name'],
             'start_date': plan_start,
         },
+        'release': {
+            'generation_revision': generation_revision,
+            'release_manifest_digest': release_manifest_digest,
+            'model_seal': model_seal,
+            'first_block_digest': first_block_digest,
+        },
+        'first_block': first_block,
         'intake': intake or {},
     }
 
 
-def _build_constraints_text(profile: dict) -> str:
-    """Coach-visible constraint summary: injuries, medical, volume warning."""
+def _canonical_json(value: object) -> bytes:
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True,
+        separators=(',', ':'), allow_nan=False,
+    ).encode('utf-8')
+
+
+def _normalize_canonical_numbers(value: object) -> object:
+    """Make Python's canonical JSON agree with JSON.parse/stringify in Endure.
+
+    JSON has one numeric type. Python preserves ``50.0`` while JavaScript
+    serializes the parsed value as ``50``; normalize integral floats before
+    hashing so both sides attest to the same semantic object.
+    """
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, list):
+        return [_normalize_canonical_numbers(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _normalize_canonical_numbers(item)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _step_kind(intensity_class: object, name: object) -> str:
+    value = f'{intensity_class or ""} {name or ""}'.lower()
+    if 'warm' in value:
+        return 'warmup'
+    if 'cool' in value:
+        return 'cooldown'
+    if 'rest' in value or 'recover' in value:
+        return 'recovery'
+    return 'work'
+
+
+def _planned_steps_from_tp_structure(structure: object) -> list[dict]:
+    """Convert the sealed TP structure into Endure's flat workout steps."""
+    if structure is None:
+        return []
+    if not isinstance(structure, dict):
+        raise EndureMappingError('first-block workout structure is invalid')
+    groups = structure.get('structure')
+    if not isinstance(groups, list):
+        raise EndureMappingError('first-block workout structure has no steps')
+    primary_metric = structure.get('primaryIntensityMetric')
+    if primary_metric != 'percentOfFtp':
+        raise EndureMappingError(
+            'first-block Ride structure is not based on percent of FTP')
+
+    planned = []
+    for group in groups:
+        if not isinstance(group, dict) or not isinstance(group.get('steps'), list):
+            raise EndureMappingError('first-block workout step group is invalid')
+        for source in group['steps']:
+            if not isinstance(source, dict):
+                raise EndureMappingError('first-block workout step is invalid')
+            length = source.get('length') or {}
+            if length.get('unit') != 'second':
+                raise EndureMappingError(
+                    'first-block workout step does not use seconds')
+            seconds = length.get('value')
+            if (not isinstance(seconds, (int, float))
+                    or isinstance(seconds, bool) or seconds <= 0):
+                raise EndureMappingError(
+                    'first-block workout step duration is invalid')
+
+            power_target = None
+            cadence_target = None
+            for target in source.get('targets') or []:
+                if not isinstance(target, dict):
+                    continue
+                if target.get('unit') == 'roundOrStridePerMinute':
+                    cadence_target = target
+                elif target.get('unit') is None and power_target is None:
+                    power_target = target
+                else:
+                    raise EndureMappingError(
+                        'first-block workout target is not power or cadence')
+
+            sequence = len(planned) + 1
+            step = {
+                'id': f'step-{sequence}',
+                'sequence': sequence,
+                'name': str(source.get('name') or f'Step {sequence}'),
+                'type': _step_kind(
+                    source.get('intensityClass'), source.get('name')),
+                'duration_type': 'time',
+                'duration_seconds': int(round(seconds)),
+                'target_type': 'power_pct' if power_target else 'open',
+            }
+            if power_target:
+                low = power_target.get('minValue')
+                high = power_target.get('maxValue')
+                if isinstance(low, (int, float)) and not isinstance(low, bool):
+                    step['target_low'] = float(low)
+                if isinstance(high, (int, float)) and not isinstance(high, bool):
+                    step['target_high'] = float(high)
+                elif 'target_low' in step:
+                    step['target_high'] = step['target_low']
+            if cadence_target:
+                low = cadence_target.get('minValue')
+                high = cadence_target.get('maxValue')
+                if isinstance(low, (int, float)) and not isinstance(low, bool):
+                    step['cadence_low'] = int(round(low))
+                if isinstance(high, (int, float)) and not isinstance(high, bool):
+                    step['cadence_high'] = int(round(high))
+                elif 'cadence_low' in step:
+                    step['cadence_high'] = step['cadence_low']
+            notes = str(source.get('notes') or '').strip()
+            if notes:
+                step['notes'] = notes
+            planned.append(step)
+    return planned
+
+
+def _endure_workout_type(session: dict, tp_type: int) -> str:
+    """Map explicit Plan IR semantics without guessing from display copy."""
+    if tp_type == 9:
+        return 'strength'
+    if tp_type == 7:
+        return 'recovery'
+    if session.get('is_simulation') or session.get('is_dress_rehearsal'):
+        return 'race'
+    if session.get('is_field_test'):
+        return 'test'
+    role = str(session.get('role') or '').strip().lower()
+    if role == 'recovery':
+        return 'recovery'
+    archetype = str(session.get('archetype_id') or '').strip().lower()
+    if 'vo2' in archetype and ('g spot' in archetype or 'g-spot' in archetype):
+        return 'interval'
+    if 'vo2' in archetype:
+        return 'vo2max'
+    if 'sweet spot' in archetype or 'g-spot' in archetype or 'g spot' in archetype:
+        return 'gspot'
+    if 'threshold' in archetype:
+        return 'threshold'
+    if 'sprint' in archetype:
+        return 'sprint'
+    if 'tempo' in archetype:
+        return 'tempo'
+    if 'cadence' in archetype or 'force' in archetype:
+        return 'force'
+    if archetype == 'endurance':
+        return 'endurance'
+    if role == 'intensity':
+        return 'interval'
+    if role in ('filler', 'long_ride', 'skill'):
+        return 'endurance'
+    raise EndureMappingError(
+        'first-block Ride has no explicit Plan IR workout classification')
+
+
+def _source_session_key(session: dict) -> tuple:
+    return (
+        str(session.get('date') or ''),
+        str(session.get('display_name') or session.get('title') or '').strip(),
+        session.get('workout_type_value_id'),
+        session.get('duration_s'),
+    )
+
+
+def _operation_session_key(workout: dict) -> tuple:
+    return (
+        str(workout.get('date') or ''),
+        str(workout.get('title') or '').strip(),
+        workout.get('tp_workout_type'),
+        workout.get('total_seconds'),
+    )
+
+
+def build_endure_first_block(plan_ir: dict, apply_contract: dict,
+                             plan_start_date: str) -> dict:
+    """Derive the exact two-week Endure pilot block from sealed artifacts."""
+    if not isinstance(plan_ir, dict) or not isinstance(apply_contract, dict):
+        raise EndureMappingError('sealed plan artifacts are missing')
+    try:
+        start = datetime.strptime(plan_start_date, '%Y-%m-%d').date()
+    except (TypeError, ValueError) as exc:
+        raise EndureMappingError('Endure first-block start date is invalid') from exc
+    end = start + timedelta(days=ENDURE_FIRST_BLOCK_WEEKS * 7 - 1)
+
+    plan_weeks = {
+        week.get('number'): week
+        for week in (plan_ir.get('weeks') or [])
+        if isinstance(week, dict)
+        and isinstance(week.get('number'), int)
+        and 1 <= week['number'] <= ENDURE_FIRST_BLOCK_WEEKS
+    }
+    if sorted(plan_weeks) != list(range(1, ENDURE_FIRST_BLOCK_WEEKS + 1)):
+        raise EndureMappingError('sealed plan does not contain two full plan weeks')
+
+    source_sessions = {}
+    source_session_count = 0
+    for week in plan_weeks.values():
+        for session in week.get('sessions') or []:
+            if not isinstance(session, dict):
+                raise EndureMappingError('first-block Plan IR session is invalid')
+            source_sessions.setdefault(
+                _source_session_key(session), []).append(session)
+            source_session_count += 1
+
+    workouts_by_week = {1: [], 2: []}
+    operations = apply_contract.get('operations') or []
+    source_logical_ids = set()
+    source_digests = set()
+    operation_count = 0
+    for operation in operations:
+        if (not isinstance(operation, dict)
+                or operation.get('kind') != 'workout_upsert'
+                or operation.get('disposition') == 'delete'):
+            continue
+        workout = operation.get('payload')
+        if not isinstance(workout, dict):
+            continue
+        date_text = str(workout.get('date') or '')
+        try:
+            workout_date = datetime.strptime(date_text, '%Y-%m-%d').date()
+        except ValueError as exc:
+            raise EndureMappingError(
+                'first-block workout date is invalid') from exc
+        day_offset = (workout_date - start).days
+        if day_offset < 0 or day_offset >= ENDURE_FIRST_BLOCK_WEEKS * 7:
+            continue
+        week_number = day_offset // 7 + 1
+        title = str(workout.get('title') or '').strip()
+        tp_type = workout.get('tp_workout_type')
+        if tp_type not in (2, 7, 9):
+            raise EndureMappingError('first-block workout type is invalid')
+        digest = str(operation.get('expected_digest') or '')
+        logical_id = str(operation.get('logical_id') or '')
+        if not _is_sha256(digest) or not logical_id:
+            raise EndureMappingError(
+                'first-block workout provenance is invalid')
+        if digest != hashlib.sha256(_canonical_json(workout)).hexdigest():
+            raise EndureMappingError(
+                'first-block operation digest does not match its payload')
+        if logical_id in source_logical_ids or digest in source_digests:
+            raise EndureMappingError(
+                'first-block operation provenance is duplicated')
+        expected_prefix = f'{apply_contract.get("order_id")}:workout_upsert:{date_text}#'
+        if not logical_id.startswith(expected_prefix):
+            raise EndureMappingError(
+                'first-block operation identity does not match its date')
+        source_logical_ids.add(logical_id)
+        source_digests.add(digest)
+        total_seconds = workout.get('total_seconds')
+        if (not isinstance(total_seconds, int) or isinstance(total_seconds, bool)
+                or total_seconds < 0):
+            raise EndureMappingError('first-block workout duration is invalid')
+
+        matching_sessions = source_sessions.get(
+            _operation_session_key(workout), [])
+        if not matching_sessions:
+            raise EndureMappingError(
+                'first-block operation is absent from the Plan IR')
+        source_session = matching_sessions.pop(0)
+        operation_count += 1
+
+        workouts_by_week[week_number].append({
+            'date': date_text,
+            'title': title,
+            'description': str(workout.get('description') or ''),
+            'activity_type': {2: 'Ride', 7: 'Rest', 9: 'Strength'}[tp_type],
+            'workout_type': _endure_workout_type(source_session, tp_type),
+            'total_seconds': total_seconds,
+            'tss_planned': workout.get('tss_planned'),
+            'planned_steps': _planned_steps_from_tp_structure(
+                workout.get('structure')),
+            'is_intensity': bool(
+                source_session.get('role') == 'intensity'
+                or source_session.get('is_simulation')
+                or source_session.get('is_field_test')),
+            'source_operation_digest': digest,
+            'source_logical_id': logical_id,
+        })
+
+    unmatched_sessions = sum(
+        len(sessions) for sessions in source_sessions.values())
+    if operation_count != source_session_count or unmatched_sessions != 0:
+        raise EndureMappingError(
+            'first-block operations do not exactly match Plan IR sessions')
+
+    suffixes_by_date = {}
+    for logical_id in source_logical_ids:
+        date_text, suffix = logical_id.rsplit(':', 1)[-1].split('#', 1)
+        suffixes_by_date.setdefault(date_text, []).append(int(suffix))
+    if any(sorted(values) != list(range(1, len(values) + 1))
+           for values in suffixes_by_date.values()):
+        raise EndureMappingError(
+            'first-block operation sequence is not contiguous')
+
+    weeks = []
+    for number in range(1, ENDURE_FIRST_BLOCK_WEEKS + 1):
+        # Python's sort is stable: date order plus the sealed apply-contract
+        # order preserves multiple same-day operations without lexically
+        # misordering suffixes such as #10 before #2.
+        workouts = sorted(
+            workouts_by_week[number], key=lambda item: item['date'])
+        if not workouts:
+            raise EndureMappingError(
+                f'sealed plan week {number} contains no workout operations')
+        source_week = plan_weeks[number]
+        weeks.append({
+            'number': number,
+            'phase': str(source_week.get('phase') or 'base'),
+            'week_type': str(source_week.get('week_type') or 'load'),
+            'workouts': workouts,
+        })
+
+    return {
+        'schema_version': ENDURE_FIRST_BLOCK_SCHEMA_VERSION,
+        'start_date': start.isoformat(),
+        'end_date': end.isoformat(),
+        'weeks': weeks,
+    }
+
+
+def canonical_first_block_bytes(first_block: dict) -> bytes:
+    """Return the exact bytes written into and later attested by a release."""
+    if (not isinstance(first_block, dict)
+            or first_block.get('schema_version')
+            != ENDURE_FIRST_BLOCK_SCHEMA_VERSION):
+        raise EndureMappingError('Endure first block is invalid')
+    return _canonical_json(_normalize_canonical_numbers(first_block))
+
+
+def purchased_plan_identity(profile: dict) -> dict:
+    """Derive the exact athlete-visible plan and target-race identity."""
+    target = profile.get('target_race') or {}
+    race_name = str(target.get('name') or '').strip()
+    race_date = str(target.get('date') or '').strip()
+    athlete_name = str(profile.get('name') or profile.get('email') or '').strip()
+    return {
+        'plan_name': (
+            f'Custom Training Plan — {race_name}' if race_name
+            else f'Custom Training Plan — {athlete_name}'
+        ),
+        'race_name': race_name,
+        'race_date': race_date,
+    }
+
+
+def _is_sha256(value: str) -> bool:
+    return (len(value) == 64
+            and all(char in '0123456789abcdef' for char in value))
+
+
+def normalized_email_sha256(email: str) -> str:
+    return hashlib.sha256(email.strip().lower().encode('utf-8')).hexdigest()
+
+
+def _build_constraints(profile: dict) -> list[str]:
+    """Coach-visible constraints in the Endure contract's string-array shape."""
     parts = []
     injuries = (profile.get('injury_history') or {}).get('current_injuries') or []
     for inj in injuries:
@@ -223,7 +620,7 @@ def _build_constraints_text(profile: dict) -> str:
     travel = profile.get('travel_dates') or []
     if travel:
         parts.append(f'Travel dates: {travel}')
-    return '; '.join(parts)
+    return parts
 
 
 def _map_races(profile: dict) -> list:
@@ -268,12 +665,13 @@ def deliver_purchased_plan(payload: dict) -> dict:
     """POST the payload to Endure. Returns a delivery record dict:
 
         {'ok': bool,
-         'status': 'delivered' | 'already_delivered' | 'failed',
-         'athlete_id' / 'plan_id' / 'block_id' / 'invitation_id': str (on ok),
+         'status': 'ready_for_review' | 'already_ready_for_review' | 'failed',
+         'athlete_id' / 'plan_id' / 'block_id': str (on ok),
+         'invitation_id' / 'invite_url': str or absent (on ok),
          'review_url': str (on ok),
          'error': str | None,
          'attempts': int,
-         'delivered_at': iso timestamp (on ok)}
+         'prepared_at': iso timestamp (on ok)}
 
     Retries ONCE on transport errors and 5xx. 4xx (bad payload / bad
     secret) is not retryable — the retry would fail identically.
@@ -304,26 +702,44 @@ def deliver_purchased_plan(payload: dict) -> dict:
             try:
                 body = resp.json()
             except ValueError:
-                body = {}
-            status = body.get('status', 'delivered')
-            if status not in ('delivered', 'already_delivered'):
-                status = 'delivered'
+                body = None
+            contract_error = _delivery_response_error(body, payload)
+            if contract_error:
+                return {'ok': False, 'status': 'failed', 'attempts': attempt,
+                        'error': f'invalid Endure response: {contract_error}'}
+            status = body['status']
             record = {
                 'ok': True,
+                'order_id': body['order_id'],
                 'status': status,
                 'attempts': attempt,
                 'error': None,
-                'delivered_at': datetime.now().isoformat(),
+                'prepared_at': datetime.now().isoformat(),
             }
-            for key in ('athlete_id', 'plan_id', 'block_id', 'invitation_id'):
-                if body.get(key):
+            for key in ('athlete_id', 'plan_id', 'block_id', 'invitation_id',
+                        'invite_url', 'linked_account', 'invitation_accepted',
+                        'recipient_email_sha256', 'release'):
+                if key in body:
                     record[key] = body[key]
             if record.get('athlete_id'):
-                record['review_url'] = coach_review_url(record['athlete_id'])
+                record['review_url'] = coach_review_url(
+                    record['athlete_id'], record['plan_id'], record['block_id'])
             return record
 
         if 500 <= resp.status_code < 600:
-            last_error = f'HTTP {resp.status_code}'
+            detail = ''
+            try:
+                err_body = resp.json()
+                detail = str(err_body.get('error', ''))[:200]
+            except ValueError:
+                pass
+            current_error = f'HTTP {resp.status_code}' + (
+                f': {detail}' if detail else '')
+            # The immediate retry can encounter Endure's lease and report only
+            # "already in progress". Keep the first application failure; it is
+            # the actionable root cause.
+            if attempt == 1 or 'already in progress' not in current_error.lower():
+                last_error = current_error
             logger.warning(f"Endure delivery attempt {attempt}: {last_error}")
             continue
 
@@ -342,13 +758,211 @@ def deliver_purchased_plan(payload: dict) -> dict:
             'error': last_error}
 
 
-def coach_review_url(endure_athlete_id: str) -> str:
+def verify_purchased_plan_ready(order_id: str, prepared: dict) -> dict:
+    """Require Endure's exact post-approval calendar readback before email.
+
+    The preparation receipt is the identity envelope. Endure must return the
+    same athlete, plan, block, and invitation capability with
+    ``ready_for_athlete`` plus a verified one-for-one calendar inventory.
+    Transport failures retry once; every identity or contract mismatch fails
+    closed without retrying.
+    """
+    if not is_enabled():
+        return {'ok': False, 'status': 'failed', 'attempts': 0,
+                'error': 'Endure delivery not configured '
+                         '(ENDURE_DELIVERY_URL / ENDURE_DELIVERY_SECRET unset)'}
+    if not isinstance(prepared, dict):
+        return {'ok': False, 'status': 'failed', 'attempts': 0,
+                'error': 'prepared Endure receipt is missing'}
+
+    url = delivery_url() + DELIVERY_PATH
+    headers = {'X-Delivery-Secret': delivery_secret()}
+    timeout = request_timeout()
+    last_error = 'unknown error'
+
+    for attempt in (1, 2):
+        try:
+            params = {
+                'order_id': order_id,
+                'athlete_id': prepared.get('athlete_id'),
+                'plan_id': prepared.get('plan_id'),
+                'block_id': prepared.get('block_id'),
+                'recipient_email_sha256': prepared.get('recipient_email_sha256'),
+                'generation_revision': (prepared.get('release') or {}).get(
+                    'generation_revision'),
+                'release_manifest_digest': (prepared.get('release') or {}).get(
+                    'release_manifest_digest'),
+                'model_seal': (prepared.get('release') or {}).get('model_seal'),
+                'first_block_digest': (prepared.get('release') or {}).get(
+                    'first_block_digest'),
+                'linked_account': ('true' if prepared.get('linked_account') is True
+                                   else 'false'),
+                'invitation_accepted': (
+                    'true' if prepared.get('invitation_accepted') is True
+                    else 'false'),
+            }
+            if prepared.get('invitation_accepted') is not True:
+                params['invitation_id'] = prepared['invitation_id']
+            resp = requests.get(url, params=params,
+                                headers=headers, timeout=timeout)
+        except requests.RequestException as exc:
+            last_error = f'request failed: {type(exc).__name__}'
+            logger.warning(
+                f"Endure readiness attempt {attempt} failed: {last_error}")
+            continue
+
+        if resp.status_code == 200:
+            try:
+                body = resp.json()
+            except ValueError:
+                body = None
+            contract_error = _readiness_response_error(
+                body, order_id, prepared)
+            if contract_error:
+                return {'ok': False, 'status': 'failed', 'attempts': attempt,
+                        'error': f'invalid Endure readiness: {contract_error}'}
+            return {
+                **body,
+                'ok': True,
+                'attempts': attempt,
+                'error': None,
+                'checked_at': datetime.now().isoformat(),
+            }
+
+        if 500 <= resp.status_code < 600:
+            last_error = f'HTTP {resp.status_code}'
+            logger.warning(
+                f"Endure readiness attempt {attempt}: {last_error}")
+            continue
+
+        detail = ''
+        try:
+            error_body = resp.json()
+            detail = str(error_body.get('error', ''))[:200]
+        except ValueError:
+            pass
+        return {'ok': False, 'status': 'failed', 'attempts': attempt,
+                'error': f'HTTP {resp.status_code}'
+                         + (f': {detail}' if detail else '')}
+
+    return {'ok': False, 'status': 'failed', 'attempts': 2,
+            'error': last_error}
+
+
+def _readiness_response_error(body: object, order_id: str,
+                              prepared: dict) -> str | None:
+    if not isinstance(body, dict):
+        return 'body is not an object'
+    if body.get('status') != 'ready_for_athlete':
+        return 'status is not ready_for_athlete'
+    if body.get('order_id') != order_id:
+        return 'order_id does not match the request'
+    for field in ('athlete_id', 'plan_id', 'block_id',
+                  'recipient_email_sha256', 'release'):
+        if body.get(field) != prepared.get(field):
+            return f'{field} does not match the preparation receipt'
+    linked_account = body.get('linked_account')
+    if not isinstance(linked_account, bool):
+        return 'linked_account is missing or invalid'
+    if prepared.get('linked_account') is True and not linked_account:
+        return 'linked account regressed to unlinked'
+    invitation_accepted = body.get('invitation_accepted')
+    if not isinstance(invitation_accepted, bool):
+        return 'invitation_accepted is missing or invalid'
+    if invitation_accepted and not linked_account:
+        return 'accepted invitation is not linked to an Endure account'
+    if prepared.get('invitation_accepted') is True and not invitation_accepted:
+        return 'accepted invitation regressed to pending'
+    if invitation_accepted:
+        if body.get('invitation_id') is not None or body.get('invite_url') is not None:
+            return 'accepted invitation returned an invitation capability'
+    else:
+        for field in ('invitation_id', 'invite_url'):
+            if body.get(field) != prepared.get(field):
+                return f'{field} does not match the preparation receipt'
+    verification = body.get('calendar_verification')
+    if not isinstance(verification, dict):
+        return 'calendar_verification is missing'
+    if verification.get('status') != 'verified':
+        return 'calendar_verification is not verified'
+    expected = verification.get('expectedCount')
+    actual = verification.get('actualCount')
+    if (not isinstance(expected, int) or isinstance(expected, bool)
+            or not isinstance(actual, int) or isinstance(actual, bool)
+            or expected <= 0 or actual != expected):
+        return 'calendar verification counts do not match'
+    if not invitation_accepted:
+        return _delivery_capability_error(body)
+    return None
+
+
+def _delivery_response_error(body: object, payload: dict) -> str | None:
+    """Validate the authenticated response before treating a remote write as real."""
+    if not isinstance(body, dict):
+        return 'body is not an object'
+    if body.get('status') not in ('ready_for_review',
+                                  'already_ready_for_review'):
+        return 'status is invalid'
+    if body.get('order_id') != payload.get('order_id'):
+        return 'order_id does not match the request'
+    for field in ('athlete_id', 'plan_id', 'block_id'):
+        if not isinstance(body.get(field), str) or not body[field].strip():
+            return f'{field} is missing'
+
+    expected_email_sha = normalized_email_sha256(
+        str((payload.get('athlete') or {}).get('email') or ''))
+    if body.get('recipient_email_sha256') != expected_email_sha:
+        return 'recipient_email_sha256 does not match the request'
+    if body.get('release') != payload.get('release'):
+        return 'release does not match the request'
+    linked_account = body.get('linked_account')
+    if not isinstance(linked_account, bool):
+        return 'linked_account is missing or invalid'
+    invitation_accepted = body.get('invitation_accepted')
+    if not isinstance(invitation_accepted, bool):
+        return 'invitation_accepted is missing or invalid'
+    if invitation_accepted and not linked_account:
+        return 'accepted invitation is not linked to an Endure account'
+    if invitation_accepted:
+        if body.get('invitation_id') is not None or body.get('invite_url') is not None:
+            return 'accepted invitation returned an invitation capability'
+        return None
+    if body.get('invitation_id') is None:
+        return 'unaccepted invitation is missing its capability'
+    return _delivery_capability_error(body)
+
+
+def _delivery_capability_error(body: dict) -> str | None:
+    invitation_id = body.get('invitation_id')
+    invite_url = body.get('invite_url')
+    if invitation_id is None:
+        if invite_url is not None:
+            return 'invite_url exists without invitation_id'
+        return None
+    if not isinstance(invitation_id, str) or not invitation_id.strip():
+        return 'invitation_id is invalid'
+    if not isinstance(invite_url, str) or not invite_url.strip():
+        return 'invite_url is missing for the invitation'
+
+    expected = urlsplit(app_url())
+    actual = urlsplit(invite_url)
+    if (actual.scheme != expected.scheme or actual.netloc != expected.netloc
+            or not actual.path.startswith('/invite/')
+            or actual.path == '/invite/' or actual.query or actual.fragment
+            or actual.username or actual.password):
+        return 'invite_url is outside the configured Endure app'
+    return None
+
+
+def coach_review_url(endure_athlete_id: str, plan_id: str, block_id: str) -> str:
     """Deep link to the coach approval UI for a delivered plan.
 
     Endure route: /coach/athletes/[id]/plan (existing approval surface —
     spec §3 step 3: coach reviews block 1 in the existing approval UI).
     """
-    return f'{app_url()}/coach/athletes/{endure_athlete_id}/plan'
+    return (f'{app_url()}/coach/athletes/{quote(endure_athlete_id, safe="")}/plan'
+            f'?planId={quote(plan_id, safe="")}'
+            f'&blockId={quote(block_id, safe="")}')
 
 
 # =============================================================================
@@ -390,7 +1004,7 @@ def record_delivery_result(success: bool, order_id: str, data_dir: str) -> dict:
     """Record one delivery outcome; returns the updated streak record.
 
     - Success: consecutive_successes += 1 — unless this order_id was the
-      last one counted (idempotent re-posts / already_delivered retries
+      last one counted (idempotent re-posts / already-ready retries
       must not double-count).
     - Failure: consecutive_successes resets to 0.
 

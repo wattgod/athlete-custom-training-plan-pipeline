@@ -6,6 +6,7 @@ import re
 
 import calculate_plan_dates as cpd
 from generate_athlete_package import (
+    _initial_field_test_required,
     generate_zwo_files,
     strength_equipment_tier,
     strength_sessions_for_week,
@@ -67,7 +68,20 @@ def test_strength_frequency_reduction_rule():
     assert strength_sessions_for_week(2, 'build') == 2
     assert strength_sessions_for_week(2, 'build', is_recovery_week=True) == 1
     assert strength_sessions_for_week(2, 'taper') == 1
+    assert strength_sessions_for_week(2, 'taper', late_entry=True) == 0
     assert strength_sessions_for_week(2, 'race') == 0
+
+
+def test_field_test_decision_uses_reanchor_not_permission_alone():
+    assert not _initial_field_test_required({
+        'fitness_markers': {
+            'field_testing_allowed': True,
+            'reanchor': {'required': False},
+        },
+    })
+    assert _initial_field_test_required({
+        'fitness_markers': {'field_testing_allowed': True},
+    })  # historical profiles retain the prior behavior
 
 
 def test_equipment_tier_reads_both_intake_locations():
@@ -81,6 +95,15 @@ def test_home_basic_recovery_strength_is_mobility_not_ballistic():
     workout = WorkoutLibrary.get_strength_workout(
         2, 1, equipment_tier='home-basic', phase='recovery',
         is_recovery_week=True)
+    assert workout['name'] == 'Mobility and Stability'
+    exercises = ' '.join(name for name, _ in workout['exercises'])
+    assert 'Jump Squat' not in exercises
+    assert 'Single Leg Hop' not in exercises
+
+
+def test_home_basic_taper_strength_is_mobility_not_ballistic():
+    workout = WorkoutLibrary.get_strength_workout(
+        7, 1, equipment_tier='home-basic', phase='taper')
     assert workout['name'] == 'Mobility and Stability'
     exercises = ' '.join(name for name, _ in workout['exercises'])
     assert 'Jump Squat' not in exercises

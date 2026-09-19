@@ -4,7 +4,7 @@ Tests for Endure Labs plan delivery (Phase 4b/4c pipeline side).
 
 Covers the pinned contract mapping (build_profile output → delivery body),
 fallback-on-failure (delivery must never fail the order), idempotent
-re-post handling (already_delivered), the coach/customer email variants,
+re-post handling (already ready for review), the coach/customer email variants,
 the durable streak counter, and the env-off pin (feature unset = zero
 behavior change).
 
@@ -12,9 +12,12 @@ Run with: pytest webhook/tests/test_endure_delivery.py -v
 """
 
 import json
+import hashlib
+import io
 import os
 import sys
 import tempfile
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -51,6 +54,51 @@ import endure_delivery
 
 ENDURE_URL = 'https://endure-delivery.test'
 ENDURE_SECRET = 'test-delivery-secret'
+FIRST_BLOCK = {
+    'schema_version': 'endure_first_block/v1',
+    'start_date': '2026-07-13',
+    'end_date': '2026-07-26',
+    'weeks': [
+        {'number': 1, 'phase': 'base', 'week_type': 'load', 'workouts': [{
+            'date': '2026-07-13', 'title': 'Rest', 'description': '',
+            'activity_type': 'Rest', 'workout_type': 'recovery',
+            'total_seconds': 0, 'tss_planned': 0, 'planned_steps': [],
+            'is_intensity': False, 'source_operation_digest': 'c' * 64,
+            'source_logical_id': 'cs_1:workout_upsert:2026-07-13#1',
+        }]},
+        {'number': 2, 'phase': 'build', 'week_type': 'load', 'workouts': [{
+            'date': '2026-07-20', 'title': 'Endurance',
+            'description': 'Ride easy.', 'activity_type': 'Ride',
+            'workout_type': 'endurance', 'total_seconds': 3600,
+            'tss_planned': 45, 'planned_steps': [{
+                'id': 'step-1', 'sequence': 1, 'name': 'Steady State',
+                'type': 'work', 'duration_type': 'time',
+                'duration_seconds': 3600, 'target_type': 'power_pct',
+                'target_low': 60, 'target_high': 70,
+            }], 'is_intensity': False,
+            'source_operation_digest': 'd' * 64,
+            'source_logical_id': 'cs_1:workout_upsert:2026-07-20#1',
+        }]},
+    ],
+}
+FIRST_BLOCK_DIGEST = hashlib.sha256(json.dumps(
+    FIRST_BLOCK, ensure_ascii=False, sort_keys=True,
+    separators=(',', ':'), allow_nan=False,
+).encode('utf-8')).hexdigest()
+RELEASE = {
+    'generation_revision': 3,
+    'release_manifest_digest': 'a' * 64,
+    'model_seal': 'b' * 64,
+    'first_block_digest': FIRST_BLOCK_DIGEST,
+}
+RECIPIENT_EMAIL_SHA256 = (
+    '8c87b489ce35cf2e2f39f80e282cb2e804932a56a213983eeeb428407d43b52d')
+DELIVERY_REQUEST = {
+    'order_id': 'cs_1',
+    'athlete': {'email': 'jane@example.com'},
+    'release': RELEASE,
+    'first_block': FIRST_BLOCK,
+}
 
 
 @pytest.fixture
@@ -153,12 +201,27 @@ def _resp(status_code=200, body=None):
 
 
 DELIVERED_BODY = {
-    'order_id': 'cs_test_1',
+    'order_id': 'cs_1',
     'athlete_id': 'ath_endure_1',
     'plan_id': 'plan_endure_1',
     'block_id': 'block_endure_1',
     'invitation_id': 'inv_endure_1',
-    'status': 'delivered',
+    'invite_url': 'https://endurelabs.app/invite/invite-token-1',
+    'linked_account': False,
+    'invitation_accepted': False,
+    'recipient_email_sha256': RECIPIENT_EMAIL_SHA256,
+    'release': RELEASE,
+    'status': 'ready_for_review',
+}
+
+READINESS_BODY = {
+    **DELIVERED_BODY,
+    'status': 'ready_for_athlete',
+    'calendar_verification': {
+        'status': 'verified',
+        'expectedCount': 6,
+        'actualCount': 6,
+    },
 }
 
 
@@ -259,17 +322,125 @@ class TestEnvOffZeroBehaviorChange:
 
 class TestBuildDeliveryPayload:
 
+    def test_approved_release_binding_is_required(self):
+        with pytest.raises(endure_delivery.EndureMappingError, match='release'):
+            endure_delivery.build_delivery_payload(make_profile(), 'cs_1')
+
+    def test_sealed_first_block_is_required(self):
+        with pytest.raises(
+                endure_delivery.EndureMappingError, match='first block'):
+            endure_delivery.build_delivery_payload(
+                make_profile(), 'cs_1', release=RELEASE)
+
+    def test_canonical_digest_normalizes_integral_floats_for_javascript(self):
+        first_block = json.loads(json.dumps(FIRST_BLOCK))
+        first_block['weeks'][1]['workouts'][0]['tss_planned'] = 45.0
+        first_block['weeks'][1]['workouts'][0]['planned_steps'][0][
+            'target_low'] = 60.0
+        payload = endure_delivery.build_delivery_payload(
+            make_profile(), 'cs_1', release=RELEASE,
+            first_block=first_block)
+        assert payload['first_block']['weeks'][1]['workouts'][0][
+            'tss_planned'] == 45
+        assert payload['release']['first_block_digest'] == FIRST_BLOCK_DIGEST
+
+    def test_first_block_comes_from_the_sealed_apply_contract(self):
+        plan_ir = {'weeks': [
+            {'number': 1, 'phase': 'base', 'week_type': 'load', 'sessions': [
+                {'date': '2026-07-14', 'display_name': 'Specific Session',
+                 'role': 'intensity', 'workout_type_value_id': 2,
+                 'duration_s': 900},
+            ]},
+            {'number': 2, 'phase': 'build', 'week_type': 'recovery', 'sessions': [
+                {'date': '2026-07-20', 'display_name': 'Rest Day',
+                 'role': None, 'workout_type_value_id': 7,
+                 'duration_s': 0},
+            ]},
+        ]}
+        apply_contract = {'order_id': 'order', 'operations': [
+            {
+                'kind': 'workout_upsert', 'disposition': 'create',
+                'logical_id': 'order:workout_upsert:2026-07-14#1',
+                'expected_digest': 'e' * 64,
+                'payload': {
+                    'date': '2026-07-14', 'title': 'Specific Session',
+                    'description': 'Exact reviewed instructions.',
+                    'tp_workout_type': 2, 'total_seconds': 900,
+                    'tss_planned': 42.0,
+                    'structure': {
+                        'primaryIntensityMetric': 'percentOfFtp',
+                        'structure': [{
+                        'steps': [{
+                            'name': 'Work', 'intensityClass': 'active',
+                            'length': {'unit': 'second', 'value': 900},
+                            'targets': [{'minValue': 88.0, 'maxValue': 92.0}],
+                        }],
+                    }]},
+                },
+            },
+            {
+                'kind': 'workout_upsert', 'disposition': 'create',
+                'logical_id': 'order:workout_upsert:2026-07-20#1',
+                'expected_digest': 'f' * 64,
+                'payload': {
+                    'date': '2026-07-20', 'title': 'Rest Day',
+                    'description': '', 'tp_workout_type': 7,
+                    'total_seconds': 0, 'tss_planned': 0,
+                    'structure': None,
+                },
+            },
+        ]}
+        for operation in apply_contract['operations']:
+            operation['expected_digest'] = hashlib.sha256(
+                endure_delivery._canonical_json(operation['payload'])).hexdigest()
+
+        block = endure_delivery.build_endure_first_block(
+            plan_ir, apply_contract, '2026-07-13')
+
+        assert block['start_date'] == '2026-07-13'
+        assert block['end_date'] == '2026-07-26'
+        assert block['weeks'][0]['workouts'][0] == {
+            'date': '2026-07-14',
+            'title': 'Specific Session',
+            'description': 'Exact reviewed instructions.',
+            'activity_type': 'Ride',
+            'workout_type': 'interval',
+            'total_seconds': 900,
+            'tss_planned': 42.0,
+            'planned_steps': [{
+                'id': 'step-1', 'sequence': 1, 'name': 'Work',
+                'type': 'work', 'duration_type': 'time',
+                'duration_seconds': 900, 'target_type': 'power_pct',
+                'target_low': 88.0, 'target_high': 92.0,
+            }],
+            'is_intensity': True,
+            'source_operation_digest': apply_contract['operations'][0][
+                'expected_digest'],
+            'source_logical_id': 'order:workout_upsert:2026-07-14#1',
+        }
+        missing_operation = json.loads(json.dumps(apply_contract))
+        missing_operation['operations'].pop()
+        with pytest.raises(
+                endure_delivery.EndureMappingError,
+                match='exactly match Plan IR sessions'):
+            endure_delivery.build_endure_first_block(
+                plan_ir, missing_operation, '2026-07-13')
+
     def test_contract_top_level_shape(self):
         payload = endure_delivery.build_delivery_payload(
-            make_profile(), 'cs_test_1', intake={'q': 'a'})
+            make_profile(), 'cs_test_1', intake={'q': 'a'}, release=RELEASE,
+            first_block=FIRST_BLOCK)
         assert set(payload.keys()) == {'order_id', 'athlete', 'races',
-                                       'plan', 'intake'}
+                                       'plan', 'release', 'first_block', 'intake'}
         assert payload['order_id'] == 'cs_test_1'
         assert payload['intake'] == {'q': 'a'}
+        assert payload['first_block'] == FIRST_BLOCK
+        assert payload['release']['first_block_digest'] == FIRST_BLOCK_DIGEST
 
     def test_athlete_mapping_and_units(self):
         athlete = endure_delivery.build_delivery_payload(
-            make_profile(), 'cs_1')['athlete']
+            make_profile(), 'cs_1', release=RELEASE,
+            first_block=FIRST_BLOCK)['athlete']
         assert athlete['email'] == 'jane@example.com'
         assert athlete['name'] == 'Jane Doe'
         assert athlete['ftp'] == 210                # fitness_markers.ftp_watts
@@ -279,13 +450,15 @@ class TestBuildDeliveryPayload:
         assert athlete['experience_years'] == 6     # training_history.years_cycling
         assert athlete['off_days'] == ['monday']    # preferred_off_days
         assert athlete['long_ride_day'] == 'saturday'
-        assert athlete['limiters'] == 'Fading in the final hour of long races'
+        assert athlete['limiters'] == [
+            'Fading in the final hour of long races']
         # empty constraints omitted, not sent as ''/null
         assert 'constraints' not in athlete
 
     def test_races_a_plus_b_events(self):
         races = endure_delivery.build_delivery_payload(
-            make_profile(), 'cs_1')['races']
+            make_profile(), 'cs_1', release=RELEASE,
+            first_block=FIRST_BLOCK)['races']
         assert len(races) == 2
         a, b = races[0], races[1]
         assert a == {'name': 'Unbound Gravel 200', 'date': '2026-05-30',
@@ -297,9 +470,17 @@ class TestBuildDeliveryPayload:
 
     def test_plan_name_and_start_date(self):
         plan = endure_delivery.build_delivery_payload(
-            make_profile(), 'cs_1')['plan']
+            make_profile(), 'cs_1', release=RELEASE,
+            first_block=FIRST_BLOCK)['plan']
         assert plan['start_date'] == '2026-07-13'   # plan_start.preferred_start
         assert 'Unbound Gravel 200' in plan['name']
+
+    def test_purchased_plan_identity_is_shared_with_customer_handoff(self):
+        assert endure_delivery.purchased_plan_identity(make_profile()) == {
+            'plan_name': 'Custom Training Plan — Unbound Gravel 200',
+            'race_name': 'Unbound Gravel 200',
+            'race_date': '2026-05-30',
+        }
 
     def test_optional_fields_omitted_when_absent(self):
         profile = make_profile()
@@ -309,7 +490,8 @@ class TestBuildDeliveryPayload:
         profile['schedule_constraints'] = {}
         profile['racing'] = {}
         athlete = endure_delivery.build_delivery_payload(
-            profile, 'cs_1')['athlete']
+            profile, 'cs_1', release=RELEASE,
+            first_block=FIRST_BLOCK)['athlete']
         for key in ('ftp', 'weight_kg', 'age', 'experience_years',
                     'off_days', 'long_ride_day', 'limiters', 'constraints'):
             assert key not in athlete, f'{key} should be omitted'
@@ -324,25 +506,31 @@ class TestBuildDeliveryPayload:
         profile['weekly_availability']['volume_warning'] = (
             'Target volume (12h/wk) exceeds schedule capacity (9h/wk).')
         athlete = endure_delivery.build_delivery_payload(
-            profile, 'cs_1')['athlete']
-        assert 'IT band pain' in athlete['constraints']
-        assert 'asthma' in athlete['constraints']
-        assert 'exceeds schedule capacity' in athlete['constraints']
+            profile, 'cs_1', release=RELEASE,
+            first_block=FIRST_BLOCK)['athlete']
+        assert any('IT band pain' in item for item in athlete['constraints'])
+        assert any('asthma' in item for item in athlete['constraints'])
+        assert any(
+            'exceeds schedule capacity' in item
+            for item in athlete['constraints'])
 
     def test_missing_email_raises_mapping_error(self):
         profile = make_profile(email='')
         with pytest.raises(endure_delivery.EndureMappingError):
-            endure_delivery.build_delivery_payload(profile, 'cs_1')
+            endure_delivery.build_delivery_payload(
+                profile, 'cs_1', release=RELEASE, first_block=FIRST_BLOCK)
 
     def test_missing_hours_raises_mapping_error(self):
         profile = make_profile()
         profile['weekly_availability'] = {'cycling_hours_target': 0}
         with pytest.raises(endure_delivery.EndureMappingError):
-            endure_delivery.build_delivery_payload(profile, 'cs_1')
+            endure_delivery.build_delivery_payload(
+                profile, 'cs_1', release=RELEASE, first_block=FIRST_BLOCK)
 
     def test_empty_profile_raises_mapping_error(self):
         with pytest.raises(endure_delivery.EndureMappingError):
-            endure_delivery.build_delivery_payload({}, 'cs_1')
+            endure_delivery.build_delivery_payload(
+                {}, 'cs_1', release=RELEASE, first_block=FIRST_BLOCK)
 
     def test_generic_race_uses_derived_discipline(self):
         """Unmatched races carry generic_discipline instead of DB discipline."""
@@ -356,7 +544,9 @@ class TestBuildDeliveryPayload:
                                 'date': '2026-09-01', 'distance_miles': 80,
                                 'goal': 'finish', 'priority': 'A'}]
         profile['b_events'] = []
-        races = endure_delivery.build_delivery_payload(profile, 'cs_1')['races']
+        races = endure_delivery.build_delivery_payload(
+            profile, 'cs_1', release=RELEASE,
+            first_block=FIRST_BLOCK)['races']
         assert races[0]['discipline'] == 'gravel'
         assert 'elevation_ft' not in races[0]  # 0 → omitted
 
@@ -370,16 +560,21 @@ class TestDeliverPurchasedPlan:
     def test_success_first_attempt(self, endure_env):
         with patch.object(endure_delivery.requests, 'post',
                           return_value=_resp(200, DELIVERED_BODY)) as mock_post:
-            record = endure_delivery.deliver_purchased_plan({'order_id': 'cs_1'})
+            record = endure_delivery.deliver_purchased_plan(DELIVERY_REQUEST)
         assert record['ok'] is True
-        assert record['status'] == 'delivered'
+        assert record['status'] == 'ready_for_review'
+        assert record['prepared_at']
+        assert 'delivered_at' not in record
         assert record['attempts'] == 1
         assert record['plan_id'] == 'plan_endure_1'
         assert record['block_id'] == 'block_endure_1'
         assert record['invitation_id'] == 'inv_endure_1'
+        assert record['invite_url'] == (
+            'https://endurelabs.app/invite/invite-token-1')
         assert record['athlete_id'] == 'ath_endure_1'
         assert record['review_url'] == (
-            'https://endurelabs.app/coach/athletes/ath_endure_1/plan')
+            'https://endurelabs.app/coach/athletes/ath_endure_1/plan'
+            '?planId=plan_endure_1&blockId=block_endure_1')
         # secret header + pinned path
         _, kwargs = mock_post.call_args
         assert mock_post.call_args[0][0] == (
@@ -387,21 +582,173 @@ class TestDeliverPurchasedPlan:
         assert kwargs['headers']['X-Delivery-Secret'] == ENDURE_SECRET
         assert kwargs['timeout'] == 20.0
 
-    def test_already_delivered_is_success(self, endure_env):
-        """Idempotent re-post: Endure returns already_delivered → success."""
-        body = dict(DELIVERED_BODY, status='already_delivered')
+    def test_already_ready_for_review_is_success(self, endure_env):
+        """Idempotent re-post: an existing staged plan is still a success."""
+        body = dict(DELIVERED_BODY, status='already_ready_for_review')
         with patch.object(endure_delivery.requests, 'post',
                           return_value=_resp(200, body)):
-            record = endure_delivery.deliver_purchased_plan({'order_id': 'cs_1'})
+            record = endure_delivery.deliver_purchased_plan(DELIVERY_REQUEST)
         assert record['ok'] is True
-        assert record['status'] == 'already_delivered'
+        assert record['status'] == 'already_ready_for_review'
         assert record['plan_id'] == 'plan_endure_1'
+
+    @pytest.mark.parametrize('body,error', [
+        ({}, 'status is invalid'),
+        ({**DELIVERED_BODY, 'order_id': 'another-order'},
+         'order_id does not match'),
+        ({**DELIVERED_BODY, 'block_id': None}, 'block_id is missing'),
+        ({**DELIVERED_BODY, 'recipient_email_sha256': 'd' * 64},
+         'recipient_email_sha256 does not match'),
+        ({**DELIVERED_BODY, 'release': {**RELEASE, 'generation_revision': 4}},
+         'release does not match'),
+        ({**DELIVERED_BODY, 'invite_url': None},
+         'invite_url is missing'),
+        ({**DELIVERED_BODY,
+          'invite_url': 'https://attacker.example/invite/invite-token-1'},
+         'invite_url is outside'),
+    ])
+    def test_200_response_must_satisfy_the_delivery_contract(
+            self, endure_env, body, error):
+        with patch.object(endure_delivery.requests, 'post',
+                          return_value=_resp(200, body)):
+            record = endure_delivery.deliver_purchased_plan(
+                DELIVERY_REQUEST)
+        assert record['ok'] is False
+        assert record['status'] == 'failed'
+
+
+class TestVerifyPurchasedPlanReady:
+
+    def test_accepts_only_an_exact_verified_readback(self, endure_env):
+        prepared = dict(DELIVERED_BODY)
+        with patch.object(endure_delivery.requests, 'get',
+                          return_value=_resp(200, READINESS_BODY)) as mock_get:
+            result = endure_delivery.verify_purchased_plan_ready(
+                'cs_1', prepared)
+
+        assert result['ok'] is True
+        assert result['status'] == 'ready_for_athlete'
+        assert result['checked_at']
+        assert result['calendar_verification']['actualCount'] == 6
+        _, kwargs = mock_get.call_args
+        assert kwargs['params'] == {
+            'order_id': 'cs_1',
+            'athlete_id': 'ath_endure_1',
+            'plan_id': 'plan_endure_1',
+            'block_id': 'block_endure_1',
+            'invitation_id': 'inv_endure_1',
+            'recipient_email_sha256': RECIPIENT_EMAIL_SHA256,
+            'generation_revision': 3,
+            'release_manifest_digest': 'a' * 64,
+            'model_seal': 'b' * 64,
+            'first_block_digest': FIRST_BLOCK_DIGEST,
+            'linked_account': 'false',
+            'invitation_accepted': 'false',
+        }
+        assert kwargs['headers']['X-Delivery-Secret'] == ENDURE_SECRET
+
+    @pytest.mark.parametrize('body,error', [
+        ({**READINESS_BODY, 'status': 'ready_for_review'},
+         'status is not ready_for_athlete'),
+        ({**READINESS_BODY, 'athlete_id': 'other-athlete'},
+         'athlete_id does not match'),
+        ({**READINESS_BODY, 'invite_url': 'https://attacker.example/invite/x'},
+         'invite_url does not match'),
+        ({**READINESS_BODY,
+          'calendar_verification': {
+              'status': 'mismatch', 'expectedCount': 6, 'actualCount': 5,
+          }}, 'calendar_verification is not verified'),
+        ({**READINESS_BODY,
+          'calendar_verification': {
+              'status': 'verified', 'expectedCount': 6, 'actualCount': 5,
+          }}, 'calendar verification counts do not match'),
+    ])
+    def test_identity_or_calendar_mismatch_fails_closed(
+            self, endure_env, body, error):
+        with patch.object(endure_delivery.requests, 'get',
+                          return_value=_resp(200, body)) as mock_get:
+            result = endure_delivery.verify_purchased_plan_ready(
+                'cs_1', dict(DELIVERED_BODY))
+
+        assert result['ok'] is False
+        assert error in result['error']
+        assert mock_get.call_count == 1
+
+    def test_retries_one_transient_failure(self, endure_env):
+        with patch.object(
+                endure_delivery.requests, 'get',
+                side_effect=[_resp(503), _resp(200, READINESS_BODY)]) as mock_get:
+            result = endure_delivery.verify_purchased_plan_ready(
+                'cs_1', dict(DELIVERED_BODY))
+
+        assert result['ok'] is True
+        assert result['attempts'] == 2
+        assert mock_get.call_count == 2
+
+    def test_existing_linked_account_has_no_invitation_capability(
+            self, endure_env):
+        body = {
+            **DELIVERED_BODY,
+            'invitation_id': None,
+            'invite_url': None,
+            'linked_account': True,
+            'invitation_accepted': True,
+        }
+        with patch.object(endure_delivery.requests, 'post',
+                          return_value=_resp(200, body)):
+            record = endure_delivery.deliver_purchased_plan(
+                DELIVERY_REQUEST)
+        assert record['ok'] is True
+        assert record['invitation_id'] is None
+        assert record['invite_url'] is None
+
+    def test_accepted_relationship_without_linked_account_fails_closed(
+            self, endure_env):
+        body = {
+            **DELIVERED_BODY,
+            'invitation_id': None,
+            'invite_url': None,
+            'linked_account': False,
+            'invitation_accepted': True,
+        }
+        with patch.object(endure_delivery.requests, 'post',
+                          return_value=_resp(200, body)):
+            record = endure_delivery.deliver_purchased_plan(DELIVERY_REQUEST)
+        assert record['ok'] is False
+        assert 'not linked' in record['error']
+
+    def test_ready_but_unlinked_accepted_relationship_fails_closed(
+            self, endure_env):
+        prepared = dict(DELIVERED_BODY)
+        readiness = {
+            **READINESS_BODY,
+            'invitation_id': None,
+            'invite_url': None,
+            'linked_account': False,
+            'invitation_accepted': True,
+        }
+        with patch.object(endure_delivery.requests, 'get',
+                          return_value=_resp(200, readiness)):
+            result = endure_delivery.verify_purchased_plan_ready('cs_1', prepared)
+        assert result['ok'] is False
+        assert 'not linked' in result['error']
+
+    def test_linked_account_keeps_invite_until_relationship_is_accepted(
+            self, endure_env):
+        body = {**DELIVERED_BODY, 'linked_account': True}
+        with patch.object(endure_delivery.requests, 'post',
+                          return_value=_resp(200, body)):
+            record = endure_delivery.deliver_purchased_plan(DELIVERY_REQUEST)
+        assert record['ok'] is True
+        assert record['linked_account'] is True
+        assert record['invitation_accepted'] is False
+        assert record['invitation_id'] == 'inv_endure_1'
 
     def test_retries_once_on_5xx(self, endure_env):
         with patch.object(endure_delivery.requests, 'post',
                           side_effect=[_resp(500),
                                        _resp(200, DELIVERED_BODY)]) as mock_post:
-            record = endure_delivery.deliver_purchased_plan({'order_id': 'cs_1'})
+            record = endure_delivery.deliver_purchased_plan(DELIVERY_REQUEST)
         assert record['ok'] is True
         assert record['attempts'] == 2
         assert mock_post.call_count == 2
@@ -410,7 +757,7 @@ class TestDeliverPurchasedPlan:
         with patch.object(endure_delivery.requests, 'post',
                           side_effect=[real_requests.Timeout('slow'),
                                        _resp(200, DELIVERED_BODY)]) as mock_post:
-            record = endure_delivery.deliver_purchased_plan({'order_id': 'cs_1'})
+            record = endure_delivery.deliver_purchased_plan(DELIVERY_REQUEST)
         assert record['ok'] is True
         assert record['attempts'] == 2
         assert mock_post.call_count == 2
@@ -418,16 +765,31 @@ class TestDeliverPurchasedPlan:
     def test_fails_after_two_attempts(self, endure_env):
         with patch.object(endure_delivery.requests, 'post',
                           side_effect=[_resp(500), _resp(502)]) as mock_post:
-            record = endure_delivery.deliver_purchased_plan({'order_id': 'cs_1'})
+            record = endure_delivery.deliver_purchased_plan(DELIVERY_REQUEST)
         assert record['ok'] is False
         assert record['status'] == 'failed'
         assert record['attempts'] == 2
         assert mock_post.call_count == 2  # exactly ONE retry, not more
 
+    def test_retry_lease_error_does_not_hide_first_server_failure(
+            self, endure_env):
+        with patch.object(
+                endure_delivery.requests, 'post',
+                side_effect=[
+                    _resp(500, {'error': 'Exact block insert failed'}),
+                    _resp(500, {
+                        'error': 'Purchased-plan staging is already in progress',
+                    }),
+                ]):
+            record = endure_delivery.deliver_purchased_plan(DELIVERY_REQUEST)
+        assert record['ok'] is False
+        assert record['attempts'] == 2
+        assert record['error'] == 'HTTP 500: Exact block insert failed'
+
     def test_401_is_not_retried(self, endure_env):
         with patch.object(endure_delivery.requests, 'post',
                           return_value=_resp(401)) as mock_post:
-            record = endure_delivery.deliver_purchased_plan({'order_id': 'cs_1'})
+            record = endure_delivery.deliver_purchased_plan(DELIVERY_REQUEST)
         assert record['ok'] is False
         assert record['attempts'] == 1
         assert mock_post.call_count == 1
@@ -437,7 +799,7 @@ class TestDeliverPurchasedPlan:
         body = {'error': 'invalid payload', 'details': {'athlete': 'bad'}}
         with patch.object(endure_delivery.requests, 'post',
                           return_value=_resp(400, body)) as mock_post:
-            record = endure_delivery.deliver_purchased_plan({'order_id': 'cs_1'})
+            record = endure_delivery.deliver_purchased_plan(DELIVERY_REQUEST)
         assert record['ok'] is False
         assert mock_post.call_count == 1
         assert 'HTTP 400' in record['error']
@@ -446,7 +808,7 @@ class TestDeliverPurchasedPlan:
     def test_never_raises_on_connection_error(self, endure_env):
         with patch.object(endure_delivery.requests, 'post',
                           side_effect=real_requests.ConnectionError('down')):
-            record = endure_delivery.deliver_purchased_plan({'order_id': 'cs_1'})
+            record = endure_delivery.deliver_purchased_plan(DELIVERY_REQUEST)
         assert record['ok'] is False
         assert record['status'] == 'failed'
 
@@ -477,7 +839,7 @@ class TestStreakCounter:
         assert streak['last_status'] == 'failure'
 
     def test_idempotent_repost_not_double_counted(self, tmp_path):
-        """A retried order (already_delivered) must not inflate the streak."""
+        """A retried order must not inflate the preparation counter."""
         d = str(tmp_path)
         endure_delivery.record_delivery_result(True, 'cs_1', d)
         streak = endure_delivery.record_delivery_result(True, 'cs_1', d)
@@ -566,6 +928,303 @@ def test_phase1_endure_target_is_preserved_but_never_pushed(isolated_app,
     assert 'endure_delivery' not in record
 
 
+def test_explicit_stage_endpoint_binds_the_current_approved_release(
+        isolated_app, endure_env, monkeypatch):
+    app_module = isolated_app
+    monkeypatch.setenv('CRON_SECRET', 'cron-secret')
+    state = {
+        'legacy': False,
+        'delivery_platform': 'endure',
+        'status': 'APPROVED',
+        'generation_revision': 3,
+        'release_manifest_digest': 'a' * 64,
+        'model_seal': 'b' * 64,
+    }
+    prepared = {**DELIVERED_BODY, 'ok': True}
+    recorded = {**state, 'endure_stage': {key: prepared[key] for key in (
+        'order_id', 'athlete_id', 'plan_id', 'block_id', 'invitation_id',
+        'invite_url', 'recipient_email_sha256', 'release', 'status')},
+    }
+    recorded['endure_stage']['prepared_at'] = '2026-09-07T12:00:00Z'
+    staged_candidates = []
+
+    def stage_while_locked(path, callback, *, force_refresh=False):
+        assert path == app_module._fulfillment_status_path('cs_1')
+        assert force_refresh is False
+        candidate = callback(state)
+        staged_candidates.append(candidate)
+        return 'staged', recorded
+
+    with patch.object(app_module, '_resolve_order_id', return_value='cs_1'), \
+         patch.object(app_module, 'verify_release_manifest', return_value={
+             'artifacts': [
+                 {'path': 'artifacts/profile.yaml'},
+                 {'path': 'artifacts/intake_backup.json'},
+                 {'path': 'artifacts/endure_first_block.json'},
+             ]}), \
+         patch.object(app_module, 'open_verified_release_artifact',
+                      side_effect=[
+                          io.BytesIO(
+                              b'name: Jane\nplan_start:\n'
+                              b'  preferred_start: "2026-07-13"\n'),
+                          io.BytesIO(b'{"q": "a"}'),
+                          io.BytesIO(json.dumps(FIRST_BLOCK).encode()),
+                      ]), \
+         patch.object(endure_delivery, 'build_delivery_payload',
+                      return_value=DELIVERY_REQUEST) as build_payload, \
+         patch.object(endure_delivery, 'deliver_purchased_plan',
+                      return_value=prepared) as deliver, \
+         patch.object(app_module, 'stage_endure_under_lock',
+                      side_effect=stage_while_locked) as stage_locked:
+        with app_module.app.test_client() as client:
+            response = client.post(
+                '/api/fulfillment/cs_1/stage-endure',
+                headers={'X-Cron-Secret': 'cron-secret'})
+    assert response.status_code == 200
+    assert response.get_json()['endure_stage']['block_id'] == 'block_endure_1'
+    build_payload.assert_called_once_with(
+        {
+            'name': 'Jane',
+            'plan_start': {'preferred_start': '2026-07-13'},
+        },
+        'cs_1', {'q': 'a'}, release={
+            'generation_revision': 3,
+            'release_manifest_digest': 'a' * 64,
+            'model_seal': 'b' * 64,
+        }, first_block=FIRST_BLOCK)
+    deliver.assert_called_once_with(DELIVERY_REQUEST)
+    stage_locked.assert_called_once()
+    assert staged_candidates == [prepared]
+
+
+def test_endure_email_reconcile_endpoint_is_operator_only_and_exact(
+        isolated_app, monkeypatch):
+    app_module = isolated_app
+    monkeypatch.setenv('CRON_SECRET', 'cron-secret')
+    payload = {
+        'outcome': 'delivered',
+        'operator': 'matti',
+        'evidence': 'Verified in Resend delivery log',
+        'expected_idempotency_key': 'endure/cs_1/r3',
+        'expected_payload_digest': 'd' * 64,
+        'provider_message_id': 'resend-message-123',
+    }
+    with app_module.app.test_client() as client:
+        unauthorized = client.post(
+            '/api/fulfillment/cs_1/reconcile-endure-email', json=payload)
+    assert unauthorized.status_code == 401
+
+    reconciled = {
+        'status': 'CONFIRMED',
+        'endure_confirmation_attempt': {'status': 'accepted'},
+        'confirmation': {'provider_message_id': 'resend-message-123'},
+    }
+    with patch.object(app_module, '_resolve_order_id', return_value='cs_1'), \
+         patch.object(app_module, 'reconcile_endure_confirmation',
+                      return_value=('confirmed_from_provider_evidence', reconciled)) as reconcile:
+        with app_module.app.test_client() as client:
+            response = client.post(
+                '/api/fulfillment/cs_1/reconcile-endure-email',
+                json=payload,
+                headers={'X-Cron-Secret': 'cron-secret'})
+    assert response.status_code == 200
+    assert response.get_json()['action'] == 'confirmed_from_provider_evidence'
+    reconcile.assert_called_once_with(
+        app_module._fulfillment_status_path('cs_1'),
+        outcome='delivered',
+        operator='matti',
+        evidence='Verified in Resend delivery log',
+        expected_idempotency_key='endure/cs_1/r3',
+        expected_payload_digest='d' * 64,
+        provider_message_id='resend-message-123',
+    )
+
+    with patch.object(app_module, '_resolve_order_id', return_value='cs_1'):
+        with app_module.app.test_client() as client:
+            invalid = client.post(
+                '/api/fulfillment/cs_1/reconcile-endure-email',
+                json={**payload, 'timestamp': '2026-09-08T00:00:00Z'},
+                headers={'X-Cron-Secret': 'cron-secret'})
+    assert invalid.status_code == 400
+
+
+def test_endure_confirmation_uses_live_invite_and_never_tp_copy(
+        isolated_app, monkeypatch, tmp_path):
+    app_module = isolated_app
+    log_dir = tmp_path / '.logs'
+    log_dir.mkdir()
+    (log_dir / '2026-09.jsonl').write_text(json.dumps({
+        'order_id': 'cs_1', 'success': True, 'email': 'jane@example.com',
+        'name': 'Jane Doe', 'brand': 'gravel-god',
+    }) + '\n')
+    stage = {key: DELIVERED_BODY[key] for key in (
+        'order_id', 'athlete_id', 'plan_id', 'block_id', 'invitation_id',
+        'invite_url', 'recipient_email_sha256', 'release')}
+    stage.update({'status': 'ready_for_review', 'prepared_at': '2026-09-07T12:00:00Z'})
+    state = {
+        'athlete_id': 'jane_doe', 'delivery_platform': 'endure',
+        'status': 'APPROVED', 'generation_revision': 3,
+        'endure_stage': stage,
+    }
+    readiness = {**READINESS_BODY, 'ok': True}
+    sent = {}
+
+    def capture_send(*args, **kwargs):
+        sent['args'] = args
+        sent['kwargs'] = kwargs
+        return True
+
+    def confirm(_path, received, send, **kwargs):
+        assert received == readiness
+        assert send() is True
+        sent['confirm_kwargs'] = kwargs
+        return 'confirmed', {}
+
+    with patch.object(app_module, 'approval_matches_release', return_value=True), \
+         patch.object(app_module, 'verify_release_manifest', return_value={
+             'artifacts': [
+                 {'path': 'artifacts/profile.yaml'},
+                 {'path': 'artifacts/training_guide.pdf'},
+             ]}), \
+         patch.object(app_module, 'open_verified_release_artifact',
+                      side_effect=[
+                          io.BytesIO(
+                              b'name: Jane Doe\nemail: jane@example.com\n'
+                              b'target_race:\n  name: Unbound Gravel 200\n'
+                              b'  date: 2026-05-30\n'),
+                          io.BytesIO(b'guide'),
+                      ]), \
+         patch.object(endure_delivery, 'verify_purchased_plan_ready',
+                      return_value=readiness), \
+         patch.object(app_module, '_send_email', side_effect=capture_send), \
+         patch.object(app_module, 'confirm_endure_after_send', side_effect=confirm):
+        with app_module.app.test_request_context('/api/confirm/cs_1', method='POST'):
+            response, status = app_module._confirm_endure_plan('cs_1', state)
+    assert status == 200
+    assert response.get_json()['source'] == 'endure'
+    subject, body = sent['args'][1:3]
+    assert subject == 'Custom Training Plan — Unbound Gravel 200 is ready in Endure'
+    assert DELIVERED_BODY['invite_url'] in body
+    assert 'first training block' in body
+    assert 'Target: Unbound Gravel 200 on 2026-05-30' in body
+    assert 'No mobile app is required' in body
+    assert ('upload the completed FIT or TCX file, then add your '
+            'post-workout feedback') in body
+    assert ('upload the completed FIT or TCX file, then add your '
+            'post-workout feedback') in sent['kwargs']['html']
+    assert 'does not include ongoing human monitoring' in body
+    assert 'routine plan revisions' in body
+    assert 'give your coach and David the context' not in body
+    assert 'TrainingPeaks' not in body
+    assert sent['kwargs']['attachments'] == [('training_guide.pdf', b'guide')]
+    assert sent['kwargs']['idempotency_key'].startswith('endure-plan-ready/cs_1/r3/')
+    assert sent['confirm_kwargs']['idempotency_key'] == sent['kwargs']['idempotency_key']
+    assert sent['kwargs']['prepared_payload']
+    assert sent['confirm_kwargs']['payload_digest'] == (
+        app_module._email_payload_digest(sent['kwargs']['prepared_payload']))
+
+
+def test_endure_confirmation_sends_nothing_when_readiness_fails(
+        isolated_app):
+    app_module = isolated_app
+    state = {
+        'athlete_id': 'jane_doe', 'delivery_platform': 'endure',
+        'status': 'APPROVED', 'generation_revision': 3,
+        'endure_stage': {'recipient_email_sha256': RECIPIENT_EMAIL_SHA256},
+    }
+    with patch.object(app_module, 'approval_matches_release', return_value=True), \
+         patch.object(app_module, 'verify_release_manifest', return_value={
+             'artifacts': [
+                 {'path': 'artifacts/profile.yaml'},
+                 {'path': 'artifacts/training_guide.pdf'},
+             ]}), \
+         patch.object(app_module, 'open_verified_release_artifact',
+                      side_effect=[
+                          io.BytesIO(b'name: Jane\ntarget_race: {}\n'),
+                          io.BytesIO(b'guide'),
+                      ]), \
+         patch.object(endure_delivery, 'verify_purchased_plan_ready', return_value={
+             'ok': False, 'error': 'calendar mismatch'}), \
+         patch.object(app_module, '_send_email') as send:
+        with app_module.app.test_request_context('/api/confirm/cs_1', method='POST'):
+            response, status = app_module._confirm_endure_plan('cs_1', state)
+    assert status == 409
+    assert 'not ready' in response.get_json()['error']
+    send.assert_not_called()
+
+
+def test_customer_status_waits_for_confirmed_endure_access_email(
+        isolated_app):
+    app_module = isolated_app
+    approved = {
+        'delivery_platform': 'endure',
+        'status': 'APPROVED',
+        'generation_revision': 3,
+        'confirmation': None,
+        'endure_confirmation_attempt': None,
+    }
+    with patch.object(app_module, '_resolve_order_id', return_value='cs_1'), \
+         patch.object(app_module, 'load_fulfillment_state', return_value=approved), \
+         patch.object(app_module, 'approval_matches_release', return_value=True), \
+         patch.object(app_module, 'verify_release_artifact'), \
+         patch.object(app_module, '_read_job', return_value={'status': 'succeeded'}):
+        with app_module.app.test_client() as client:
+            response = client.get('/api/order-status/endure_rider')
+
+    assert response.status_code == 200
+    assert response.get_json()['status'] == 'processing'
+    assert response.get_json()['download_ready'] is False
+    assert response.get_json()['message'] == (
+        "Payment received. We're preparing your plan and will email your "
+        "Endure access link after it has been reviewed.")
+
+
+def test_customer_status_is_ready_after_endure_access_email_is_accepted(
+        isolated_app):
+    app_module = isolated_app
+    confirmed = {
+        'delivery_platform': 'endure',
+        'status': 'CONFIRMED',
+        'generation_revision': 3,
+        'confirmation': {'provider': 'resend'},
+        'endure_confirmation_attempt': {'status': 'accepted'},
+    }
+    with patch.object(app_module, '_resolve_order_id', return_value='cs_1'), \
+         patch.object(app_module, 'load_fulfillment_state', return_value=confirmed), \
+         patch.object(app_module, 'approval_matches_release', return_value=True), \
+         patch.object(app_module, 'verify_release_artifact'), \
+         patch.object(app_module, '_read_job', return_value={'status': 'succeeded'}):
+        with app_module.app.test_client() as client:
+            response = client.get('/api/order-status/endure_rider')
+
+    assert response.status_code == 200
+    assert response.get_json()['status'] == 'ready'
+    assert response.get_json()['download_ready'] is True
+    assert response.get_json()['message'] == (
+        "Your plan is ready in Endure. We sent your access email; if it has "
+        "not arrived, check spam or contact support.")
+
+
+def test_trainingpeaks_followups_are_suppressed_for_endure_orders(
+        isolated_app, tmp_path):
+    app_module = isolated_app
+    log_dir = tmp_path / '.logs'
+    log_dir.mkdir(exist_ok=True)
+    (log_dir / '2026-09.jsonl').write_text(json.dumps({
+        'order_id': 'cs_endure_followup',
+        'product_type': 'training_plan',
+        'success': True,
+        'email': 'jane@example.com',
+        'name': 'Jane Doe',
+        'delivery_platform': 'endure',
+        'timestamp': (datetime.now() - timedelta(days=1)).isoformat(),
+    }) + '\n')
+    with patch.object(app_module, '_send_followup_email') as send:
+        stats = app_module.process_followup_emails()
+    assert stats['checked'] == 0
+    send.assert_not_called()
+
+
 # =============================================================================
 # COACH EMAIL VARIANT
 # =============================================================================
@@ -606,13 +1265,16 @@ class TestCoachEmailVariant:
         assert 'Create Jane Doe in TrainingPeaks' in text
         assert 'Import ZWO files into their TP calendar' in text
         assert 'Endure' not in text
+        for rendered in (text, html):
+            assert 'specific blocker update' in rendered
+            assert 'TrainingPeaks connection' in rendered
 
     def test_endure_checklist_replaces_tp_import_steps(self):
         from app import _build_training_plan_email
         details = _email_details(
             delivery_target='endure',
             endure_delivery={
-                'status': 'delivered', 'athlete_id': 'ath_endure_1',
+                'status': 'ready_for_review', 'athlete_id': 'ath_endure_1',
                 'plan_id': 'plan_endure_1', 'block_id': 'block_endure_1',
                 'invitation_id': 'inv_endure_1',
                 'review_url': 'https://endurelabs.app/coach/athletes/ath_endure_1/plan',
@@ -625,14 +1287,18 @@ class TestCoachEmailVariant:
         # TP import steps GONE
         assert 'Create athlete in TrainingPeaks' not in html
         assert 'Import ZWO files' not in html
-        # Endure ids visible to the coach (invitation carried here — the
-        # customer-facing invite email is sent by Endure itself)
+        # Endure ids visible to the coach. The pipeline's authenticated
+        # confirmation step later sends the live invitation to the customer.
         assert 'inv_endure_1' in html
         # download link (fallback artifact) stays
         assert '/api/download/jane_doe?type=full' in html
         # text variant too
         assert 'Review block 1 in Endure' in text
         assert 'Import ZWO files' not in text
+        for rendered in (text, html):
+            assert 'expecting the plan within 24 hours' in rendered or (
+                'expect the plan within 24h' in rendered)
+            assert 'TrainingPeaks connection' not in rendered
 
     def test_endure_failure_flags_loudly_keeps_tp_checklist(self):
         from app import _build_training_plan_email
@@ -648,11 +1314,11 @@ class TestCoachEmailVariant:
         # failure makes the subject a review subject
         assert 'REVIEW' in subject
 
-    def test_already_delivered_treated_as_delivered(self):
+    def test_already_ready_for_review_gets_the_review_checklist(self):
         from app import _build_training_plan_email
         details = _email_details(
             delivery_target='endure',
-            endure_delivery={'status': 'already_delivered',
+            endure_delivery={'status': 'already_ready_for_review',
                              'athlete_id': 'ath_endure_1',
                              'review_url': 'https://endurelabs.app/coach/athletes/ath_endure_1/plan'})
         _, text, html = _build_training_plan_email(details)

@@ -1141,6 +1141,13 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     field_testing_allowed = field_testing_raw not in {
         'no', 'none', 'false', 'off', 'disabled', 'do not include',
     }
+    # Permission to perform a field test is not the same thing as a reason to
+    # schedule one. A supplied power anchor is already usable; spending the
+    # first week of a short race-prep plan re-measuring it only displaces
+    # race-specific work. Missing power (or an HR request without an HR
+    # anchor) still requires the Week 1 re-anchor.
+    reanchor_required = field_testing_allowed and (
+        power_basis == 'none' or control_basis == 'rpe_pending_lthr')
     sleep_hours = parse_hours(recovery.get('typical_sleep', ''))
     sleep_quality = recovery.get('sleep_quality', 'good').lower()
     recovery_speed = recovery.get('recovery_speed', 'normal').lower()
@@ -1767,17 +1774,16 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             # permission to schedule a test or change TrainingPeaks zones.
             'field_testing_allowed': field_testing_allowed,
             'reanchor': {
-                'required': field_testing_allowed and (
-                    power_basis == 'none' or control_basis == 'rpe_pending_lthr'),
-                'week': 1 if field_testing_allowed else None,
+                'required': reanchor_required,
+                'week': 1 if reanchor_required else None,
                 'test': ((
                     'lthr_field_test' if control_basis in {'lthr', 'rpe_pending_lthr'}
                     else 'hrmax_field_test' if control_basis == 'hrmax'
                     else 'rpe_field_test' if training_metric == 'rpe'
-                    else 'ftp_field_test') if field_testing_allowed else None),
+                    else 'ftp_field_test') if reanchor_required else None),
                 'action': (
                     'Update the measured anchor after the Week 1 field test.'
-                    if field_testing_allowed else
+                    if reanchor_required else
                     'No field test scheduled; preserve the current training anchor.'
                 ),
             },

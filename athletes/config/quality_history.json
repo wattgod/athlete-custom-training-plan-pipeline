@@ -738,5 +738,205 @@
   "weighted_problem_load": 15.0,
   "critical_count": 12,
   "distinct_issues": 44
+ },
+ {
+  "date": "2026-08-30",
+  "quality": 1.73,
+  "n": 8,
+  "avg_score": 5.62,
+  "contract_pass_rate": 0.88,
+  "weighted_problem_load": 11.62,
+  "critical_count": 9,
+  "distinct_issues": 37
+ },
+ {
+  "date": "2026-08-31",
+  "quality": -0.94,
+  "n": 8,
+  "avg_score": 5.62,
+  "contract_pass_rate": 0.62,
+  "weighted_problem_load": 17.0,
+  "critical_count": 14,
+  "distinct_issues": 47
+ },
+ {
+  "date": "2026-09-01",
+  "quality": 0.05,
+  "n": 8,
+  "avg_score": 5.5,
+  "contract_pass_rate": 0.75,
+  "weighted_problem_load": 14.88,
+  "critical_count": 11,
+  "distinct_issues": 43
+ },
+ {
+  "date": "2026-09-02",
+  "quality": 1.97,
+  "n": 8,
+  "avg_score": 6.12,
+  "contract_pass_rate": 1.0,
+  "weighted_problem_load": 12.88,
+  "critical_count": 12,
+  "distinct_issues": 37
+ },
+ {
+  "date": "2026-09-03",
+  "quality": 1.8,
+  "n": 8,
+  "avg_score": 5.75,
+  "contract_pass_rate": 1.0,
+  "weighted_problem_load": 12.38,
+  "critical_count": 11,
+  "distinct_issues": 39
+ },
+ {
+  "date": "2026-09-04",
+  "quality": 3.12,
+  "n": 8,
+  "avg_score": 6.12,
+  "contract_pass_rate": 1.0,
+  "weighted_problem_load": 10.0,
+  "critical_count": 5,
+  "distinct_issues": 30
+ },
+ {
+  "date": "2026-09-05",
+  "quality": 1.09,
+  "n": 8,
+  "avg_score": 5.88,
+  "contract_pass_rate": 0.88,
+  "weighted_problem_load": 13.88,
+  "critical_count": 10,
+  "distinct_issues": 38
+ },
+ {
+  "date": "2026-09-06",
+  "quality": 0.47,
+  "n": 8,
+  "avg_score": 5.62,
+  "contract_pass_rate": 0.5,
+  "weighted_problem_load": 12.88,
+  "critical_count": 8,
+  "distinct_issues": 40
+ },
+ {
+  "date": "2026-09-07",
+  "quality": 2.13,
+  "n": 8,
+  "avg_score": 5.88,
+  "contract_pass_rate": 1.0,
+  "weighted_problem_load": 11.88,
+  "critical_count": 9,
+  "distinct_issues": 42
+ },
+ {
+  "date": "2026-09-08",
+  "quality": 1.38,
+  "n": 8,
+  "avg_score": 5.62,
+  "contract_pass_rate": 0.88,
+  "weighted_problem_load": 12.5,
+  "critical_count": 10,
+  "distinct_issues": 39
+ },
+ {
+  "date": "2026-09-09",
+  "quality": -0.94,
+  "n": 8,
+  "avg_score": 5.62,
+  "contract_pass_rate": 0.62,
+  "weighted_problem_load": 17.0,
+  "critical_count": 11,
+  "distinct_issues": 51
+ },
+ {
+  "date": "2026-09-10",
+  "quality": 1.55,
+  "n": 8,
+  "avg_score": 5.75,
+  "contract_pass_rate": 1.0,
+  "weighted_problem_load": 13.0,
+  "critical_count": 9,
+  "distinct_issues": 40
+ },
+ {
+  "date": "2026-09-11",
+  "quality": -0.94,
+  "n": 8,
+  "avg_score": 5.12,
+  "contract_pass_rate": 0.62,
+  "weighted_problem_load": 15.75,
+  "critical_count": 14,
+  "distinct_issues": 42
+ },
+ {
+  "date": "2026-09-12",
+  "quality": 1.93,
+  "n": 8,
+  "avg_score": 5.88,
+  "contract_pass_rate": 0.75,
+  "weighted_problem_load": 11.12,
+  "critical_count": 9,
+  "distinct_issues": 34
+ },
+ {
+  "date": "2026-09-13",
+  "quality": -0.03,
+  "n": 8,
+  "avg_score": 5.62,
+  "contract_pass_rate": 0.75,
+  "weighted_problem_load": 15.38,
+  "critical_count": 13,
+  "distinct_issues": 46
+ },
+ {
+  "date": "2026-09-14",
+  "quality": 1.9,
+  "n": 8,
+  "avg_score": 6.0,
+  "contract_pass_rate": 1.0,
+  "weighted_problem_load": 12.75,
+  "critical_count": 9,
+  "distinct_issues": 45
+ },
+ {
+  "date": "2026-09-15",
+  "quality": 0.29,
+  "n": 8,
+  "avg_score": 5.88,
+  "contract_pass_rate": 0.88,
+  "weighted_problem_load": 15.88,
+  "critical_count": 13,
+  "distinct_issues": 44
+ },
+ {
+  "date": "2026-09-16",
+  "quality": 0.67,
+  "n": 8,
+  "avg_score": 5.62,
+  "contract_pass_rate": 0.75,
+  "weighted_problem_load": 13.62,
+  "critical_count": 11,
+  "distinct_issues": 42
+ },
+ {
+  "date": "2026-09-17",
+  "quality": 2.02,
+  "n": 8,
+  "avg_score": 6.12,
+  "contract_pass_rate": 0.75,
+  "weighted_problem_load": 11.5,
+  "critical_count": 7,
+  "distinct_issues": 33
+ },
+ {
+  "date": "2026-09-18",
+  "quality": 0.59,
+  "n": 8,
+  "avg_score": 5.38,
+  "contract_pass_rate": 0.88,
+  "weighted_problem_load": 13.88,
+  "critical_count": 9,
+  "distinct_issues": 38
  }
 ]

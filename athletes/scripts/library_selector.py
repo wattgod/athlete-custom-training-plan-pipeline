@@ -383,6 +383,8 @@ def _qualifying_pool(
 # AE-2.8 (ratified 2026-08-23): endurance IF band tightened to .60-.70 --
 # the old .78 filler ceiling admitted items above the band's own top edge
 # onto easy days. Load-week and recovery-week filler ceilings now match.
+_ENDURANCE_TSS_PER_HOUR_CEILING = 50.0  # AE-2.8, mirrors post_render_validator
+_VALIDATOR_LONG_RIDE_MIN_MINUTES = 180  # post_render_validator._is_long_ride: >= 3 h
 _FILLER_IF_CEILING = 0.72  # ratified Q-B: .78 -> .72
 _FILLER_IF_CEILING_RECOVERY = 0.70
 _FILLER_POWER_CEILING_PCT = 115.0
@@ -665,11 +667,11 @@ _HARD_WORK_SECONDS_FILLER = 360
 _TAPER_MAX_HARD_REP_SECONDS = 120
 _TAPER_HARD_WORK_SECONDS = 900
 _TAPER_GATED_WEEK_TYPES = ("taper", "race")
-# AE-3.1 (ratified 2026-08-23): every selected Road v1 VO2 workout must carry
+# AE-3.1 (ratified 2026-08-23): every selected cycling VO2 workout must carry
 # 5-18 minutes at the current >=106%-FTP proxy.  The block selector already
 # clamps synthetic Road v1 VO2 levels, but a curated TP item can replace that
-# synthetic structure downstream.  Gate the actual curated road structure
-# here; legacy gravel remains unchanged pending its own inventory/migration.
+# synthetic structure downstream. The same physiological ceiling applies to
+# gravel: discipline cannot be a loophole around the athlete-safety contract.
 # Same pattern ae_lint.VO2_NAME_RE uses to decide which sessions AE-3.1 binds
 # (copied, not imported: ae_lint imports nothing from here and must stay a leaf).
 _LINT_VO2_NAME_RE = re.compile(r"vo2|30/30|30-30|40/20|ronnestad|billat|hard\s*start", re.I)
@@ -683,6 +685,8 @@ _VO2_CANONICAL_TYPES = frozenset({
     "VO2max Steady Intervals",
     "Thirty-Fifteens",
 })
+_CYCLING_DISCIPLINES = frozenset({"road", "road_tt", "gravel", "mtb"})
+_SPIN_UP_TITLE_RE = re.compile(r"\bspin[- ]?ups?\b", re.IGNORECASE)
 # Base-phase long rides are aerobic: hard durability long rides are the
 # house signature for BUILD/PEAK only. Without a base ceiling, a curated
 # night-threshold session filed in an endurance library ("Dark is the
@@ -878,6 +882,14 @@ def _has_ae_3_14_violation(structure: Any) -> bool:
 
 
 def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bool:
+    item_name = str(item.get("name_raw") or item.get("name_base") or "")
+    if (_SPIN_UP_TITLE_RE.search(item_name)
+            and not bool(item.get("has_cadence_targets"))):
+        # A title that promises spin-ups needs an executable cadence target.
+        # Prose alone is lost when the Endure apply contract condenses a
+        # structured workout, so reject the mislabeled curated item instead
+        # of delivering four visually identical endurance segments.
+        return False
     # AE-3.1 at selection time, every discipline (2026-09-17). This was
     # road-only "until the legacy gravel catalog has its own inventory";
     # the AE-2.7 60-min floor made the gap visible on gravel: the curated
@@ -898,6 +910,30 @@ def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bo
             if not (_VO2_WORK_SECONDS_MIN <= vo2_seconds <= _VO2_WORK_SECONDS_MAX):
                 return False
         elif vo2_seconds > _VO2_WORK_SECONDS_MAX:
+            return False
+    # AE-2.8 at selection time (2026-09-19): an endurance-type slot never
+    # draws an item whose own planned rate exceeds the 50 TSS/h ceiling the
+    # post-render validator enforces (ENDURANCE_TSS_RATE_HIGH). The whole
+    # "Z2 + Sprints" family sits at 51-52 TSS/h; the variety rotation
+    # started drawing it and every pick came back as a review blocker.
+    _role = slot.get("role")
+    _short_long_ride = (_role == "long_ride"
+                        and float(slot.get("budget_min") or 0) < _VALIDATOR_LONG_RIDE_MIN_MINUTES)
+    if (slot.get("canonical_name") in _ENDURANCE_TYPES
+            and (_role == "filler" or _short_long_ride)):
+        # Mirrors post_render_validator._is_endurance / _is_long_ride: a
+        # session is a long ride there only at >= 3 h (or a long-ride
+        # title); shorter "long rides" (taper / recovery weeks) are
+        # endurance sessions and AE-2.8 binds them (athlete-m golden: a
+        # 1.8 h taper-week "Z2 + Sprints" at 50.9 TSS/h was the blocker).
+        # Build/peak durability long rides (>= 3 h) stay unceilinged --
+        # the house signature. An endurance canonical in an intensity slot
+        # is judged by the intensity rules instead.
+        # TSS/h = IF^2 x 100 (TSS definition), so the ceiling is IF <= .707;
+        # the planned-IF form is the item's own authored intensity and does
+        # not depend on how a fixture happened to pair tss with duration.
+        _if = item.get("if_planned")
+        if _if is not None and (float(_if) ** 2) * 100.0 > _ENDURANCE_TSS_PER_HOUR_CEILING + 0.05:
             return False
     if (str(slot.get("phase") or "").lower() == "base"
             and _is_long_ride_role(slot.get("role"))):

@@ -1,80 +1,80 @@
-# Improvement backlog — 2026-08-29
+# Improvement backlog — 2026-09-18
 
-**Quality 0.12** · avg coach 5.88/10 · contract pass 62% · load 15.0/plan · 12 critical issue types
+**Quality 0.59** · avg coach 5.38/10 · contract pass 88% · load 13.88/plan · 9 critical issue types
 
 Ranked recurring issues (frequency × severity). Fix top-down; each fix must keep tests green AND raise the quality score.
 
-### 1. [critical] ×1  (road/time_crunched_parent)
-> The table of contents and guide body include a 'Category 5 to Category 1 Pathway' section. This athlete's goal is simply to FINISH a 102-mile gran fondo/road event — he is not a licensed racer seeking upgrade points. This section is flatly irrelevant and risks confusing or misleading the customer about what they signed up for.
+### 1. [critical] ×3  (gravel/ambitious_first_timer, gravel/time_crunched_parent)
+> 'Road Race Strategy' and 'Category 5 to Category 1 Pathway' sections appear in the table of contents (and presumably in the full guide body) — this is a road-racing construct that is completely wrong for a gravel gran fondo. UCI Gran Fondo Loutraki is a mass-participation timed event, not a categorized road race. This content is from the wrong discipline template and will confuse or embarrass the athlete.
 
-### 2. [critical] ×1  (mtb/ambitious_first_timer)
-> Discipline mismatch — Equipment Checklist specifies 'road bike, in good working order' for an MTB athlete. The correct entry should be a mountain bike. Sending this to an MTB racer is embarrassing and confusing.
+### 2. [critical] ×2  (gravel/masters_returner, gravel/weekend_warrior)
+> Table of contents includes 'Road Race Strategy' and 'Category 5 to Category 1 Pathway' chapters. This athlete is doing a gravel gran fondo with a goal of 'finish' — road racing categories (Cat 5 to Cat 1) are entirely irrelevant, belong to a different discipline template, and will confuse and undermine trust with this customer.
 
-### 3. [critical] ×1  (mtb/ambitious_first_timer)
-> Discipline mismatch — 'Road Race Strategy' and 'Category 5 to Category 1 Pathway' sections appear in the table of contents (and presumably in the full document). These are road-racing concepts entirely irrelevant to an MTB/gran-fondo athlete and signal that road-race boilerplate was injected wholesale.
+### 3. [critical] ×1  (gravel/masters_returner)
+> Table of contents lists 'Road Skills' as a chapter. A gravel gran fondo requires gravel/off-road skill content (loose surface cornering, variable terrain, tire pressure management, etc.), not generic road skills. Wrong discipline content in the guide.
 
-### 4. [critical] ×1  (mtb/ambitious_first_timer)
-> Fueling math is wrong. The plan states '45g/hr × race duration = 256g total race carbs.' The computed race duration from the JSON is ~5.7 hours. 45 × 5.7 ≈ 257g — that checks out. However, the stated race-day range is '38–52g/hr,' yet 45g/hr is already at the low end of current sports-science recommendations for a ~5.7h effort (most guidelines now suggest 60–90g/hr for efforts over ~2.5h). While the hourly target is a coach's choice, calling 45g/hr a race-day target for a nearly 6-hour event without flagging that it is conservative risks athlete under-fueling — and the range given (38–52) skews even lower. At minimum the guide should acknowledge this is a starter/conservative target.
+### 4. [critical] ×1  (gravel/time_crunched_parent)
+> 'Road Skills' section is listed without qualification — if it contains road-racing cornering or peloton skills content (likely given the template bleed-through), it is inappropriate for a solo gravel gran fondo where the athlete's goal is simply to finish. Gravel-specific technical skills (loose surface cornering, gear selection on climbs, self-sufficient nutrition carry) should be here instead.
 
-### 5. [critical] ×1  (mtb/ambitious_first_timer)
-> Discipline mismatch — plan JSON declares discipline 'mtb', yet the guide includes 'Road Race Strategy' and a 'Category 5 to Category 1 Pathway' section. These are road-racing constructs that have no place in an MTB plan and will confuse or mislead the athlete.
+### 5. [critical] ×1  (road/time_crunched_parent)
+> The guide contains a 'Category 5 to Category 1 Pathway' section. This athlete is a 38-year-old time-crunched parent doing a Gran Fondo with a goal of 'finish.' Cat 5→1 upgrade pathways are a road racing / criterium licensing concept that is completely irrelevant to a Gran Fondo and to this athlete's stated goal. Sending this would be confusing and embarrassing — it signals the plan was not properly tailored.
 
-### 6. [critical] ×1  (mtb/ambitious_first_timer)
-> Race vs. discipline mismatch — Cycling Shimanami is a verified paved road/island-hopping event (Imabari to Onomichi). Calling this an MTB plan is wrong regardless of what the JSON says; the guide should reconcile the discipline to match the actual event or flag the conflict rather than silently propagate 'mtb' framing.
+### 6. [critical] ×1  (gravel/time_crunched_parent)
+> "Road Skills" section is also listed in the TOC. A gravel-specific guide should cover gravel-specific skills (loose surface cornering, descent technique on unpaved roads, tire pressure management, navigation). Generic road skills content is wrong-discipline filler for this event.
 
-### 7. [critical] ×1  (road/masters_returner)
-> Weekly Volume check is a hard FAIL per the automated preview. The guide text does not surface a corrected or explained volume figure, meaning the prescribed weekly hours almost certainly deviate from the athlete's 9 h/week target in the actual calendar. This is the single most important number in a training plan and it cannot go out unresolved.
+### 7. [critical] ×1  (gravel/weekend_warrior)
+> Zone 1 power boundary is listed as '0-85W' with no lower FTP percentage anchor, and Zone 2 starts at 86W / 56% FTP — but 56% of 155W is 87W, not 86W. More importantly, Zone 1 upper bound of 85W is 55% FTP, yet the chart omits the % FTP column for Zone 1 entirely, creating an inconsistency that undermines the athlete's ability to use the chart on a power meter.
 
-### 8. [critical] ×1  (road/masters_returner)
-> 'Category 5 to Category 1 Pathway' is listed as a content section in the table of contents. This is a USA Cycling road racing license-upgrade framework that is completely irrelevant to a masters athlete whose stated goal is simply to 'finish' a gran fondo (L'Étape). It belongs to a competitive road-racing plan, not this one, and will confuse or mislead the customer.
+### 8. [critical] ×1  (gravel/ambitious_first_timer)
+> 'Road Skills' section is listed in the table of contents. Gravel-specific skills (loose surface cornering, off-camber braking, gravel descending, surface reading) should replace or supplement road skills content. Sending road-skills coaching to a gravel racer is a credibility-damaging error.
 
-### 9. [critical] ×1  (gravel/veteran_podium_chaser)
-> Table of contents and guide body include a 'Road Race Strategy' section and a 'Category 5 to Category 1 Pathway' section — these are road-racing constructs that have no place in a gravel gran fondo plan. Sending cat-upgrade pathway content to a gravel athlete is factually wrong and embarrassing.
+### 9. [critical] ×1  (road/veteran_podium_chaser)
+> The table of contents and guide body include a 'Category 5 to Category 1 Pathway' section. This athlete is a veteran gran fondo racer chasing a podium — road racing categories are irrelevant and will confuse or alienate a paying customer. It signals a template bleed-through from a different persona/discipline and is the kind of thing that destroys trust in a bespoke plan.
 
-### 10. [critical] ×1  (gravel/veteran_podium_chaser)
-> The automated Weekly Volume check hard-FAILed and the guide is being reviewed for send — the volume issue must be diagnosed and corrected (or explicitly overridden with justification) before the plan reaches the athlete.
+### 10. [major] ×2  (gravel/ambitious_first_timer, road/veteran_podium_chaser)
+> The preview check flagged 'Taper Intensity: WARN' but the guide contains no acknowledgement, explanation, or corrective guidance for the athlete about taper intensity expectations. A flagged warning that is silently passed through to the customer without context is a coaching failure — the athlete deserves to know what to expect or what to watch for.
 
-### 11. [critical] ×1  (gravel/time_crunched_parent)
-> Section titled 'Road Race Strategy' and the 'Category 5 to Category 1 Pathway' are listed in the table of contents and apparently present in the guide body. These sections are entirely wrong for a gravel gran fondo athlete — road-race tactics and USA Cycling category upgrade pathways are irrelevant and will confuse or embarrass the customer.
+### 11. [major] ×1  (gravel/masters_returner)
+> Fueling carb rate is listed as 55g/hour. For a ~5.7-hour effort at a goal of 'finish' (steady endurance pace), current sports nutrition consensus supports 60–90g/hour for trained athletes. 55g/hour is on the low end and may leave this athlete under-fuelled late in a long desert event; the number should at minimum be flagged or explained, not silently prescribed below standard guidance.
 
-### 12. [critical] ×1  (gravel/time_crunched_parent)
-> 'Road Skills' section header in the TOC likely maps to road-specific cornering/peloton content rather than gravel-specific skills (loose surface cornering, technical descending, gravel line choice). For a gravel event this content must be discipline-correct.
+### 12. [major] ×1  (gravel/masters_returner)
+> Zone distribution and TSS progression both flagged WARN in preview checks, and Taper Intensity is also WARN — three simultaneous warnings suggest the generated schedule may have meaningful structural issues (e.g. too much Z3 'grey zone' riding, irregular TSS ramp, or insufficient taper sharpness). These were not resolved before the plan reached QA and the guide text does not acknowledge or address them.
 
-### 13. [major] ×2  (gravel/time_crunched_parent, mtb/ambitious_first_timer)
-> Equipment checklist specifies 'road bike, in good working order' under MANDATORY gear — correct for this event, but this directly contradicts the MTB discipline label on the cover, creating an internal contradiction the athlete will notice.
+### 13. [major] ×1  (gravel/masters_returner)
+> The guide refers to 'Road Race Strategy' content in the body (visible in TOC). Gravel gran fondo racing strategy is meaningfully different — pacing on variable surfaces, managing rough terrain fatigue, aid station strategy in a desert environment — none of which will be covered if this is a recycled road template.
 
-### 14. [major] ×1  (road/time_crunched_parent)
-> The High Life Stress callout says 'reduce training volume by 20% and eliminate all Zone 4+ work' — but the athlete's persona and health note flag high stress as a baseline condition, not an acute event. Applied literally, this instruction would gut the Build and Peak phases for the entire plan. The guide needs to clarify that this is a week-by-week judgment call, not a blanket instruction for the full 12 weeks.
+### 14. [major] ×1  (gravel/time_crunched_parent)
+> TSS Progression check returned WARN and was not resolved before sending. A paying athlete should not receive a plan with a known flagged issue left unaddressed — either the progression ramp was fixed, or the guide should explain the deliberate deviation (e.g., a spike week followed by a recovery week). Neither explanation appears in the truncated guide.
 
-### 15. [major] ×1  (road/time_crunched_parent)
-> TSS Progression and Taper Intensity both flagged WARN in the preview checks but the guide text contains no acknowledgment or coaching note about them. A paying customer deserves to know if the TSS ramp is non-standard or if taper intensity deviates from norms — even a brief coach's note would suffice.
+### 15. [major] ×1  (gravel/time_crunched_parent)
+> Fueling section references 53 g carbs/hour for an estimated race duration of ~4.65 hours, implying ~246 g total — but no explicit race-day fueling plan (products, timing, on-bike carry for a 70-mile gravel event) is visible in the truncated guide. For a gravel gran fondo with potential aid station uncertainty, omitting practical on-bike fueling logistics is a meaningful gap for a finish-goal athlete.
 
-### 16. [major] ×1  (mtb/ambitious_first_timer)
-> Gran Fondo Eilat is a road/pavement gran fondo, yet the plan is coded as 'mtb' discipline. If the discipline tag is correct, the guide should contain MTB-specific skills content (trail braking, switchback technique, technical climbing, etc.). If the race is actually a road gran fondo, the discipline tag is wrong and Road Skills/Road Race Strategy sections should be retained — but then the Cat 5–Cat 1 pathway is still wrong for a gran-fondo finisher. Either way, the discipline/content alignment needs resolving before sending.
+### 16. [major] ×1  (road/time_crunched_parent)
+> The automated Zone Distribution check returned FAIL and there is no evidence in the guide text that this was corrected or overridden with a coaching justification. The guide claims 'roughly 70%' of riding stays in Z1-Z2, but if the calendar sessions underlying this guide do not actually achieve that distribution, the narrative description is false and misleading to the athlete.
 
-### 17. [major] ×1  (mtb/ambitious_first_timer)
-> The 'Road Skills' section in the table of contents is listed as generic content but is never contextualised for MTB or gravel. If this is truly an MTB plan, it must cover trail-specific technical skills, not road cornering or peloton positioning.
+### 17. [major] ×1  (road/time_crunched_parent)
+> The FTP Test Frequency check returned WARN. With a 9-week plan and an athlete who has no known FTP, a single Week 1 field test may be insufficient. The guide never addresses a mid-plan re-test or explains why one test is adequate for the full 9 weeks. At minimum, a coaching rationale for the single-test approach should appear in the guide so the athlete isn't left wondering.
 
-### 18. [major] ×1  (mtb/ambitious_first_timer)
-> Zone Distribution preview check is marked FAIL and is never addressed or explained in the guide. A paying customer receiving a plan with a known failed check and no explanation is unacceptable.
+### 18. [minor] ×2  (gravel/ambitious_first_timer, road/time_crunched_parent)
+> The long-ride duration range given in the guide ('2.1–3.5 hours') represents only 35–58% of the estimated 6.7-hour race duration. While this is expected for a time-crunched athlete, the guide does not explain this gap or reassure the athlete that the shorter long rides are sufficient preparation — a likely source of anxiety for a first-time Gran Fondo finisher.
 
-### 19. [major] ×1  (mtb/ambitious_first_timer)
-> FTP Test Frequency is flagged WARN but the guide text gives no indication of the warning or any mitigation (e.g., only one test scheduled in 8 weeks). This should be acknowledged and justified to the athlete.
+### 19. [major] ×1  (gravel/time_crunched_parent)
+> Post-ride nutrition sentence is visibly cut off mid-sentence: '…0.3-0.4g protein/kg + 1.0-1.2g carbs/kg aft' — the guide is being sent truncated. A paying customer will see an incomplete instruction, which looks unprofessional and leaves them without the complete recovery fueling guidance.
 
-### 20. [major] ×1  (road/masters_returner)
-> TSS Progression is flagged WARN. While a warn is not a hard stop, the guide contains no acknowledgment or coaching rationale for the irregular TSS ramp — a paying masters athlete should be told why a week looks different, not left to wonder if the plan is broken.
+### 20. [major] ×1  (gravel/time_crunched_parent)
+> The TSS Progression preview check is flagged WARN but there is no explanation or caveat anywhere in the guide text acknowledging this. Given the athlete's high-stress flag and the 12-week compressed timeline, a coach note about the TSS ramp should appear — its omission means the athlete has no context if a week feels harder than expected.
 
-### 21. [major] ×1  (road/masters_returner)
-> The guide lists 'Road Skills' and 'Road Race Strategy' as dedicated sections (visible in the table of contents). Strategy content for a mass-participation gran fondo with a finish goal is marginal at best; a 'road race strategy' section implies criterium/peloton tactics that are actively misleading for an L'Étape-style event. Content must be confirmed as fondo-appropriate (pacing, climbing, fueling on course) rather than generic road-race tactics.
+### 21. [major] ×1  (gravel/weekend_warrior)
+> Table of contents lists 'Road Skills' — acceptable for gravel — but immediately followed by 'Road Race Strategy', suggesting the road-racing template sections were not stripped out. Even if the Road Skills section itself is gravel-appropriate, its proximity to Category 5-1 pathway content signals a template bleed-through that needs a full audit of those sections before sending.
 
-### 22. [major] ×1  (gravel/veteran_podium_chaser)
-> The table of contents lists 'Road Skills' as a standalone section. For a gravel event this should cover gravel-specific skills (loose surface cornering, tire pressure management, technical descending) — not generic road skills. The section heading signals wrong-discipline content.
+### 22. [major] ×1  (gravel/weekend_warrior)
+> plan_weeks is 11 but weeks_until_race is 10, meaning the plan starts one week before the noted start date of 2026-09-21 — or the plan actually begins 2026-09-21 and runs to 2026-11-30 (70 days = exactly 10 weeks). The guide header says '11 weeks' and the brief confirms '11 weeks', but the math from 2026-09-21 to 2026-11-30 is 10 weeks and 2 days. This discrepancy should be resolved so the athlete isn't confused about when to start.
 
-### 23. [major] ×1  (gravel/veteran_podium_chaser)
-> TSS Progression is WARN and Taper Intensity is WARN. Neither is addressed or acknowledged anywhere in the visible guide text. A coach-authored document should at minimum note how these are handled (e.g., taper intensity strategy) so the athlete isn't left wondering.
+### 23. [major] ×1  (gravel/weekend_warrior)
+> The 'GS G Spot' zone label ('The G Spot between tempo and threshold') is unprofessional and potentially off-putting for a paying customer receiving a formal training document. A label like 'Sweet Spot' is the standard industry term and should be used instead.
 
-### 24. [major] ×1  (gravel/veteran_podium_chaser)
-> The long-ride duration range stated in the guide ('2.8–4.7 hours') should be cross-checked against the race's estimated finish time (~4.06 h from the fueling data). A peak long ride of only 2.8 h would be well short of race duration; even 4.7 h is barely adequate. No context or reassurance is given to the athlete about this range.
+### 24. [major] ×1  (gravel/ambitious_first_timer)
+> plan_weeks (11) exceeds weeks_until_race (10), meaning the plan start date of 2026-09-21 places Week 1 before the athlete would normally begin — yet the guide never flags or explains this overlap. The plan_note clarifies this is not a contradiction only if the plan ends on race day, but the guide should make this timeline explicit so the athlete is not confused about when to start.
 
 ### 25. [major] ×1  (road/veteran_podium_chaser)
-> A 'Category 5 to Category 1 Pathway' section is included in the table of contents and apparently in the guide body. This is a USA Cycling road-racing licence category ladder — it is completely irrelevant to a gran fondo athlete whose goal is a podium finish at a mass-participation event, not upgrading through a racing category system. It will confuse the athlete and undermine credibility.
+> The zone chart is incomplete: Zone 1 shows only a watt range (0-145W) with no % FTP or % LTHR columns filled in, and Zone 2 shows watts (146-198W) and LTHR but the % FTP field appears blank or inconsistently populated. For a power-based athlete with a known FTP of 265W this omission undermines the entire 'power > HR > RPE' instruction given later.

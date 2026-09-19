@@ -122,6 +122,16 @@ class TestRequiredElements:
         body = self._get(3)['template']
         assert 'reply' in body.lower()
 
+    def test_followups_are_supportive_without_repricing_old_entitlements(self):
+        day1 = self._get(1)['template']
+        day3 = self._get(3)['template']
+        day7 = self._get(7)['template']
+        assert 'Corrections are included with your purchase' in day1
+        assert 'Email support is included with your purchase' in day3
+        assert 'rescale is included with your purchase' in day3
+        assert 'Weekly review and recurring adjustments are part of Coaching' in day7
+        assert 'two plan adjustments' not in day1 + day3 + day7
+
     def test_day3_has_no_marketing_links(self):
         """Template only knows {first_name}; per-event links are impossible,
         and generic links are banned."""

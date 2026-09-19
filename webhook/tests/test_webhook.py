@@ -12,6 +12,7 @@ import json
 import copy
 import hmac
 import hashlib
+import logging
 import tempfile
 import uuid
 from io import BytesIO
@@ -73,7 +74,9 @@ def app(temp_athletes_dir, monkeypatch):
 
 @pytest.fixture
 def client(app):
-    """Create test client."""
+    """Create an isolated test client with no cross-test rate-limit debt."""
+    import app as app_module
+    app_module.limiter.reset()
     return app.test_client()
 
 
@@ -87,7 +90,47 @@ class TestHealthEndpoint:
         data = response.get_json()
         assert data['status'] == 'ok'
         assert data['service'] == 'gravel-god-webhook'
+        assert data['deployment_sha'] is None
         assert data['runtime_files']['apply_contract_schema'] is True
+        if 'endure_delivery' in data:
+            assert data['endure_delivery']['pilot_buyer_count'] == 0
+
+    def test_health_exposes_exact_railway_source_revision(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        sha = '03859b454901b76495cf0758815d4999cbc7770c'
+        monkeypatch.setenv('RAILWAY_GIT_COMMIT_SHA', sha.upper())
+
+        response = client.get('/health')
+
+        assert response.status_code == 200
+        assert response.get_json()['deployment_sha'] == sha
+
+    def test_health_exposes_only_the_pilot_allowlist_count(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module.endure_delivery, 'is_enabled',
+                            lambda: True)
+        monkeypatch.setenv(
+            'ENDURE_PLAN_PILOT_BUYERS',
+            'gravelgod:training_plan:custom:one@example.com,'
+            'gravelgod:training_plan:custom:two@example.com')
+
+        response = client.get('/health')
+
+        assert response.status_code == 200
+        endure = response.get_json()['endure_delivery']
+        assert endure['pilot_buyer_count'] == 2
+        assert 'one@example.com' not in response.get_data(as_text=True)
+
+    def test_health_rejects_unpinned_revision_text(
+            self, client, temp_athletes_dir, monkeypatch):
+        monkeypatch.setenv('RAILWAY_GIT_COMMIT_SHA', 'main')
+
+        response = client.get('/health')
+
+        assert response.status_code == 200
+        assert response.get_json()['deployment_sha'] is None
 
     def test_health_degraded_missing_dirs(self, client):
         """Health check returns 503 when directories missing."""
@@ -744,6 +787,148 @@ class TestCreateCheckout:
             assert call_kwargs['customer_email'] == 'jane@example.com'
             assert call_kwargs['metadata']['tier'] == 'custom'
             assert call_kwargs['metadata']['product_type'] == 'training_plan'
+            assert 'delivery_target' not in call_kwargs['metadata']
+
+    def test_gravel_pilot_buyer_gets_endure_on_the_ordinary_checkout(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setenv(
+            'ENDURE_PLAN_PILOT_BUYERS',
+            'gravelgod:training_plan:custom:pilot@example.com, '
+            'gravelgod:training_plan:custom:second@example.com')
+        with patch.object(app_module.endure_delivery, 'is_enabled', return_value=True), \
+             patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_endure_pilot'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={
+                    'name': 'Pilot Rider',
+                    'email': ' Pilot@Example.com ',
+                    'races': [{
+                        'name': 'Unbound 200',
+                        'date': self._future_date(),
+                        'priority': 'A',
+                    }],
+                },
+                headers={'Origin': 'https://gravelgodcycling.com'},
+                environ_base={'REMOTE_ADDR': '198.51.100.24'},
+            )
+
+        assert response.status_code == 200
+        metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+        success_url = mock_stripe.checkout.Session.create.call_args.kwargs['success_url']
+        assert metadata['brand'] == 'gravelgod'
+        assert metadata['delivery_target'] == 'endure'
+        assert success_url == (
+            'https://gravelgodcycling.com/training-plans/success/'
+            '?session_id={CHECKOUT_SESSION_ID}&delivery=endure'
+        )
+        assert mock_stripe.checkout.Session.create.call_args.kwargs['custom_text'] == {
+            'submit': {
+                'message': (
+                    'Delivery: Your first reviewed training block will be '
+                    'available in Endure—not TrainingPeaks—after a human '
+                    'checks the race, schedule, progression, and workouts. '
+                    'Your emailed guide contains the full custom plan. '
+                    'Endure works in your phone or computer browser; no '
+                    'app is required. Automatic device sync is not '
+                    'included in this pilot. This purchase '
+                    'does not start ongoing coaching. We’ll email your '
+                    'Endure access link when the plan is ready.'
+                ),
+            },
+        }
+
+    def test_road_buyer_cannot_enter_the_gravel_endure_pilot(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setenv(
+            'ENDURE_PLAN_PILOT_BUYERS',
+            'roadielabs:training_plan:custom:pilot@example.com')
+        with patch.object(app_module.endure_delivery, 'is_enabled', return_value=True), \
+             patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_road_not_pilot'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={
+                    'name': 'Road Pilot',
+                    'email': 'pilot@example.com',
+                    'races': [{
+                        'name': 'Mallorca 312',
+                        'date': self._future_date(),
+                        'priority': 'A',
+                    }],
+                },
+                headers={'Origin': 'https://roadielabs.com'},
+                environ_base={'REMOTE_ADDR': '198.51.100.25'},
+            )
+
+        assert response.status_code == 200
+        metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+        assert metadata['brand'] == 'roadielabs'
+        assert 'delivery_target' not in metadata
+
+    def test_gravel_pilot_allowlist_does_not_override_disabled_transport(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setenv(
+            'ENDURE_PLAN_PILOT_BUYERS',
+            'gravelgod:training_plan:custom:pilot@example.com')
+        with patch.object(app_module.endure_delivery, 'is_enabled', return_value=False), \
+             patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_endure_off'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={
+                    'name': 'Pilot Rider',
+                    'email': 'pilot@example.com',
+                    'races': [{
+                        'name': 'Unbound 200',
+                        'date': self._future_date(),
+                        'priority': 'A',
+                    }],
+                },
+                headers={'Origin': 'https://gravelgodcycling.com'},
+                environ_base={'REMOTE_ADDR': '198.51.100.26'},
+            )
+
+        assert response.status_code == 200
+        metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+        assert 'delivery_target' not in metadata
+        assert 'custom_text' not in mock_stripe.checkout.Session.create.call_args.kwargs
+
+    def test_endure_pilot_enrollment_is_scoped_to_the_exact_product(
+            self, monkeypatch):
+        import app as app_module
+        monkeypatch.setenv(
+            'ENDURE_PLAN_PILOT_BUYERS',
+            'gravelgod:training_plan:custom:pilot@example.com')
+        monkeypatch.setattr(app_module.endure_delivery, 'is_enabled', lambda: True)
+
+        assert app_module._is_endure_plan_pilot_checkout(
+            'gravelgod', 'https://gravelgodcycling.com',
+            'training_plan', 'custom', 'pilot@example.com') is True
+        assert app_module._is_endure_plan_pilot_checkout(
+            'gravelgod', 'https://gravelgodcycling.com',
+            'coaching', 'custom', 'pilot@example.com') is False
+        assert app_module._is_endure_plan_pilot_checkout(
+            'gravelgod', 'https://gravelgodcycling.com',
+            'training_plan', 'premium', 'pilot@example.com') is False
+        assert app_module._is_endure_plan_pilot_checkout(
+            'gravelgod', '', 'training_plan', 'custom',
+            'pilot@example.com') is False
 
     def test_checkout_preserves_valid_ga4_attribution(self, client, temp_athletes_dir):
         """Consented GA ids survive Stripe redirect for webhook attribution."""
@@ -1251,6 +1436,251 @@ class TestTestEndpoint:
         # parsing attacker-controlled identifiers.
         assert response.status_code == 401
 
+    def test_authenticated_test_endpoint_can_select_endure_for_one_order(
+            self, client, monkeypatch):
+        monkeypatch.setenv('CRON_SECRET', 'operator-secret')
+        stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+        order_id = f'codex-pilot-{stamp}-a1b2c3d4'
+        email = f'delivered+endure-pilot-{stamp}-a1b2c3d4@resend.dev'
+        with patch('app.store_intake'), \
+                patch('app.extract_stripe_data', return_value={}) as extract, \
+                patch('app.validate_order_data', return_value=(False, 'stop')):
+            response = client.post(
+                '/webhook/test',
+                json={
+                    'questionnaire': {
+                        'name': 'Endure Pilot Rider',
+                        'email': email,
+                        'race_name': 'Endure Pilot Race',
+                        'races': [{'name': 'Endure Pilot Race'}],
+                    },
+                    'name': 'Endure Pilot Rider',
+                    'email': email,
+                    'order_id': order_id,
+                    'delivery_target': 'endure',
+                },
+                headers={'X-Cron-Secret': 'operator-secret'},
+            )
+
+        assert response.status_code == 400
+        fake_event = extract.call_args.args[0]
+        assert fake_event['data']['object']['id'] == order_id
+        assert fake_event['data']['object']['metadata']['delivery_target'] == 'endure'
+
+    def test_authenticated_test_endpoint_rejects_unknown_delivery_target(
+            self, client, monkeypatch):
+        monkeypatch.setenv('CRON_SECRET', 'operator-secret')
+        response = client.post(
+            '/webhook/test',
+            json={'delivery_target': 'silent-fallback'},
+            headers={'X-Cron-Secret': 'operator-secret'},
+        )
+
+        assert response.status_code == 400
+        assert response.get_json() == {
+            'error': 'delivery_target must be trainingpeaks or endure',
+        }
+
+    def test_authenticated_test_endpoint_rejects_non_disposable_order_id(
+            self, client, monkeypatch):
+        monkeypatch.setenv('CRON_SECRET', 'operator-secret')
+        response = client.post(
+            '/webhook/test',
+            json={
+                'questionnaire': {'fixture': True},
+                'name': 'Endure Pilot Rider',
+                'email': 'real-buyer@example.com',
+                'order_id': 'cs_live_do_not_impersonate',
+                'delivery_target': 'endure',
+            },
+            headers={'X-Cron-Secret': 'operator-secret'},
+        )
+
+        assert response.status_code == 400
+        assert response.get_json() == {
+            'error': 'order_id is reserved for a fresh disposable Endure canary',
+        }
+
+    @pytest.mark.parametrize('email_kind', [
+        'legacy_example_domain',
+        'unpaired_resend_label',
+    ])
+    def test_authenticated_test_endpoint_rejects_non_resend_canary_recipient(
+            self, client, monkeypatch, email_kind):
+        monkeypatch.setenv('CRON_SECRET', 'operator-secret')
+        stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+        email = (
+            f'endure-pilot-{stamp}-a1b2c3d4@example.com'
+            if email_kind == 'legacy_example_domain'
+            else 'delivered+unpaired-pilot@resend.dev'
+        )
+        with patch('app.store_intake') as store, \
+                patch('app.create_athlete_profile') as create_profile, \
+                patch('app.run_pipeline') as run_pipeline, \
+                patch('app._send_payment_confirmation') as send_confirmation:
+            response = client.post(
+                '/webhook/test',
+                json={
+                    'questionnaire': {
+                        'name': 'Endure Pilot Rider',
+                        'email': email,
+                        'race_name': 'Endure Pilot Race',
+                        'races': [{'name': 'Endure Pilot Race'}],
+                    },
+                    'name': 'Endure Pilot Rider',
+                    'email': email,
+                    'order_id': f'codex-pilot-{stamp}-a1b2c3d4',
+                    'delivery_target': 'endure',
+                },
+                headers={'X-Cron-Secret': 'operator-secret'},
+            )
+
+        assert response.status_code == 400
+        store.assert_not_called()
+        create_profile.assert_not_called()
+        run_pipeline.assert_not_called()
+        send_confirmation.assert_not_called()
+
+    @pytest.mark.parametrize('override', [
+        {'email': 'real-buyer@example.com'},
+        {'name': 'Real Buyer'},
+        {'race_name': 'Real Race'},
+        {'races': [{'name': 'Real Race'}]},
+    ])
+    def test_authenticated_test_endpoint_rejects_non_disposable_questionnaire(
+            self, client, monkeypatch, override):
+        monkeypatch.setenv('CRON_SECRET', 'operator-secret')
+        stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+        email = f'delivered+endure-pilot-{stamp}-a1b2c3d4@resend.dev'
+        questionnaire = {
+            'name': 'Endure Pilot Rider',
+            'email': email,
+            'race_name': 'Endure Pilot Race',
+            'races': [{'name': 'Endure Pilot Race'}],
+            **override,
+        }
+        with patch('app.store_intake') as store, \
+                patch('app.create_athlete_profile') as create_profile, \
+                patch('app.run_pipeline') as run_pipeline, \
+                patch('app._send_payment_confirmation') as send_confirmation:
+            response = client.post(
+                '/webhook/test',
+                json={
+                    'questionnaire': questionnaire,
+                    'name': 'Endure Pilot Rider',
+                    'email': email,
+                    'order_id': f'codex-pilot-{stamp}-a1b2c3d4',
+                    'delivery_target': 'endure',
+                },
+                headers={'X-Cron-Secret': 'operator-secret'},
+            )
+
+        assert response.status_code == 400
+        store.assert_not_called()
+        create_profile.assert_not_called()
+        run_pipeline.assert_not_called()
+        send_confirmation.assert_not_called()
+
+    def test_authenticated_test_endpoint_rejects_stored_intake_for_endure(
+            self, client, monkeypatch):
+        monkeypatch.setenv('CRON_SECRET', 'operator-secret')
+        stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+        email = f'delivered+endure-pilot-{stamp}-a1b2c3d4@resend.dev'
+        with patch('app.store_intake') as store, \
+                patch('app.load_intake') as load_intake:
+            response = client.post(
+                '/webhook/test',
+                json={
+                    'intake_id': 'existing-real-intake',
+                    'name': 'Endure Pilot Rider',
+                    'email': email,
+                    'order_id': f'codex-pilot-{stamp}-a1b2c3d4',
+                    'delivery_target': 'endure',
+                },
+                headers={'X-Cron-Secret': 'operator-secret'},
+            )
+
+        assert response.status_code == 400
+        store.assert_not_called()
+        load_intake.assert_not_called()
+
+    @pytest.mark.parametrize('delta', [timedelta(minutes=11), timedelta(minutes=-1)])
+    def test_authenticated_test_endpoint_rejects_stale_or_future_identity(
+            self, client, monkeypatch, delta):
+        monkeypatch.setenv('CRON_SECRET', 'operator-secret')
+        stamp = (datetime.now(timezone.utc) - delta).strftime('%Y%m%d%H%M%S')
+        email = f'delivered+endure-pilot-{stamp}-a1b2c3d4@resend.dev'
+        response = client.post(
+            '/webhook/test',
+            json={
+                'questionnaire': {
+                    'name': 'Endure Pilot Rider',
+                    'email': email,
+                    'race_name': 'Endure Pilot Race',
+                    'races': [{'name': 'Endure Pilot Race'}],
+                },
+                'name': 'Endure Pilot Rider',
+                'email': email,
+                'order_id': f'codex-pilot-{stamp}-a1b2c3d4',
+                'delivery_target': 'endure',
+            },
+            headers={'X-Cron-Secret': 'operator-secret'},
+        )
+
+        assert response.status_code == 400
+
+    def test_authenticated_test_endpoint_rejects_processed_endure_order(
+            self, client, monkeypatch):
+        monkeypatch.setenv('CRON_SECRET', 'operator-secret')
+        stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+        email = f'delivered+endure-pilot-{stamp}-a1b2c3d4@resend.dev'
+        with patch('app.check_idempotency', return_value=True), \
+                patch('app.store_intake') as store, \
+                patch('app.create_athlete_profile') as create_profile, \
+                patch('app.run_pipeline') as run_pipeline, \
+                patch('app._send_payment_confirmation') as send_confirmation:
+            response = client.post(
+                '/webhook/test',
+                json={
+                    'questionnaire': {
+                        'name': 'Endure Pilot Rider',
+                        'email': email,
+                        'race_name': 'Endure Pilot Race',
+                        'races': [{'name': 'Endure Pilot Race'}],
+                    },
+                    'name': 'Endure Pilot Rider',
+                    'email': email,
+                    'order_id': f'codex-pilot-{stamp}-a1b2c3d4',
+                    'delivery_target': 'endure',
+                },
+                headers={'X-Cron-Secret': 'operator-secret'},
+            )
+
+        assert response.status_code == 409
+        store.assert_not_called()
+        create_profile.assert_not_called()
+        run_pipeline.assert_not_called()
+        send_confirmation.assert_not_called()
+
+    def test_authenticated_test_endpoint_requires_disposable_endure_order_id(
+            self, client, monkeypatch):
+        monkeypatch.setenv('CRON_SECRET', 'operator-secret')
+        response = client.post(
+            '/webhook/test',
+            json={
+                'questionnaire': {'fixture': True},
+                'name': 'Endure Canary',
+                'email': 'canary@example.com',
+                'delivery_target': 'endure',
+            },
+            headers={'X-Cron-Secret': 'operator-secret'},
+        )
+
+        assert response.status_code == 400
+        assert response.get_json() == {
+            'error': 'order_id is reserved for a fresh disposable Endure canary',
+        }
+
 
 class TestCoachingCheckout:
     """Tests for POST /api/create-coaching-checkout endpoint."""
@@ -1528,6 +1958,81 @@ class TestCoachingConfirmation:
         body = send.call_args.args[2]
         assert 'Book your kickoff call' in body
         assert 'https://calendar.example.com/matti/coaching' in body
+
+
+class TestTrainingPlanPaymentConfirmation:
+    def test_trainingpeaks_receipt_states_accepted_delivery_and_support_contract(
+            self, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'RESEND_API_KEY', 're_test')
+
+        with patch.object(app_module, '_send_email', return_value=True) as send:
+            app_module._send_payment_confirmation(
+                'rider@test.com', 'Rider Test',
+                race_name='Unbound Gravel 200', plan_weeks='16',
+                brand='gravelgod', delivery_platform='trainingpeaks')
+
+        body = send.call_args.args[2]
+        html = send.call_args.kwargs['html']
+        for rendered in (body, html):
+            assert 'complete questionnaire' in rendered
+            assert 'TrainingPeaks connection' in rendered
+            assert 'specific blocker' in rendered
+            assert 'revised delivery time' in rendered
+            assert 'Email support and two plan adjustments' in rendered
+            assert 'schedule, available training hours, or equipment' in rendered
+            assert 'does not use an adjustment' in rendered
+            assert 'first rescale after the scheduled FTP test' in rendered
+            assert 'Weekly review and recurring changes are part of Coaching' in rendered
+            assert 'Most plans' not in rendered
+            assert 'same-day' not in rendered.lower()
+            assert 'Maximum 24 hours' not in rendered
+            assert 'being built right now' not in rendered
+
+    def test_endure_receipt_states_the_exact_pilot_contract(self, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'RESEND_API_KEY', 're_test')
+
+        with patch.object(app_module, '_send_email', return_value=True) as send:
+            app_module._send_payment_confirmation(
+                'rider@test.com', 'Rider Test',
+                race_name='Unbound Gravel 200', plan_weeks='16',
+                brand='gravelgod', delivery_platform='endure')
+
+        subject = send.call_args.args[1]
+        body = send.call_args.args[2]
+        html = send.call_args.kwargs['html']
+        assert subject == (
+            'Payment confirmed — your 16-week training plan '
+            'for Unbound Gravel 200')
+        assert "I am building your custom 16-week training plan" in body
+        assert "I'll review it before release" in body
+        assert 'building and reviewing' not in body
+        assert 'I&rsquo;ll review it before release' in html
+        assert 'Within 24 hours' in body
+        assert 'Endure access link and training guide' in body
+        assert 'one-time plan purchase, not ongoing coaching' in body
+        assert 'phone or computer browser; no app is required' in body
+        assert 'Automatic Garmin or Wahoo workout sync is not included' in body
+        assert 'TrainingPeaks' not in body
+        assert 'one-time plan purchase, not ongoing coaching' in html
+        assert send.call_args.kwargs['brand'] == 'gravelgod'
+
+    def test_endure_receipt_send_failure_is_critical(
+            self, monkeypatch, caplog):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'RESEND_API_KEY', 're_test')
+
+        with patch.object(app_module, '_send_email', return_value=False), \
+             caplog.at_level(logging.CRITICAL):
+            app_module._send_payment_confirmation(
+                'rider@test.com', 'Rider Test',
+                brand='gravelgod', delivery_platform='endure')
+
+        assert any(
+            record.levelno == logging.CRITICAL
+            and 'PAYMENT CONFIRMATION NOT SENT' in record.message
+            for record in caplog.records)
 
 
 class TestCoachingIntakeHandoff:
@@ -2664,6 +3169,88 @@ class TestConsultingCheckout:
         """CORS preflight returns 204."""
         response = client.options('/api/create-consulting-checkout')
         assert response.status_code == 204
+
+
+class TestConsultingCheckout400Logging:
+    """Verify 400 validation failures emit structured logs with origin + failure reason (no PII)."""
+
+    def test_invalid_json_logs_failure(self, client, caplog):
+        """Invalid JSON logs the failure reason and origin."""
+        with caplog.at_level(logging.WARNING):
+            response = client.post(
+                '/api/create-consulting-checkout',
+                data='not json',
+                content_type='application/json',
+                headers={'Origin': 'https://xcskilabs.com'}
+            )
+        assert response.status_code == 400
+        assert any('Consulting checkout invalid JSON' in rec.message and
+                   'origin=https://xcskilabs.com' in rec.message and
+                   'brand=xcskilabs' in rec.message
+                   for rec in caplog.records)
+
+    def test_missing_email_logs_failure(self, client, caplog):
+        """Missing email logs the failure reason without logging PII."""
+        with caplog.at_level(logging.WARNING):
+            response = client.post(
+                '/api/create-consulting-checkout',
+                json={'name': 'Test', 'hours': 1},
+                content_type='application/json',
+                headers={'Origin': 'https://gravelgodcycling.com'}
+            )
+        assert response.status_code == 400
+        assert any('Consulting checkout missing/invalid email' in rec.message and
+                   'origin=https://gravelgodcycling.com' in rec.message and
+                   'brand=gravelgod' in rec.message
+                   for rec in caplog.records)
+        # Verify no email/name in logs
+        log_output = '\n'.join(rec.message for rec in caplog.records)
+        assert 'Test' not in log_output
+
+    def test_missing_name_logs_failure(self, client, caplog):
+        """Missing name logs the failure reason without logging PII."""
+        with caplog.at_level(logging.WARNING):
+            response = client.post(
+                '/api/create-consulting-checkout',
+                json={'email': 'test@test.com', 'hours': 1},
+                content_type='application/json'
+            )
+        assert response.status_code == 400
+        assert any('Consulting checkout missing name' in rec.message and
+                   'origin=' in rec.message and
+                   'brand=gravelgod' in rec.message
+                   for rec in caplog.records)
+        # Verify no email in logs
+        log_output = '\n'.join(rec.message for rec in caplog.records)
+        assert 'test@test.com' not in log_output
+
+    def test_invalid_hours_range_logs_failure(self, client, caplog):
+        """Hours out of range logs the failure with the hours value."""
+        with caplog.at_level(logging.WARNING):
+            response = client.post(
+                '/api/create-consulting-checkout',
+                json={'name': 'Test', 'email': 'test@test.com', 'hours': 11},
+                content_type='application/json'
+            )
+        assert response.status_code == 400
+        assert any('Consulting checkout invalid hours range: 11' in rec.message and
+                   'origin=' in rec.message and
+                   'brand=gravelgod' in rec.message
+                   for rec in caplog.records)
+
+    def test_invalid_hours_type_logs_failure(self, client, caplog):
+        """Invalid hours type logs the failure with repr."""
+        with caplog.at_level(logging.WARNING):
+            response = client.post(
+                '/api/create-consulting-checkout',
+                json={'name': 'Test', 'email': 'test@test.com', 'hours': 'abc'},
+                content_type='application/json'
+            )
+        assert response.status_code == 400
+        assert any("Consulting checkout invalid hours type: 'abc'" in rec.message and
+                   'origin=' in rec.message and
+                   'brand=gravelgod' in rec.message
+                   for rec in caplog.records)
 
 
 class TestCoachingWebhook:
@@ -4407,6 +4994,18 @@ class TestComputeTouchpoints:
         touches = compute_touchpoints(self._plan_dates(), 'Jesse', 'Borderlands')
         post = next(t for t in touches if t['key'] == 'postrace')
         assert 'coaching' in post['body'].lower()
+
+    def test_lifecycle_copy_is_supportive_without_repricing_old_entitlements(self):
+        from app import compute_touchpoints
+        touches = {
+            touch['key']: touch
+            for touch in compute_touchpoints(self._plan_dates(), 'Jesse', 'Borderlands')
+        }
+        assert 'Corrections are included with your purchase' in touches['setup_check']['body']
+        assert 'rescale is included with your purchase' in touches['ftp_rescale']['body']
+        assert 'Email support is included with your purchase' in touches['midplan_survey']['body']
+        lifecycle = '\n'.join(touch['body'] for touch in touches.values())
+        assert 'two plan adjustments' not in lifecycle
 
 
 class TestTravelDatesPassthrough:

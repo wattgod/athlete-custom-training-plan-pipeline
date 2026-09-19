@@ -1,5 +1,6 @@
 """Regression tests for Phase 1's retired release/apply entry points."""
 
+import hashlib
 import json
 import sys
 from datetime import timezone
@@ -58,6 +59,80 @@ def _persistable_source(tmp_path, *, order_id, platform='trainingpeaks'):
         'tp_manifest.json': '{}\n',
     }.items():
         (source / relative).write_text(content)
+    if platform == 'endure':
+        plan_start = '2026-07-13'
+        sessions = [
+            {
+                'date': plan_start,
+                'display_name': 'Rest',
+                'workout_type_value_id': 7,
+                'duration_s': 0,
+                'role': 'recovery',
+            },
+            {
+                'date': '2026-07-20',
+                'display_name': 'Rest',
+                'workout_type_value_id': 7,
+                'duration_s': 0,
+                'role': 'recovery',
+            },
+        ]
+        plan_ir = {
+            'weeks': [
+                {'number': 1, 'phase': 'base', 'week_type': 'load',
+                 'sessions': [sessions[0]]},
+                {'number': 2, 'phase': 'base', 'week_type': 'load',
+                 'sessions': [sessions[1]]},
+            ],
+        }
+        operations = []
+        for session in sessions:
+            payload = {
+                'date': session['date'],
+                'title': session['display_name'],
+                'description': '',
+                'tp_workout_type': 7,
+                'total_seconds': 0,
+                'tss_planned': None,
+                'structure': None,
+            }
+            digest = hashlib.sha256(json.dumps(
+                payload, ensure_ascii=False, sort_keys=True,
+                separators=(',', ':'), allow_nan=False,
+            ).encode('utf-8')).hexdigest()
+            logical_id = f'{order_id}:workout_upsert:{session["date"]}#1'
+            operations.append({
+                'op_id': f'{logical_id}@r1',
+                'logical_id': logical_id,
+                'kind': 'workout_upsert',
+                'disposition': 'create',
+                'payload': payload,
+                'expected_digest': digest,
+                'prior_payload': None,
+                'before_image': None,
+                'remote_marker': logical_id,
+                'predecessor': None,
+                'rollback': {'strategy': 'delete_by_remote_id'},
+            })
+        (source / 'profile.yaml').write_text(
+            'name: Athlete M\n'
+            'email: athlete@example.invalid\n'
+            'plan_start:\n'
+            f"  preferred_start: '{plan_start}'\n"
+            'weekly_availability:\n'
+            '  cycling_hours_target: 8\n'
+        )
+        (source / 'plan_ir.json').write_text(json.dumps(plan_ir))
+        (source / 'canonical_training_model.json').write_text('{}\n')
+        (source / 'apply_contract.json').write_text(json.dumps({
+            'contract_version': 'apply_contract/v1',
+            'order_id': order_id,
+            'tp_athlete_id': f'fixture-{order_id}',
+            'generation_revision': 1,
+            'model_seal': '0' * 64,
+            'operations': operations,
+            'compat': {'min_reader': 'apply_contract/v1'},
+        }))
     state = write_generation(
         source / 'fulfillment_status.json', 'athlete-m',
         order_id=order_id, delivery_platform=platform,
@@ -383,7 +458,9 @@ def test_authenticated_endure_apply_and_confirm_attack_is_refused(
             '/api/confirm/test_endure_gate',
             headers={'X-Cron-Secret': 'ops-secret'})
     assert confirmed.status_code == 409
-    assert 'D4/R9 condition 11' in confirmed.get_json()['error']
+    assert confirmed.get_json()['error'] == (
+        'Stage the approved plan in Endure first'
+    )
     send.assert_not_called()
     assert load_fulfillment_state(state_path)['status'] == APPROVED
 

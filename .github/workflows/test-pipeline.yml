@@ -13,6 +13,7 @@ on:
       - 'tools/**'
       - 'scripts/**'
       - 'tests/fixtures/**'
+      - 'tests/test_state_audit_workflow.py'
       - 'config.yaml'
       - 'requirements.txt'
       - '.github/workflows/**'
@@ -26,6 +27,7 @@ on:
       - 'tools/**'
       - 'scripts/**'
       - 'tests/fixtures/**'
+      - 'tests/test_state_audit_workflow.py'
       - 'config.yaml'
       - 'requirements.txt'
       - '.github/workflows/**'
@@ -87,9 +89,11 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: |
           python -m pytest \
+            tests/test_state_audit_workflow.py \
             tools/test_canary_probe.py \
             tools/test_audit_fulfillment_states.py \
             tools/test_daily_order_drill.py \
+            tools/test_verify_endure_live_purchase.py \
             webhook/tests/test_state_audit_endpoint.py \
             webhook/tests/test_provider_revenue.py \
             scripts/test_check_fixture_freshness.py -q

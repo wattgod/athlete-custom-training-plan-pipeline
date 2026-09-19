@@ -216,5 +216,68 @@
    "gravel": 0.109,
    "road": 0.057
   }
+ },
+ {
+  "date": "2026-08-31",
+  "n": 140,
+  "pass": 83,
+  "needs_review": 55,
+  "failed": 2,
+  "delivered": 138,
+  "delivered_rate": 0.986,
+  "pass_rate": 0.593,
+  "by_persona": {
+   "veteran_podium_chaser": 0.643,
+   "weekend_warrior": 0.5,
+   "ambitious_first_timer": 0.786,
+   "masters_returner": 0.643,
+   "time_crunched_parent": 0.393
+  },
+  "by_discipline": {
+   "gravel": 0.6,
+   "road": 0.583
+  }
+ },
+ {
+  "date": "2026-09-07",
+  "n": 130,
+  "pass": 78,
+  "needs_review": 51,
+  "failed": 1,
+  "delivered": 129,
+  "delivered_rate": 0.992,
+  "pass_rate": 0.6,
+  "by_persona": {
+   "masters_returner": 0.654,
+   "time_crunched_parent": 0.462,
+   "veteran_podium_chaser": 0.731,
+   "ambitious_first_timer": 0.692,
+   "weekend_warrior": 0.462
+  },
+  "by_discipline": {
+   "gravel": 0.573,
+   "road": 0.636
+  }
+ },
+ {
+  "date": "2026-09-14",
+  "n": 90,
+  "pass": 59,
+  "needs_review": 31,
+  "failed": 0,
+  "delivered": 90,
+  "delivered_rate": 1.0,
+  "pass_rate": 0.656,
+  "by_persona": {
+   "masters_returner": 0.722,
+   "time_crunched_parent": 0.556,
+   "veteran_podium_chaser": 0.778,
+   "ambitious_first_timer": 0.833,
+   "weekend_warrior": 0.389
+  },
+  "by_discipline": {
+   "gravel": 0.62,
+   "road": 0.7
+  }
  }
 ]

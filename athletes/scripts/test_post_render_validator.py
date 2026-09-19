@@ -33,8 +33,8 @@ def _document():
             _session('2026-08-16', 'VO2 Session'),
         ]},
         {'number': 6, 'phase': 'race', 'sessions': [
-            _session('2026-09-17', 'Openers'),
-            _session('2026-09-18', 'Easy Endurance'),
+            {**_session('2026-09-17', 'Openers'), 'role': 'opener'},
+            {**_session('2026-09-18', 'Race Sharpener'), 'role': 'activation'},
             _session('2026-09-19', 'Race Day', 'race', 'race', 5),
         ]},
     ]
@@ -117,6 +117,30 @@ def test_seven_synthesized_rest_days_plus_race_is_thin():
         'bike': 3, 'strength': 0, 'day_off': 7, 'race': 1, 'total': 11}
     issues, _ = validate_transitional_input(document)
     assert 'THIN_RACE_WEEK' in {item['id'] for item in issues}
+
+
+def test_race_week_without_openers_requires_review():
+    document = _document()
+    document['plan_ir']['weeks'][-1]['sessions'] = [
+        {**_session('2026-09-16', 'Race Sharpener'), 'role': 'activation'},
+        _session('2026-09-18', 'Easy Endurance'),
+        _session('2026-09-19', 'Race Day', 'race', 'race', 5),
+    ]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    assert 'RACE_WEEK_OPENER_MISSING' in {item['id'] for item in issues}
+
+
+def test_race_week_without_sharpener_requires_review():
+    document = _document()
+    document['plan_ir']['weeks'][-1]['sessions'] = [
+        {**_session('2026-09-17', 'Openers'), 'role': 'opener'},
+        _session('2026-09-18', 'Easy Endurance'),
+        _session('2026-09-19', 'Race Day', 'race', 'race', 5),
+    ]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    assert 'RACE_WEEK_SHARPENER_MISSING' in {item['id'] for item in issues}
 
 
 def test_duplicate_same_metric_field_test_fires_once():
@@ -528,6 +552,31 @@ def test_hard_minutes_expands_repetition_blocks():
     assert item['review_value']['hard_minutes'] == 18.0
 
 
+def test_short_taper_endurance_is_still_reviewed_without_an_exempt_role():
+    document = _document()
+    session = _session('2026-09-15', 'Endurance', hours=0.5)
+    document['plan_ir']['weeks'].append({
+        'number': 5, 'phase': 'taper', 'week_type': 'taper',
+        'sessions': [session],
+    })
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    assert 'SHORT_SESSION_BELOW_FLOOR' in {issue['id'] for issue in issues}
+
+
+def test_explicit_activation_role_exempts_an_intentionally_short_taper_touch():
+    document = _document()
+    session = _session('2026-09-15', 'Sharpener', hours=0.5)
+    session['role'] = 'activation'
+    document['plan_ir']['weeks'].append({
+        'number': 5, 'phase': 'taper', 'week_type': 'taper',
+        'sessions': [session],
+    })
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    assert 'SHORT_SESSION_BELOW_FLOOR' not in {issue['id'] for issue in issues}
+
+
 def test_hard_minutes_at_or_above_floor_does_not_warn():
     document = _document()
     document['plan_ir']['weeks'][1]['week_type'] = 'load'
@@ -563,6 +612,65 @@ def test_hard_minutes_counts_an_open_field_test_effort():
                 if issue['id'].startswith('HARD_MINUTES_BELOW_FLOOR')
                 and issue['review_value']['week'] == 1)
     assert item['review_value']['hard_minutes'] == 20.0
+
+
+def test_testing_week_floor_waits_for_generated_assessment_dose_metadata():
+    document = _document()
+    document['plan_ir']['weeks'][1]['week_type'] = 'testing'
+    document['plan_ir']['weeks'][1]['sessions'] = [
+        _session('2026-08-11', 'FTP Test'),
+        _session('2026-08-13', 'Anaerobic Test'),
+    ]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    assert not any(
+        item['id'].startswith('HARD_MINUTES_BELOW_FLOOR')
+        for item in issues
+    )
+
+
+def test_rendered_vo2_dose_above_ae_3_1_ceiling_blocks_delivery():
+    document = _document()
+    session = _bike_session('2026-08-11', 'Descending VO2 Pyramid', [
+        _step(1260, 114, 114),  # 21 minutes at >=106% FTP
+    ])
+    session['archetype_id'] = 'VO2max Extended'
+    session['structure']['primaryIntensityMetric'] = 'percentOfFtp'
+    document['plan_ir']['weeks'][1]['sessions'] = [session]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    finding = next(item for item in issues
+                   if item['id'].startswith('VO2_DOSE_OUT_OF_RANGE'))
+    assert finding['severity'] == 'CRITICAL'
+    assert finding['review_value']['vo2_minutes'] == 21.0
+
+
+def test_rendered_vo2_dose_inside_ae_3_1_ceiling_passes():
+    document = _document()
+    session = _bike_session('2026-08-11', 'Ronnestad 40-20', [
+        _step(1020, 120, 120),  # 17 minutes: warning band, not a failure
+    ])
+    session['archetype_id'] = 'VO2max 40/20'
+    session['structure']['primaryIntensityMetric'] = 'percentOfFtp'
+    document['plan_ir']['weeks'][1]['sessions'] = [session]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    assert not any(item['id'].startswith('VO2_DOSE_OUT_OF_RANGE')
+                   for item in issues)
+
+
+def test_rendered_rpe_vo2_does_not_use_ftp_proxy_dose():
+    document = _document()
+    session = _bike_session('2026-08-11', 'VO2max 30-30 (Billat)', [
+        _step(900, 9, 10),
+    ])
+    session['archetype_id'] = 'VO2max 30/30'
+    session['structure']['primaryIntensityMetric'] = 'rpe'
+    document['plan_ir']['weeks'][1]['sessions'] = [session]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    assert not any(item['id'].startswith('VO2_DOSE_OUT_OF_RANGE')
+                   for item in issues)
 
 
 def test_hard_minutes_floor_exempt_for_recovery_taper_race_and_pre_plan():

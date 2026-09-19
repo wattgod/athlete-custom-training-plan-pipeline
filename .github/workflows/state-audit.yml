@@ -32,12 +32,14 @@ jobs:
           import json, os, pathlib, sys
           data = json.loads(
               (pathlib.Path(os.environ["RUNNER_TEMP"]) / "health.json").read_text())
-          files = data.get("runtime_files") or {}
+          files = data.get("runtime_files")
           missing = []
-          if files.get("apply_contract_schema") is not True:
+          if not isinstance(files, dict) or files.get("apply_contract_schema") is not True:
               missing.append("runtime_files.apply_contract_schema")
           tokens = data.get("token_config")
-          if isinstance(tokens, dict):
+          if not isinstance(tokens, dict):
+              missing.extend(("token_config.review", "token_config.download"))
+          else:
               if tokens.get("review") is not True:
                   missing.append("token_config.review")
               if tokens.get("download") is not True:

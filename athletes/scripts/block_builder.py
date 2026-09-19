@@ -868,12 +868,16 @@ def _build_race_week(
     """
     race_day = race_day if race_day in DAY_ORDER else 'Sat'
     race_index = DAY_ORDER.index(race_day)
-    # Openers go the day BEFORE the race. A Monday race has no such day
-    # inside its own Mon-Sun week, and the modulo that used to compute this
-    # wrapped to Sunday — putting the opener AFTER the race and leaving the
-    # rest of the week dead. Same rule the renderer already follows
-    # (engine_adapter._apply_race_overlays adds no opener at dow == 0).
-    opener_day = DAY_ORDER[race_index - 1] if race_index >= 1 else None
+    # Openers go the day BEFORE the race, never wrapped to Sunday (a Monday
+    # race has no eve inside its own week -> no opener). If race eve is
+    # unavailable, move the activation to the latest available earlier day
+    # instead of dropping it.
+    # Prefer race eve. If that day is genuinely unavailable, preserve the
+    # athlete's constraint and move the activation to the latest available
+    # earlier day instead of silently dropping it from the week.
+    pre_race_days = list(reversed(DAY_ORDER[:race_index]))
+    opener_day = next(
+        (day for day in pre_race_days if day not in off_days), None)
 
     def _session(name, level, role, duration=None, tss=None):
         duration = get_workout_duration(name, level) if duration is None else duration
