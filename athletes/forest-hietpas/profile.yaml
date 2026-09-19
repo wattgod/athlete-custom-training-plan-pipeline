@@ -35,7 +35,7 @@ coached_block:
     rTSS); most OPTIONAL prescribed runs skipped in favour of his own rides. Weekly actuals 8.7h / 7.7h /
     ~5h. His 2026-09-16 self-review: keep running 6-12 mi/wk for "fun adventure runs and chill events";
     new relationship (Kristen) means weekend rides are social; wattbike issues fixed 09-16; still building
-    "rock solid patterns around sleep". Coach call booked Fri 2026-10-02 11:30 MDT. FTP stays 300W
+    "rock solid patterns around sleep". Coach call booked Fri 2026-10-02 11:30 MDT. FTP 320W from 2026-09-18 (Matti: "320 in TP"; was 300W)
     (coach ruling 2026-09-01). No A-race; consistency is the trained adaptation.'
 brand: gravelgod
 road_category: null
@@ -67,14 +67,14 @@ training_history:
   strengths: ''
   weaknesses: ''
 fitness_markers:
-  ftp_watts: 300
+  ftp_watts: 320
   ftp_estimated: false
   power_basis: measured
-  ftp_date: '2026-08-23'
+  ftp_date: '2026-09-18'
   weight_kg: 75.0
   height_cm: 0
   sex: male
-  w_kg: 4.0
+  w_kg: 4.27
   resting_hr: 0
   max_hr: 0
   lthr: 0
@@ -89,7 +89,9 @@ fitness_markers:
     test: null
     action: 'No testing this block (coach ruling 2026-08-29: "no tests"). FTP anchored at 300W by coach
       confirmation. RE-CONFIRMED 2026-09-01 ("Just leave it at 300 for ftp") after the athlete said on
-      08-22 he had "zero clue" and picked 300 because it "felt right" -- the coach owns this number
+      08-22 he had "zero clue" and picked 300 because it "felt right" -- the coach owns this number.
+      2026-09-18 Matti: "320 in TP" -- FTP moved to 320 W to match his TP settings (weekly refresh hold
+      ftp_mismatch cleared by coach ruling)
       knowingly. Re-anchor only when the coach calls for it.'
 recent_training:
   last_12_weeks: consistent

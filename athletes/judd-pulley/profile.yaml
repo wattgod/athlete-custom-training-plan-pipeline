@@ -44,6 +44,8 @@ target_race:
   priority: 'B'
   discipline: gravel
   status: unpicked
+  race_id: event_slot_2026-10-24
+  goal_type: finish
   # PLACEHOLDER — Judd has not picked the event. 50 mi is the honest default
   # for a first-ever race and is what the race-week sharpener and fueling
   # projections are built against. If he picks something longer or hillier,
@@ -235,3 +237,41 @@ unknowns:
   - motivation, coaching-style preference, communication cadence
   - the cause of the 2026-06-14 → 2026-07-03 miss cluster
   - which event he wants in the 10/24 slot
+
+# --- completed 2026-09-18 (Matti: "complete it for me") so validate_profile passes.
+# Every value below names its source; "coach to confirm" marks inference.
+primary_goal: specific_race
+training_history:
+  years_structured: 3
+  highest_weekly_hours: 12
+  current_weekly_hours: 7
+  notes: 'years_structured: coached from the 2023 season (2022 RTL was pre-coaching, memory judd-pulley-race-the-lake).
+    highest_weekly_hours: 11.6 h ridden the week of 2026-09-07 (TP weekly_packet 2026-09-18), rounded up.
+    current_weekly_hours: mean of the six weeks to 2026-09-14 (7.8 / 4.3 / 6.0 / 3.4 / 11.6 / 7.0 h, same packet).'
+cycling_equipment:
+  power_meter: true
+  bikes:
+  - gravel
+  - road
+  indoor_trainer: unknown
+  notes: 'power_meter: every TP ride carries NP/avg power (packet). bikes: Bear 100 gravel (2026-05-02) and Race
+    the Lake road (2022-2026). indoor_trainer: not in any source -- coach to confirm.'
+health_factors:
+  age: 52
+  sleep_hours_avg: 7
+  medical_conditions: []
+  medications: []
+  stress_level: moderate
+  notes: 'age: mid-point of his M50-54 age group (raceresult.com RTL entries) -- exact DOB not in any source, coach
+    to confirm. sleep_hours_avg and stress_level: no source, neutral defaults -- coach to confirm. Resting HR 91-106
+    was flagged around RTL 2026 (memory); no diagnosis recorded.'
+b_events:
+- name: The Hibernator 61
+  date: '2026-10-03'
+  priority: B
+  distance_miles: 60.8
+  elevation_gain_ft: 1709
+  notes: 'TP event 40075625 "hibernator 60" (weekly_packet 2026-09-18); course RWGPS 47924743, Laona WI, 8:00 start
+    (memory judd-pulley-race-the-lake). Sits inside the Oct 24 event-slot block -- the engine lays a B-race
+    mini-taper on it.'
+c_events: []
