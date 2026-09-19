@@ -71,9 +71,10 @@ def test_explicit_days_around_a_simulation_do_not_rearm_the_runway():
     from block_chain import protect_post_simulation_recovery
     from block_compliance import r01_no_back_to_back_intensity as r01
     roles = _build_day_template(['Sun'], 'Wed', 2, preferred_intensity_days=['Tue', 'Thu'])
-    days = [{'day': d, 'role': r, 'name': {'intensity': 'VO2max', 'long_ride': 'Endurance', 'filler': 'Endurance', 'off': 'Rest'}[r],
-             'level': 1, 'duration': 60, 'tss': 50} for d, r in roles.items()]
-    days[2].update(is_simulation=True, duration=240, act_simulation={'dress_rehearsal': True})
+    from block_builder import DAY_ORDER
+    days = [{'day': d, 'role': roles[d], 'name': {'intensity': 'VO2max', 'long_ride': 'Endurance', 'filler': 'Endurance', 'off': 'Rest'}[roles[d]],
+             'level': 1, 'duration': 60, 'tss': 50} for d in DAY_ORDER]
+    days[2].update(is_simulation=True, duration=240, act_simulation={'dress_rehearsal': True})  # Wed
     plan = {'weeks': [{'plan_week': 1, 'week_type': 'load', 'phase': 'build', 'days': days}]}
     protect_post_simulation_recovery(plan, ['Tue', 'Thu'])
     got = {d['day']: d['role'] for d in plan['weeks'][0]['days']}
