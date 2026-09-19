@@ -481,14 +481,43 @@ def trim_week_to_budget(days: List[Dict[str, Any]], week_type: str, hours_per_we
                 }
                 total_duration -= removed_dur
 
+        # Floor growth is optional volume, the budget is not: give back the
+        # weekday-target extension on grown sessions (back to their floor)
+        # before any level comes off (2026-09-19: the growth pushed a load
+        # week over budget and the loop below levelled the LONG RIDE down to
+        # 60 min -- an R06 fail on three golden orders).
+        total_duration = sum(d.get('duration', 0) for d in days)
+        for d in sorted((x for x in days if x.get('floor_extended_min')),
+                        key=lambda x: -int(x.get('floor_extended_min') or 0)):
+            if total_duration <= max_minutes:
+                break
+            ext = int(d.get('floor_extended_min') or 0)
+            give = min(ext, int(total_duration - max_minutes) + 1)
+            if give <= 0:
+                continue
+            d['duration'] = d['duration'] - give
+            d['tss'] = max(0, round(d.get('tss', 0) - give * 0.70))
+            d['floor_extended_min'] = ext - give
+            if d['floor_extended_min'] <= 0:
+                d.pop('floor_extended_min', None)
+            total_duration -= give
+
         # Fillers exhausted but still over budget (time-crunched athletes in
-        # high-level blocks): step the longest intensity/long-ride workout
-        # down a level at a time until the week fits or everything is at L1.
+        # high-level blocks): step the longest intensity workout down a level
+        # at a time; the long ride is levelled only when no intensity day can
+        # give, and never under R06's plausible-duration floor (90 min, 60 for
+        # athletes under 7 h/wk) -- "long ride every load week" outranks the
+        # weekly tolerance band.
+        _r06_min = 60 if (hours_per_week and hours_per_week < 7) else 90
         total_duration = sum(d.get('duration', 0) for d in days)
         while total_duration > max_minutes:
-            candidates = [d for d in days
-                          if d.get('role') in ('intensity', 'long_ride')
-                          and d.get('level', 1) > 1]
+            intensity = [d for d in days if d.get('role') == 'intensity' and d.get('level', 1) > 1]
+            long_rides = [d for d in days if d.get('role') == 'long_ride' and d.get('level', 1) > 1
+                          and week_type == 'load'
+                          and get_workout_duration(d['name'], d['level'] - 1) >= _r06_min]
+            if week_type != 'load':
+                long_rides = [d for d in days if d.get('role') == 'long_ride' and d.get('level', 1) > 1]
+            candidates = intensity or long_rides
             if not candidates:
                 break
             longest = max(candidates, key=lambda d: d.get('duration', 0))
@@ -523,7 +552,10 @@ def trim_week_to_budget(days: List[Dict[str, Any]], week_type: str, hours_per_we
             if candidates:
                 longest = max(candidates, key=lambda d: d['duration'])
                 old_duration = longest['duration']
-                new_duration = max(1, int(longest.get('session_floor_min') or 0),
+                _shave_floor = int(longest.get('session_floor_min') or 0)
+                if longest.get('role') == 'long_ride' and week_type == 'load':
+                    _shave_floor = max(_shave_floor, _r06_min)  # R06 outranks the shave
+                new_duration = max(1, _shave_floor,
                                    old_duration - (total_duration - max_minutes))
                 longest['duration'] = new_duration
                 longest['tss'] = round(longest['tss'] * new_duration / old_duration)

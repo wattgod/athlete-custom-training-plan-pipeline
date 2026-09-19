@@ -1114,10 +1114,22 @@ _FILLER_ROTATION_ORDER = ("endurance_with_work", "skills", "endurance_z2_long", 
 
 
 def _trace(*parts: Any) -> None:
-    """GG_LIBRARY_TRACE=1: one stderr line per selection decision."""
-    if os.environ.get("GG_LIBRARY_TRACE") == "1":
+    """GG_LIBRARY_TRACE=1: one stderr line per selection decision; any other
+    value is treated as a file path to append to (survives subprocess
+    capture in the pipeline orchestrator)."""
+    flag = os.environ.get("GG_LIBRARY_TRACE")
+    if not flag:
+        return
+    line = " ".join(str(p) for p in ("[library_selector]", *parts))
+    if flag == "1":
         import sys
-        print("[library_selector]", *parts, file=sys.stderr)
+        print(line, file=sys.stderr)
+    else:
+        try:
+            with open(flag, "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+        except OSError:
+            pass
 
 
 def _variety_policy_enabled() -> bool:
@@ -1459,9 +1471,12 @@ def select(
             del series_state[series_key]
     if series_state is not None and series_key and series_key in series_state:
         resolution = _select_series_continuation(slot, series_state, index, pool, excluded_ids)
-        _trace("continue", slot.get("plan_week"), slot.get("day"), canonical_name,
+        _trace("continue", slot.get("plan_week"), slot.get("day"), canonical_name, slot.get("role"),
+               "budget=", slot.get("budget_min"), "cap=", slot.get("day_cap_min"), "floor=", slot.get("session_floor_min"),
+               "ext=", slot.get("floor_extended_min"),
                "state=", {k: series_state.get(series_key, {}).get(k) for k in ("family_key", "rung", "placed")},
-               "pool=", len(pool), "->", resolution and resolution["item_id"])
+               "pool=", len(pool), "pool_durs=", sorted({int(i.get("duration_min") or 0) for i in pool})[:8],
+               "->", resolution and (resolution["item_id"], resolution.get("duration_min")))
         if resolution is not None:
             if used_items is not None:
                 _record_used_item(used_items, resolution["item_id"], slot.get("plan_week"),
@@ -1535,8 +1550,10 @@ def select(
     idx = _rotate_index(len(ranked), slot.get("athlete_seed"), _slot_identity(slot))
     chosen = ranked[idx]
     _trace("fresh", slot.get("plan_week"), slot.get("day"), canonical_name, slot.get("role"),
-           "block=", slot.get("block_id"), "pool=", len(pool), "cand=", len(candidate_pool),
-           "ranked=", len(ranked), "->", chosen["item_id"], chosen["name_base"])
+           "budget=", slot.get("budget_min"), "cap=", slot.get("day_cap_min"), "floor=", slot.get("session_floor_min"),
+           "ext=", slot.get("floor_extended_min"), "block=", slot.get("block_id"), "pool=", len(pool),
+           "cand=", len(candidate_pool), "ranked=", len(ranked), "->", chosen["item_id"], chosen["name_base"],
+           chosen.get("duration_min"))
 
     if used_items is not None:
         _record_used_item(used_items, chosen["item_id"], slot.get("plan_week"),
@@ -1578,13 +1595,20 @@ def _select_series_continuation(
         if slot.get("day_cap_min") is None:
             next_entry = in_pool or candidates
         else:
-            # AE-2.7 (amended 2026-09-17): under a day cap the hard bounds are
-            # the cap and the session floor, not the budget window.
+            # AE-2.7 (amended 2026-09-17): under a day cap the hard upper
+            # bound is the cap, not the budget window's +15%. The LOWER bound
+            # stays the window's (2026-09-19): "floor" alone let a 240-min
+            # long-ride series continue onto a 60-min rung (R06 fail on three
+            # golden orders).
             _cap = float(slot["day_cap_min"]); _floor = float(slot.get("session_floor_min") or 0)
+            _lo, _ = _duration_bounds(
+                float(slot.get("budget_min") or 0), slot.get("day_cap_min"), slot.get("canonical_name"),
+                session_floor_min=_floor, floor_extended_min=float(slot.get("floor_extended_min") or 0),
+                role=slot.get("role"))
             def _fits(entry):
                 it = _find_item(index, entry["item_id"])
                 d = (it or {}).get("duration_min") or 0
-                return (it is not None and d <= _cap and d >= _floor
+                return (it is not None and d <= _cap and d >= max(_floor, _lo)
                         and _passes_role_ceiling(it, slot))
             next_entry = in_pool or ([e for e in candidates if _fits(e)] if _floor else [])
         if next_entry:
@@ -1631,12 +1655,16 @@ def _select_singleton_continuation(
         # [floor, cap]; fail closed only when nothing in the library fits.
         cap = slot.get("day_cap_min")
         floor = float(slot.get("session_floor_min") or 0)
+        _lo, _ = _duration_bounds(
+            float(slot.get("budget_min") or 0), cap, slot.get("canonical_name"),
+            session_floor_min=floor, floor_extended_min=float(slot.get("floor_extended_min") or 0),
+            role=slot.get("role"))
         all_in_library = [
             item for item in index["items"]
             if item["library_key"] == library_key and item["item_id"] not in excluded_ids
             and _passes_role_ceiling(item, slot)
             and (cap is None or (item.get("duration_min") or 0) <= cap)
-            and (item.get("duration_min") or 0) >= floor
+            and (item.get("duration_min") or 0) >= max(floor, _lo)
         ]
         if cap is not None and not floor:
             return None

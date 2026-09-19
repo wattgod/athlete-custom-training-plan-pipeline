@@ -66,3 +66,13 @@ ari-shapiro 4439069, judd-pulley 4032686.
 - A hold is reported, not resolved. FTP is Matti's number.
 - No athlete source text in the repo. History and receipts stay in the private dir.
 - Adversarial review before any change to the engine or the transport.
+
+## Guard limits (security review, PR #260)
+
+`.claude/hooks/tp_write_guard.py` scans only the `code` string passed to `mcp__playwriter__execute`. A wrapper that
+reads a script from disk and evaluates it is invisible to that hook, so the plans/v1-only and never-fitness/* rails
+are enforced by the scripts themselves, not by the guard. Rules that follow from this:
+- Evaluate only the two named scripts: `plan-builds/_shared/upsert_draft_plan.js` (writes plans/v1 only, refuses
+  any plan not titled DRAFT) and `tools/tp_weekly_packet.js` (read-only). Never evaluate ad-hoc JS in the TP tab.
+- Read the script from its known path in the same `execute` call that evaluates it; do not modify it in the session.
+- Follow-up owed: extend `tp_write_guard.py` to resolve `readFileSync` paths and scan the loaded file.

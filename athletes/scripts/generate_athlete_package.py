@@ -2398,6 +2398,20 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     if _use_block_builder:
         from block_compliance import validate_plan as _bb_validate, \
             format_compliance_report as _bb_report
+        # GG_DUMP_BB_PLAN=<path>: write the block plan exactly as the gate
+        # sees it (diagnostic; sibling of GG_LIBRARY_TRACE).
+        if os.environ.get('GG_DUMP_BB_PLAN'):
+            def _jsonable(o):
+                if isinstance(o, dict):
+                    return {str(k): _jsonable(v) for k, v in o.items() if k != '_library_selection_state'}
+                if isinstance(o, (list, tuple, set, frozenset)):
+                    return [_jsonable(v) for v in o]
+                return o if isinstance(o, (str, int, float, bool)) or o is None else str(o)
+            try:
+                Path(os.environ['GG_DUMP_BB_PLAN']).write_text(
+                    json.dumps(_jsonable(_bb_plan), indent=1) + '\n')
+            except (OSError, TypeError, ValueError):
+                pass
         _compliance = _bb_validate(
             _bb_plan,
             target_hours=cycling_hours_target,
@@ -5644,6 +5658,16 @@ def generate_athlete_package(athlete_id: str) -> dict:
         if private_review.is_file():
             (athlete_dir / 'NEEDS_REVIEW.txt').write_text(
                 private_review.read_text(encoding='utf-8'), encoding='utf-8')
+        else:
+            # A clean gate must clear a flag left by an earlier build of the
+            # same athlete dir: a stale NEEDS_REVIEW.txt kept three golden
+            # orders "failing" after the underlying defect was fixed
+            # (2026-09-19). The coach signal is the CURRENT gate, never a
+            # previous one.
+            try:
+                (athlete_dir / 'NEEDS_REVIEW.txt').unlink()
+            except FileNotFoundError:
+                pass
         # C4 (D9): library-selection fallback list was written into the
         # temp authoring dir (same reasoning as NEEDS_REVIEW.txt above) --
         # copy it out before that directory is cleaned up.
