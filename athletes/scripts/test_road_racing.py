@@ -11,6 +11,8 @@ from workout_mapper import render_workout, resolve_display_name
 from intake_to_plan import build_profile, parse_intake_markdown
 from training_guide_builder import (
     _build_section_titles,
+    _build_full_guide,
+    _includes_category_pathway,
     _section_road_category_progression,
     _section_road_format_strategy,
 )
@@ -52,6 +54,79 @@ def test_category_profile_is_rules_dated_content():
     assert profile["next"] == "Cat 3"
     assert profile["planning_horizon_weeks"] == 12
     assert "points" in profile["current_rule_summary"].lower()
+
+
+def _fondo_profile(road_category=None):
+    profile = {
+        "name": "Road Test",
+        "brand": "roadielabs",
+        "discipline": "road",
+        "fitness": {"ftp_watts": 250},
+        "fitness_markers": {"ftp_watts": 250, "weight_kg": 75, "sex": "male"},
+        "schedule": {
+            "weekly_hours": "8",
+            "off_days": ["Monday"],
+            "long_ride_days": ["Saturday"],
+            "interval_days": ["Tuesday"],
+        },
+        "demographics": {"age": 35, "sex": "male", "weight_lbs": 165},
+        "strength": {"include_in_plan": False},
+        "target_race": {
+            "name": "Gran Fondo Maryland",
+            "event_format": "fondo",
+            "goal_type": "finish",
+            "distance_miles": 100,
+            "elevation_feet": 3000,
+        },
+        "health": {},
+        "training_history": {},
+        "equipment": {},
+    }
+    if road_category is not None:
+        profile["road_category"] = road_category
+    return profile
+
+
+def _render_fondo_guide(profile):
+    return _build_full_guide(
+        "Road Test", "Gran Fondo Maryland", 100, "finisher",
+        "intermediate", 12, profile,
+        {
+            "weekly_hours": "8",
+            "race_distance_miles": 100,
+            "elevation_feet": 3000,
+        },
+        {}, {"template": {}},
+        {
+            "race_metadata": {"elevation_feet": 3000, "location": "Maryland"},
+            "elevation_feet": 3000,
+            "race_characteristics": {},
+            "workout_modifications": {},
+            "non_negotiables": {},
+            "race_specific": {},
+        },
+    )
+
+
+def test_fondo_without_road_category_omits_category_pathway():
+    profile = _fondo_profile()
+    titles = [title for _, title in _build_section_titles(profile, {})]
+    guide = _render_fondo_guide(profile)
+
+    assert _includes_category_pathway(profile) is False
+    assert "Road Race Strategy" in titles
+    assert "Category 5 to Category 1 Pathway" not in titles
+    assert "Gran fondo / sportive Strategy" in guide
+    assert "Category 5 to Category 1 Pathway" not in guide
+
+
+def test_fondo_with_road_category_includes_category_pathway():
+    profile = _fondo_profile("cat_4")
+    titles = [title for _, title in _build_section_titles(profile, {})]
+
+    assert _includes_category_pathway(profile) is True
+    assert "Road Race Strategy" in titles
+    assert "Category 5 to Category 1 Pathway" in titles
 
 
 def _build_menu(event_format=None):

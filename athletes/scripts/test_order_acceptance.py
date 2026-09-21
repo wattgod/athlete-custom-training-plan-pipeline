@@ -472,7 +472,10 @@ def test_roadie_package_is_brand_clean_and_semantically_valid(built_order):
     assert "ROADIE LABS" in (athlete_dir / "training_guide.html").read_text()
     guide = (athlete_dir / "training_guide.html").read_text()
     assert "Road Skills" in guide
-    assert "Category 5 to Category 1 Pathway" in guide
+    if exp.get("road_category"):
+        assert "Category 5 to Category 1 Pathway" in guide
+    else:
+        assert "Category 5 to Category 1 Pathway" not in guide
     assert "USA Cycling Policy VIII" in guide
     expected_strategy = {
         "fondo": "Gran fondo / sportive Strategy",

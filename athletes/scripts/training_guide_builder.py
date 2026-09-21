@@ -256,6 +256,21 @@ def _conditional_triggers(profile: Dict, race_data: Dict) -> Dict:
     return {"altitude": show_altitude, "women": show_women, "masters": show_masters}
 
 
+def _includes_category_pathway(profile: Dict) -> bool:
+    """Return whether a road guide should include the category pathway."""
+    from archetype import derive_discipline
+    from road_racing import resolve_event_format
+
+    profile = profile or {}
+    if derive_discipline(profile) != "road":
+        return False
+    event_format = resolve_event_format(profile)["event_format"]
+    return not (
+        event_format == "fondo"
+        and not profile.get("road_category")
+    )
+
+
 def _build_section_titles(profile: Dict, race_data: Dict):
     """Build section titles with sequential numbering (no ID gaps)."""
     try:
@@ -281,7 +296,9 @@ def _build_section_titles(profile: Dict, race_data: Dict):
         skills_title,
     ]
     if discipline == "road":
-        titles.extend(["Road Race Strategy", "Category 5 to Category 1 Pathway"])
+        titles.append("Road Race Strategy")
+        if _includes_category_pathway(profile):
+            titles.append("Category 5 to Category 1 Pathway")
 
     triggers = _conditional_triggers(profile, race_data)
     if triggers["altitude"]:
@@ -503,11 +520,15 @@ def _build_full_guide(
     sections.append(_section_skills(race_data, _discipline))
     if _discipline == "road":
         sections.append(_section_road_format_strategy(profile, section_num=14))
-        sections.append(_section_road_category_progression(profile, section_num=15))
+        if _includes_category_pathway(profile):
+            sections.append(_section_road_category_progression(profile, section_num=15))
 
     # Conditional sections — uses shared trigger logic (no duplication)
     triggers = _conditional_triggers(profile, race_data)
-    next_section = 16 if _discipline == "road" else 14
+    if _discipline != "road":
+        next_section = 14
+    else:
+        next_section = 16 if _includes_category_pathway(profile) else 15
     if triggers["altitude"]:
         sections.append(_section_altitude_training(race_data, race_name, elevation, section_num=next_section))
         next_section += 1

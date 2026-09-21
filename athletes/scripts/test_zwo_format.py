@@ -665,7 +665,10 @@ class TestZWOPowerSanity:
 
     def test_race_day_hydration_copy_is_thirst_led(self, fresh_sample_workouts):
         """Race-day templates must not reintroduce exercise-associated hyponatremia risks."""
-        race_files = list(fresh_sample_workouts.glob('*RACE_DAY*.zwo'))
+        race_files = [
+            path for path in fresh_sample_workouts.glob('*RACE_DAY*.zwo')
+            if 'Sanity_Gravel_Race' in path.stem
+        ]
         assert race_files, "Fresh sample did not generate an A-race day"
         description = race_files[0].read_text()
 
