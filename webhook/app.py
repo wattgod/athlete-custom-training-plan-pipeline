@@ -5935,7 +5935,7 @@ def create_checkout():
                 'training_plan', 'custom', email):
             checkout_metadata['delivery_target'] = 'endure'
 
-        race_slug = data.get('race_slug') or ''
+        race_slug = data.get('race_slug') if isinstance(data.get('race_slug'), str) else ''
         cancel_url = f"{brand_cfg['site']}{brand_cfg['questionnaire_path']}"
         if re.match(r'^[a-z0-9-]{1,80}$', race_slug):
             cancel_url = f"{cancel_url}?race={race_slug}"
