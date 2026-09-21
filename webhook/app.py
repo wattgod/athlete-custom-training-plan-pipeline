@@ -5900,17 +5900,25 @@ def create_checkout():
 
     # Create Stripe Checkout Session
     try:
-        line_items = [{'price': price_id, 'quantity': 1}] if price_id else [{
-            'price_data': {
-                'currency': 'usd',
-                'product_data': {
-                    'name': STRIPE_PRODUCT_NAME,
-                    'description': f"{pricing['weeks']}-week custom training plan",
+        if price_id and brand == DEFAULT_BRAND:
+            plan_line_item = {'price': price_id, 'quantity': 1}
+        else:
+            plan_line_item = {
+                'price_data': {
+                    'currency': 'usd',
+                    'unit_amount': pricing['price_cents'],
+                    'product_data': {
+                        'name': f"{brand_cfg['name']} Custom Training Plan",
+                        'description': (
+                            f"{pricing['weeks']}-week custom "
+                            f"{str(brand_cfg.get('discipline', '')).replace('_', ' ')} "
+                            "training plan, built to your race date"
+                        ).replace('  ', ' '),
+                    },
                 },
-                'unit_amount': pricing['price_cents'],
-            },
-            'quantity': 1,
-        }]
+                'quantity': 1,
+            }
+        line_items = [plan_line_item]
         line_items.extend(addon_line_items)
 
         expires_at = int((datetime.now() + timedelta(minutes=CHECKOUT_EXPIRY_MINUTES)).timestamp())
