@@ -4755,6 +4755,46 @@ class TestMultiBrand:
         assert kwargs['cancel_url'] == 'https://roadielabs.com/questionnaire/'
         assert kwargs['metadata']['brand'] == 'roadielabs'
 
+    def test_cancel_url_carries_race_slug(self, client, tmp_path):
+        """Cancel sends the customer back to the questionnaire with the
+        race context preserved."""
+        future = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
+        with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app.stripe.checkout.Session.create') as mock_create:
+            mock_create.return_value = MagicMock(
+                id='cs_test_rl', url='https://checkout.stripe.com/x')
+            resp = client.post(
+                '/api/create-checkout',
+                json={'name': 'Road Tester', 'email': 'road@test.com',
+                      'race_slug': 'unbound-200',
+                      'races': [{'name': 'Maratona', 'date': future,
+                                 'priority': 'A'}]},
+                headers={'Origin': 'https://roadielabs.com'})
+
+        assert resp.status_code == 200
+        kwargs = mock_create.call_args.kwargs
+        assert kwargs['cancel_url'] == \
+            'https://roadielabs.com/questionnaire/?race=unbound-200'
+
+    def test_cancel_url_rejects_bad_race_slug(self, client, tmp_path):
+        """An unsafe race_slug falls back to the bare questionnaire URL."""
+        future = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
+        with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app.stripe.checkout.Session.create') as mock_create:
+            mock_create.return_value = MagicMock(
+                id='cs_test_rl', url='https://checkout.stripe.com/x')
+            resp = client.post(
+                '/api/create-checkout',
+                json={'name': 'Road Tester', 'email': 'road@test.com',
+                      'race_slug': '../evil',
+                      'races': [{'name': 'Maratona', 'date': future,
+                                 'priority': 'A'}]},
+                headers={'Origin': 'https://roadielabs.com'})
+
+        assert resp.status_code == 200
+        kwargs = mock_create.call_args.kwargs
+        assert kwargs['cancel_url'] == 'https://roadielabs.com/questionnaire/'
+
     def test_xcskilabs_origin_maps_to_brand(self):
         from app import _brand_from_origin
         assert _brand_from_origin('https://xcskilabs.com') == 'xcskilabs'

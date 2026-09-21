@@ -5935,6 +5935,11 @@ def create_checkout():
                 'training_plan', 'custom', email):
             checkout_metadata['delivery_target'] = 'endure'
 
+        race_slug = data.get('race_slug') if isinstance(data.get('race_slug'), str) else ''
+        cancel_url = f"{brand_cfg['site']}{brand_cfg['questionnaire_path']}"
+        if re.match(r'^[a-z0-9-]{1,80}$', race_slug):
+            cancel_url = f"{cancel_url}?race={race_slug}"
+
         session_kwargs = dict(
             line_items=line_items,
             mode='payment',
@@ -5943,7 +5948,7 @@ def create_checkout():
             client_reference_id=intake_id,
             metadata=checkout_metadata,
             success_url=f"{brand_cfg['site']}/training-plans/success/?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{brand_cfg['site']}{brand_cfg['questionnaire_path']}",
+            cancel_url=cancel_url,
             expires_at=expires_at,
             after_expiration={
                 'recovery': {
