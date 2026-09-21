@@ -4795,6 +4795,31 @@ class TestMultiBrand:
         kwargs = mock_create.call_args.kwargs
         assert kwargs['cancel_url'] == 'https://roadielabs.com/questionnaire/'
 
+    def test_roadie_checkout_uses_brand_named_line_item(self, client, tmp_path):
+        """Non-default brands get a brand-named price_data line item instead of
+        the shared Gravel God pre-built price ID."""
+        future = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
+        with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app.stripe.checkout.Session.create') as mock_create:
+            mock_create.return_value = MagicMock(
+                id='cs_test_rl', url='https://checkout.stripe.com/x')
+            resp = client.post(
+                '/api/create-checkout',
+                json={'name': 'Road Tester', 'email': 'road@test.com',
+                      'races': [{'name': 'Maratona', 'date': future,
+                                 'priority': 'A'}]},
+                headers={'Origin': 'https://roadielabs.com'})
+
+        assert resp.status_code == 200
+        kwargs = mock_create.call_args.kwargs
+        item = kwargs['line_items'][0]
+        assert 'price' not in item
+        pd = item['price_data']
+        assert pd['currency'] == 'usd'
+        assert isinstance(pd['unit_amount'], int) and pd['unit_amount'] > 0
+        assert pd['product_data']['name'] == 'Roadie Labs Custom Training Plan'
+        assert 'road' in pd['product_data']['description']
+
     def test_xcskilabs_origin_maps_to_brand(self):
         from app import _brand_from_origin
         assert _brand_from_origin('https://xcskilabs.com') == 'xcskilabs'
