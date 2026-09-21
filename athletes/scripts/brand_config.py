@@ -7,7 +7,7 @@ import copy
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -70,6 +70,11 @@ def load_brands(resolve_env: bool = True) -> Dict[str, Dict[str, Any]]:
 
 def get_brand_config(brand: Optional[str] = None, resolve_env: bool = True) -> Dict[str, Any]:
     return load_brands(resolve_env=resolve_env)[normalize_brand(brand)]
+
+
+def all_brands() -> List[str]:
+    """Return all registered brand keys (e.g. gravelgod, roadielabs, xcskilabs)."""
+    return list(load_brands(resolve_env=False).keys())
 
 
 def brand_for_discipline(discipline: Optional[str]) -> str:

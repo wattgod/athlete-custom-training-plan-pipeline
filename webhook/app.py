@@ -93,7 +93,7 @@ from signwell_client import SignWellClient, SignWellError, verify_event_hash
 _ATHLETE_SCRIPTS = Path(__file__).resolve().parent.parent / 'athletes' / 'scripts'
 if str(_ATHLETE_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_ATHLETE_SCRIPTS))
-from brand_config import default_brand, load_brands, normalize_brand
+from brand_config import all_brands, default_brand, load_brands, normalize_brand
 from apply_contract import (compute_model_seal, emit_contract,
                             guide_source_digests,
                             schema_path as apply_contract_schema_path)
@@ -175,6 +175,23 @@ IS_PRODUCTION = os.environ.get('FLASK_ENV') == 'production'
 WOOCOMMERCE_SECRET = os.environ.get('WOOCOMMERCE_SECRET', '')
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+
+
+def stripe_api_key_for_brand(brand: str) -> str:
+    """Per-brand Stripe secret (STRIPE_SECRET_KEY_<BRAND>), else the shared account key."""
+    return os.environ.get(f'STRIPE_SECRET_KEY_{brand.upper()}', '') or STRIPE_SECRET_KEY
+
+
+def stripe_webhook_secrets() -> list:
+    """Shared webhook secret first, then every configured STRIPE_WEBHOOK_SECRET_<BRAND>."""
+    secrets = [STRIPE_WEBHOOK_SECRET] if STRIPE_WEBHOOK_SECRET else []
+    for brand in all_brands():
+        extra = os.environ.get(f'STRIPE_WEBHOOK_SECRET_{brand.upper()}', '')
+        if extra and extra not in secrets:
+            secrets.append(extra)
+    return secrets
+
+
 ATHLETES_DIR = os.environ.get('ATHLETES_DIR', '/app/athletes')
 SCRIPTS_DIR = os.environ.get('SCRIPTS_DIR', '/app/athletes/scripts')
 DATA_DIR = os.environ.get('DATA_DIR', ATHLETES_DIR)  # Persistent volume for intake/logs
@@ -1490,22 +1507,27 @@ def verify_woocommerce_signature(payload: bytes, signature: str) -> bool:
 
 def verify_stripe_signature(payload: bytes, signature: str) -> bool:
     """Verify Stripe webhook signature."""
-    if not STRIPE_WEBHOOK_SECRET:
+    secrets = stripe_webhook_secrets()
+    if not secrets:
         if IS_PRODUCTION:
             logger.error("STRIPE_WEBHOOK_SECRET not configured in production")
             return False
         logger.warning("STRIPE_WEBHOOK_SECRET not set - skipping verification (dev mode)")
         return True
 
-    try:
-        stripe.Webhook.construct_event(payload, signature, STRIPE_WEBHOOK_SECRET)
-        return True
-    except stripe.error.SignatureVerificationError as e:
-        logger.warning(f"Stripe signature verification failed: {e}")
-        return False
-    except Exception as e:
-        logger.error(f"Stripe verification error: {e}")
-        return False
+    rejected = False
+    for secret in secrets:
+        try:
+            stripe.Webhook.construct_event(payload, signature, secret)
+            return True
+        except stripe.error.SignatureVerificationError:
+            rejected = True
+        except Exception as e:
+            logger.error(f"Stripe verification error: {e}")
+            return False
+    if rejected:
+        logger.warning("Stripe signature verification failed for all configured secrets")
+    return False
 
 
 # =============================================================================
@@ -5897,10 +5919,13 @@ def create_checkout():
     # Look up pre-built price ID, capping at 17 for 17+ weeks
     price_key = min(pricing['weeks'], 17)
     price_id = TRAINING_PLAN_PRICE_IDS.get(price_key)
+    # Pre-built price IDs live in the shared account — a brand with its own
+    # Stripe account (STRIPE_SECRET_KEY_<BRAND> set) must use price_data.
+    own_account = stripe_api_key_for_brand(brand) != STRIPE_SECRET_KEY
 
     # Create Stripe Checkout Session
     try:
-        if price_id and brand == DEFAULT_BRAND:
+        if price_id and brand == DEFAULT_BRAND and not own_account:
             plan_line_item = {'price': price_id, 'quantity': 1}
         else:
             plan_line_item = {
@@ -5991,7 +6016,8 @@ def create_checkout():
         if ENABLE_AUTOMATIC_TAX:
             session_kwargs['automatic_tax'] = {'enabled': True}
 
-        checkout_session = stripe.checkout.Session.create(**session_kwargs)
+        checkout_session = stripe.checkout.Session.create(
+            api_key=stripe_api_key_for_brand(brand), **session_kwargs)
 
         logger.info(f"Created checkout session {checkout_session.id} for intake {intake_id} "
                      f"({pricing['weeks']}wk, {pricing['price_display']}, {_mask_email(email)})")
