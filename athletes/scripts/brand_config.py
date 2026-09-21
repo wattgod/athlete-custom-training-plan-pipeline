@@ -72,6 +72,11 @@ def get_brand_config(brand: Optional[str] = None, resolve_env: bool = True) -> D
     return load_brands(resolve_env=resolve_env)[normalize_brand(brand)]
 
 
+def all_brands() -> List[str]:
+    """Return all registered brand keys (e.g. gravelgod, roadielabs, xcskilabs)."""
+    return list(load_brands(resolve_env=False).keys())
+
+
 def brand_for_discipline(discipline: Optional[str]) -> str:
     disc = str(discipline or "").strip().lower()
     for key, cfg in _raw_registry()["brands"].items():

@@ -4820,6 +4820,97 @@ class TestMultiBrand:
         assert pd['product_data']['name'] == 'Roadie Labs Custom Training Plan'
         assert 'road' in pd['product_data']['description']
 
+    def test_roadie_checkout_uses_brand_stripe_key(self, client, tmp_path, monkeypatch):
+        """A brand with STRIPE_SECRET_KEY_<BRAND> set runs checkout on its own
+        Stripe account and must use price_data (pre-built price IDs belong to
+        the shared account)."""
+        future = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
+        monkeypatch.setenv('STRIPE_SECRET_KEY_ROADIELABS', 'sk_test_roadie')
+        with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app.stripe.checkout.Session.create') as mock_create:
+            mock_create.return_value = MagicMock(
+                id='cs_test_rl', url='https://checkout.stripe.com/x')
+            resp = client.post(
+                '/api/create-checkout',
+                json={'name': 'Road Tester', 'email': 'road@test.com',
+                      'races': [{'name': 'Maratona', 'date': future,
+                                 'priority': 'A'}]},
+                headers={'Origin': 'https://roadielabs.com'})
+
+        assert resp.status_code == 200
+        kwargs = mock_create.call_args.kwargs
+        assert kwargs['api_key'] == 'sk_test_roadie'
+        assert 'price' not in kwargs['line_items'][0]
+
+    def test_gravel_checkout_uses_shared_stripe_key(self, client, tmp_path):
+        """Without a per-brand secret, checkout uses the module STRIPE_SECRET_KEY
+        and the pre-built price ID."""
+        import app as app_module
+        future = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
+        with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app.stripe.checkout.Session.create') as mock_create:
+            mock_create.return_value = MagicMock(
+                id='cs_test_gg', url='https://checkout.stripe.com/x')
+            resp = client.post(
+                '/api/create-checkout',
+                json={'name': 'GG Tester', 'email': 'gg@test.com',
+                      'races': [{'name': 'Unbound 200', 'date': future,
+                                 'priority': 'A'}]},
+                headers={'Origin': 'https://gravelgodcycling.com'})
+
+        assert resp.status_code == 200
+        kwargs = mock_create.call_args.kwargs
+        assert kwargs['api_key'] == app_module.STRIPE_SECRET_KEY
+        assert kwargs['line_items'][0]['price'].startswith('price_')
+
+    def test_gravel_checkout_with_own_account_uses_price_data(self, client, tmp_path, monkeypatch):
+        """Even the default brand must switch to price_data when it has its own
+        Stripe account — the pre-built IDs belong to the shared account."""
+        future = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
+        monkeypatch.setenv('STRIPE_SECRET_KEY_GRAVELGOD', 'sk_test_gg')
+        with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app.stripe.checkout.Session.create') as mock_create:
+            mock_create.return_value = MagicMock(
+                id='cs_test_gg', url='https://checkout.stripe.com/x')
+            resp = client.post(
+                '/api/create-checkout',
+                json={'name': 'GG Tester', 'email': 'gg@test.com',
+                      'races': [{'name': 'Unbound 200', 'date': future,
+                                 'priority': 'A'}]},
+                headers={'Origin': 'https://gravelgodcycling.com'})
+
+        assert resp.status_code == 200
+        kwargs = mock_create.call_args.kwargs
+        assert kwargs['api_key'] == 'sk_test_gg'
+        item = kwargs['line_items'][0]
+        assert 'price' not in item
+        assert 'Training Plan' in item['price_data']['product_data']['name']
+
+    def test_stripe_signature_accepts_brand_webhook_secret(self, monkeypatch):
+        """verify_stripe_signature tries the shared secret first, then every
+        configured STRIPE_WEBHOOK_SECRET_<BRAND>."""
+        import app as app_module
+        monkeypatch.setattr(app_module, 'STRIPE_WEBHOOK_SECRET', 'whsec_shared')
+        monkeypatch.setenv('STRIPE_WEBHOOK_SECRET_ROADIELABS', 'whsec_roadie')
+
+        def fake_construct(payload, signature, secret):
+            if secret != 'whsec_roadie':
+                raise app_module.stripe.error.SignatureVerificationError(
+                    'bad', 'sig')
+            return {}
+
+        monkeypatch.setattr(app_module.stripe.Webhook, 'construct_event',
+                            staticmethod(fake_construct))
+        assert app_module.verify_stripe_signature(b'{}', 'sig') is True
+
+        def reject_all(payload, signature, secret):
+            raise app_module.stripe.error.SignatureVerificationError(
+                'bad', 'sig')
+
+        monkeypatch.setattr(app_module.stripe.Webhook, 'construct_event',
+                            staticmethod(reject_all))
+        assert app_module.verify_stripe_signature(b'{}', 'sig') is False
+
     def test_xcskilabs_origin_maps_to_brand(self):
         from app import _brand_from_origin
         assert _brand_from_origin('https://xcskilabs.com') == 'xcskilabs'
