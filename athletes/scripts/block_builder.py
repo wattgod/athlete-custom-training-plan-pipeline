@@ -456,7 +456,7 @@ def _evict_over_budget_fillers(
             return 0
         if day.get('taper_capped'):
             return duration
-        if week_type == 'race' and day.get('name') == 'Openers':
+        if week_type == 'race' and day.get('name') in {'Openers', 'Cadence Work'}:
             return duration
         cap = (day_caps or {}).get(day.get('day'), 0) or 0
         if cap and cap < floor_min:
