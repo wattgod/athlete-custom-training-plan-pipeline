@@ -189,7 +189,7 @@ def test_plan_daily_tss_and_trajectory_race_and_b_conventions():
     assert len(daily) == 28
     assert all(entry["tss"] == 50 for entry in daily)
     plan["weeks"][0]["days"][0]["sessions"] = [{"tss": 20}]
-    assert plan_daily_tss(plan, plan_dates)[0]["tss"] == 50
+    assert plan_daily_tss(plan, plan_dates)[0]["tss"] == 70
     trajectory = build_trajectory(
         plan,
         plan_dates,
@@ -205,6 +205,52 @@ def test_plan_daily_tss_and_trajectory_race_and_b_conventions():
     )
     assert trajectory["race_day"]["tsb"] == trajectory["days"][race_index - 1]["tsb"]
     assert trajectory["b_races"] == [{"date": "2027-01-10", "tsb": trajectory["b_races"][0]["tsb"]}]
+
+
+def test_plan_daily_tss_includes_nested_locked_session_load():
+    plan, plan_dates = _synthetic_plan()
+    plan["weeks"][0]["days"][0]["tss"] = 40
+    plan["weeks"][0]["days"][0]["sessions"] = [{"tss": 30, "locked": True}]
+
+    daily = plan_daily_tss(plan, plan_dates)
+
+    assert daily[0]["tss"] == 70
+
+
+def test_trajectory_uses_emitted_b_race_overlay_loads():
+    plan_dates = {
+        "race_date": "2027-01-07",
+        "weeks": [{
+            "week": 1,
+            "phase": "build",
+            "days": [
+                {"day": day, "date": f"2027-01-0{index}"}
+                for index, day in enumerate(
+                    ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"), start=1
+                )
+            ],
+        }],
+    }
+    plan = {
+        "weeks": [{
+            "plan_week": 1,
+            "week_type": "load",
+            "days": [
+                {"day": day, "tss": 90 if day == "Thu" else 0}
+                for day in ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+            ],
+        }],
+    }
+    emitted = [
+        {"date": "2027-01-04", "tss": 20},  # B-race -2 Easy
+        {"date": "2027-01-05", "tss": 25},  # B-race -1 Openers
+    ]
+
+    trajectory = build_trajectory(plan, plan_dates, 0, daily_override=emitted)
+    by_date = {day["date"]: day for day in trajectory["days"]}
+
+    assert by_date["2027-01-04"]["tss"] == 20
+    assert by_date["2027-01-05"]["tss"] == 25
 
 
 def test_trajectory_rules_pass_and_fail():

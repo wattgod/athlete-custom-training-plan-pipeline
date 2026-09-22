@@ -1,6 +1,6 @@
 import pytest
 
-from block_chain import build_plan_from_calendar
+from block_chain import build_plan_from_calendar, retrim_plan_to_budget
 from block_compliance import r19_hours_fit
 from plan_load_schedule import build_hours_schedule, default_meso_pattern
 
@@ -94,3 +94,25 @@ def test_builder_records_target_hours_without_a_schedule():
         off_days=['Sun'],
     )
     assert [week['target_hours'] for week in plan['weeks']] == [8, 8]
+
+
+def test_retrim_uses_scheduled_week_target_over_final_scalar_target():
+    plan = {
+        'weeks': [{
+            'plan_week': 1,
+            'week_type': 'load',
+            'target_hours': 6,
+            'days': [{
+                'day': 'Sat',
+                'name': 'Endurance',
+                'role': 'long_ride',
+                'duration': 460,
+                'tss': 400,
+                'level': 1,
+            }],
+        }],
+    }
+
+    retrim_plan_to_budget(plan, hours_per_week=10)
+
+    assert plan['weeks'][0]['total_duration'] == pytest.approx(396)

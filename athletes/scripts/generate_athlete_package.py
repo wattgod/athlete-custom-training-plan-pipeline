@@ -2427,112 +2427,6 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                   f"ungated legacy templates: {e}")
         raise
 
-    # ===================================================================
-    # COMPLIANCE GATE — the plan must pass all CRITICAL rules BEFORE any
-    # ZWO is rendered. A failing plan kills the build loudly instead of
-    # delivering a broken plan to a paying athlete. This raise is outside
-    # the try/except above so it cannot trigger the legacy fallback.
-    # ===================================================================
-    if _use_block_builder:
-        from block_compliance import validate_plan as _bb_validate, \
-            format_compliance_report as _bb_report
-        from pmc_model import build_trajectory, estimate_start_ctl
-        # GG_DUMP_BB_PLAN=<path>: write the block plan exactly as the gate
-        # sees it (diagnostic; sibling of GG_LIBRARY_TRACE).
-        if os.environ.get('GG_DUMP_BB_PLAN'):
-            def _jsonable(o):
-                if isinstance(o, dict):
-                    return {str(k): _jsonable(v) for k, v in o.items() if k != '_library_selection_state'}
-                if isinstance(o, (list, tuple, set, frozenset)):
-                    return [_jsonable(v) for v in o]
-                return o if isinstance(o, (str, int, float, bool)) or o is None else str(o)
-            try:
-                Path(os.environ['GG_DUMP_BB_PLAN']).write_text(
-                    json.dumps(_jsonable(_bb_plan), indent=1) + '\n')
-            except (OSError, TypeError, ValueError):
-                pass
-        _start_ctl = estimate_start_ctl(
-            profile,
-            plan=_bb_plan,
-            meso_pattern=plan_dates.get('meso_pattern'),
-            athlete_age=athlete_age,
-        )
-        _b_race_dates = [
-            event.get('date')
-            for event in (profile.get('b_events', []) or [])
-            if event.get('date')
-        ]
-        _trajectory = build_trajectory(
-            _bb_plan,
-            plan_dates,
-            _start_ctl['ctl'],
-            b_race_dates=_b_race_dates,
-        )
-        _trajectory['start_ctl_provenance'] = _start_ctl
-        _trajectory['hours_schedule'] = _hours_schedule
-        try:
-            (athlete_dir / 'pmc_trajectory.json').write_text(
-                json.dumps(_trajectory, indent=2) + '\n')
-        except OSError:
-            pass
-        _compliance = _bb_validate(
-            _bb_plan,
-            target_hours=cycling_hours_target,
-            off_days=_bb_off_days,
-            max_intensity=max_intensity_per_week,
-            trajectory=_trajectory,
-            short_format=_bb_discipline in ('cx', 'cyclocross'),
-        )
-        for rule_id, rule in _compliance['rules'].items():
-            if rule.get('severity') == 'WARNING' and not rule.get('passed'):
-                log.warning(f"Compliance warning {rule_id}: {rule.get('message')}")
-        if not _compliance['critical_pass']:
-            report = _bb_report(_compliance)
-            log.error("COMPLIANCE GATE FLAGGED (delivering for coach review)\n" + report)
-            # BUSINESS RULE: never deliver NOTHING. The block-builder produced a
-            # real, complete plan that missed one or more CRITICAL checks.
-            # Hard-failing here = a refunded order + a 2am fire drill. Instead we
-            # DELIVER the plan and LOUDLY flag it for the coach's normal pre-send
-            # review (the 24h window the customer was already promised). The
-            # failure is RECORDED, not silent — which was the whole reason this
-            # gate used to hard-fail. (This is NOT the feared ungated
-            # legacy-template fallback; the block-builder-EXCEPTION path above
-            # still raises, because a crash means there is no plan to deliver.)
-            # Set GG_STRICT_COMPLIANCE=1 to restore hard-fail (CI / debugging).
-            if os.environ.get('GG_STRICT_COMPLIANCE') == '1':
-                raise RuntimeError(
-                    f"Plan failed compliance gate "
-                    f"({_compliance['critical_score']} critical rules passed):\n{report}"
-                )
-            try:
-                (athlete_dir / 'NEEDS_REVIEW.txt').write_text(
-                    "AUTO-CHECK FLAGGED — REVIEW BEFORE SENDING\n"
-                    "=================================================\n\n"
-                    "The plan was built and delivered, but the automatic coach "
-                    "checks flagged "
-                    f"{_compliance['critical_score']} critical rule(s). Review the "
-                    "flagged weeks and adjust before sending to the athlete.\n\n"
-                    + report + "\n")
-            except Exception:
-                pass
-            _fulfillment_issues.extend({
-                'id': rule_id,
-                'source': 'block_compliance',
-                'severity': rule.get('severity', 'CRITICAL'),
-                'message': rule.get('message', 'Compliance rule failed'),
-                'review_value': {
-                    'rule_id': rule_id,
-                    'message': rule.get('message', 'Compliance rule failed'),
-                    'passed': False,
-                },
-                'basis': 'production block-compliance validation of the generated calendar',
-                'sensitivity': 'internal',
-            } for rule_id, rule in _compliance['rules'].items()
-              if rule.get('severity') == 'CRITICAL' and not rule.get('passed'))
-        else:
-            log.info(f"Compliance gate: {_compliance['critical_score']} critical, "
-                     f"score {_compliance['score']}%")
-
     def build_day_schedule(day_abbrev: str, phase: str, phase_templates: dict, week_num: int = 0) -> tuple:
         """
         Determine workout type for a specific day based on:
@@ -5607,6 +5501,162 @@ GO GET IT, {athlete_name.upper()}!
             # A deferred/malformed prescription remains coach-reviewable; it
             # must not turn a recoverable fulfillment issue into an order kill.
             warning(f"Could not reconcile delivery fuel ladder: {exc}")
+
+    # ===================================================================
+    # COMPLIANCE GATE — validate the calendar that was actually emitted.
+    # B-race displacement and other render-time overlays can replace the
+    # block-builder session, so PMC must not model the pre-overlay plan.
+    # ===================================================================
+    if _use_block_builder:
+        from block_compliance import validate_plan as _bb_validate, \
+            format_compliance_report as _bb_report
+        from pmc_model import build_trajectory, estimate_start_ctl
+        from zwo_parser import parse_zwo_text
+
+        daily_tss_by_date = {}
+        for record in _tp_manifest_records:
+            if record.get('tp_kind') not in ('bike', 'race'):
+                continue
+            date = record.get('date')
+            content = _authored_documents.get(record.get('filename_stem'))
+            if not date or not content:
+                continue
+            metrics = parse_zwo_text(
+                content,
+                ftp=float(_athlete_ftp or 1),
+                source_name=record.get('filename_stem') or 'session',
+            )
+            daily_tss_by_date[date] = (
+                daily_tss_by_date.get(date, 0)
+                + float(metrics.get('tss') or 0)
+            )
+
+        date_by_day = {
+            (calendar_week.get('week', calendar_week.get('plan_week')),
+             calendar_day.get('day')): calendar_day.get('date')
+            for calendar_week in plan_dates.get('weeks', [])
+            for calendar_day in calendar_week.get('days', [])
+        }
+        for block_week in _bb_plan.get('weeks', []):
+            plan_week = block_week.get('plan_week', block_week.get('week'))
+            for block_day in block_week.get('days', []):
+                date = date_by_day.get((plan_week, block_day.get('day')))
+                if not date:
+                    continue
+                if any(block_day.get(flag) for flag in (
+                    'sessions_included',
+                    'nested_sessions_included',
+                    'sessions_tss_included',
+                    'nested_load_included',
+                    'fixed_tss_included',
+                )):
+                    continue
+                daily_tss_by_date[date] = (
+                    daily_tss_by_date.get(date, 0)
+                    + sum(float(session.get('tss') or 0)
+                          for session in block_day.get('sessions', []))
+                )
+
+        daily_override = [
+            {
+                'date': calendar_day.get('date'),
+                'tss': daily_tss_by_date.get(calendar_day.get('date'), 0),
+            }
+            for calendar_week in plan_dates.get('weeks', [])
+            for calendar_day in calendar_week.get('days', [])
+        ]
+        if os.environ.get('GG_DUMP_BB_PLAN'):
+            def _jsonable(o):
+                if isinstance(o, dict):
+                    return {
+                        str(k): _jsonable(v)
+                        for k, v in o.items()
+                        if k != '_library_selection_state'
+                    }
+                if isinstance(o, (list, tuple, set, frozenset)):
+                    return [_jsonable(v) for v in o]
+                return o if isinstance(o, (str, int, float, bool)) or o is None else str(o)
+            try:
+                Path(os.environ['GG_DUMP_BB_PLAN']).write_text(
+                    json.dumps({
+                        'plan': _jsonable(_bb_plan),
+                        'daily_override': daily_override,
+                    }, indent=1) + '\n')
+            except (OSError, TypeError, ValueError):
+                pass
+
+        _start_ctl = estimate_start_ctl(
+            profile,
+            plan=_bb_plan,
+            meso_pattern=plan_dates.get('meso_pattern'),
+            athlete_age=athlete_age,
+        )
+        _b_race_dates = [
+            event.get('date')
+            for event in (profile.get('b_events', []) or [])
+            if event.get('date')
+        ]
+        _trajectory = build_trajectory(
+            _bb_plan,
+            plan_dates,
+            _start_ctl['ctl'],
+            b_race_dates=_b_race_dates,
+            daily_override=daily_override,
+        )
+        _trajectory['start_ctl_provenance'] = _start_ctl
+        _trajectory['hours_schedule'] = _hours_schedule
+        try:
+            (athlete_dir / 'pmc_trajectory.json').write_text(
+                json.dumps(_trajectory, indent=2) + '\n')
+        except OSError:
+            pass
+        _compliance = _bb_validate(
+            _bb_plan,
+            target_hours=cycling_hours_target,
+            off_days=_bb_off_days,
+            max_intensity=max_intensity_per_week,
+            trajectory=_trajectory,
+            short_format=_bb_discipline in ('cx', 'cyclocross'),
+        )
+        for rule_id, rule in _compliance['rules'].items():
+            if rule.get('severity') == 'WARNING' and not rule.get('passed'):
+                log.warning(f"Compliance warning {rule_id}: {rule.get('message')}")
+        if not _compliance['critical_pass']:
+            report = _bb_report(_compliance)
+            log.error("COMPLIANCE GATE FLAGGED (delivering for coach review)\n" + report)
+            if os.environ.get('GG_STRICT_COMPLIANCE') == '1':
+                raise RuntimeError(
+                    f"Plan failed compliance gate "
+                    f"({_compliance['critical_score']} critical rules passed):\n{report}"
+                )
+            try:
+                (athlete_dir / 'NEEDS_REVIEW.txt').write_text(
+                    "AUTO-CHECK FLAGGED — REVIEW BEFORE SENDING\n"
+                    "=================================================\n\n"
+                    "The plan was built and delivered, but the automatic coach "
+                    "checks flagged "
+                    f"{_compliance['critical_score']} critical rule(s). Review the "
+                    "flagged weeks and adjust before sending to the athlete.\n\n"
+                    + report + "\n")
+            except Exception:
+                pass
+            _fulfillment_issues.extend({
+                'id': rule_id,
+                'source': 'block_compliance',
+                'severity': rule.get('severity', 'CRITICAL'),
+                'message': rule.get('message', 'Compliance rule failed'),
+                'review_value': {
+                    'rule_id': rule_id,
+                    'message': rule.get('message', 'Compliance rule failed'),
+                    'passed': False,
+                },
+                'basis': 'production block-compliance validation of the generated calendar',
+                'sensitivity': 'internal',
+            } for rule_id, rule in _compliance['rules'].items()
+              if rule.get('severity') == 'CRITICAL' and not rule.get('passed'))
+        else:
+            log.info(f"Compliance gate: {_compliance['critical_score']} critical, "
+                     f"score {_compliance['score']}%")
 
     # The caller owns the final write once guide/summary generation succeeds.
     # Keep this on the function rather than changing the long-standing return
