@@ -272,6 +272,39 @@ class TestRaceAndTaperHouseTemplates:
         assert any(
             d['name'] == 'Cadence Work' for d in taper['days'])
 
+    def test_low_hour_taper_preserves_calibrated_sharpener_duration(self):
+        from workout_mapper import (
+            RACE_WEEK_SHARPENER_WINDOW,
+            calibrate_race_week_sharpener,
+        )
+
+        taper = _week(self._plan(hours_per_week=3), 1)
+        sharpener = next(
+            day for day in taper['days']
+            if day['name'] == 'Stars In Your Eyes')
+        dose = calibrate_race_week_sharpener()
+        calibrated_duration = round(dose['duration_min'])
+
+        assert sharpener['duration'] == calibrated_duration
+        assert sharpener['session_floor_min'] == calibrated_duration
+        assert (
+            RACE_WEEK_SHARPENER_WINDOW['min_tss']
+            <= sharpener['tss']
+            <= RACE_WEEK_SHARPENER_WINDOW['max_tss']
+        )
+
+    def test_taper_long_ride_cap_survives_session_floor(self):
+        plan = self._plan(
+            taper_long_ride_cap_minutes=42,
+            taper_budget_minutes=600,
+        )
+        taper = _week(plan, 1)
+        taper_long = next(
+            day for day in taper['days'] if day['role'] == 'long_ride')
+
+        assert taper_long['duration'] == 42
+        assert taper_long['taper_capped'] is True
+
     def test_house_sessions_render_the_required_stimulus(self):
         from workout_mapper import (RACE_WEEK_SHARPENER_WINDOW,
                                     calibrate_race_week_sharpener,

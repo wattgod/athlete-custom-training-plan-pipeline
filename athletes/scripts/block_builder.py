@@ -410,7 +410,11 @@ def apply_session_floor(days: List[Dict[str, Any]], *, hours_per_week: float,
         cap = (day_caps or {}).get(d.get('day'), 0) or 0
         if cap and cap < floor_min:
             continue                      # athlete-stated short day
-        d['session_floor_min'] = floor_min   # downstream trims must not go under this
+        if d.get('taper_capped'):
+            continue                      # taper volume cap permits a sub-floor ride
+        d['session_floor_min'] = max(
+            floor_min, int(d.get('session_floor_min') or 0))
+        # Downstream trims must not go under this floor.
         if dur >= floor_min and not (grow_fillers_to_target and d.get('role') == 'filler' and dur < target):
             continue
         new_dur = target if d.get('role') != 'long_ride' else floor_min
@@ -716,6 +720,8 @@ def _build_week(
                     'role': 'intensity',
                     'duration': round(taper_sharpener['duration_min']),
                     'tss': taper_sharpener['tss'],
+                    'session_floor_min': round(
+                        taper_sharpener['duration_min']),
                 }
             elif week_type == 'taper' and intensity_idx > 0:
                 w = {
@@ -743,6 +749,8 @@ def _build_week(
                 'role': w.get('role', 'intensity'),
                 'series_coherent': tracked['coherent'],
             }
+            if w.get('session_floor_min') is not None:
+                workout['session_floor_min'] = w['session_floor_min']
             intensity_idx += 1
 
         elif role == 'long_ride' and long_ride_workout:
@@ -832,6 +840,8 @@ def _build_week(
             workout['duration'] = int(taper_long_ride_cap_minutes)
             workout['tss'] = round(
                 workout['tss'] * workout['duration'] / original_duration)
+            workout['taper_capped'] = True
+            workout['session_floor_min'] = int(taper_long_ride_cap_minutes)
 
         total_tss += workout.get('tss', 0)
         days.append({

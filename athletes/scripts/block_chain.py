@@ -662,13 +662,23 @@ def build_plan_from_calendar(
             budget += sum(int(d.get('floor_extended_min') or 0) for d in week.get('days', []))
             overflow = sum(d.get('duration', 0) for d in week.get('days', [])) - budget
             if overflow > 0:
-                candidates = [d for d in week.get('days', [])
-                              if d.get('duration', 0) > 0 and d.get('name') != 'Rest Day']
-                if candidates:
+                while overflow > 0:
+                    candidates = [
+                        d for d in week.get('days', [])
+                        if d.get('duration', 0) > int(
+                            d.get('session_floor_min') or 0)
+                        and d.get('name') != 'Rest Day'
+                    ]
+                    if not candidates:
+                        break
                     longest = max(candidates, key=lambda d: d['duration'])
                     old_duration = longest['duration']
-                    longest['duration'] = max(1, old_duration - overflow)
-                    longest['tss'] = round(longest['tss'] * longest['duration'] / old_duration)
+                    floor = int(longest.get('session_floor_min') or 0)
+                    reduction = min(overflow, old_duration - floor)
+                    longest['duration'] = old_duration - reduction
+                    longest['tss'] = round(
+                        longest['tss'] * longest['duration'] / old_duration)
+                    overflow -= reduction
         _sync_week_totals(week)
         all_weeks.append(week)
 
