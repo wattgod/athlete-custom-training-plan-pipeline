@@ -18,6 +18,10 @@ from workout_selector import (
     _road_ae31_level,
 )
 from series_tracker import SeriesTracker
+from taper_prescription import (
+    RACE_WEEK_DAILY_LOAD_FRACTION,
+    TAPER_DAILY_LOAD_FRACTION,
+)
 
 # AE-2.7 (amended 2026-09-17) session-floor constants -- see apply_session_floor.
 SESSION_FLOOR_MIN = 60
@@ -444,7 +448,7 @@ def _evict_over_budget_fillers(
     floor_min: int,
     day_caps: Optional[Dict[str, int]] = None,
 ) -> List[str]:
-    """Drop the lowest-load disposable fillers before applying session floors."""
+    """Drop disposable fillers without crossing the AE-1.17 lower band."""
     if week_type not in ('taper', 'race') or max_minutes is None:
         return []
 
@@ -463,6 +467,11 @@ def _evict_over_budget_fillers(
         return max(duration, floor)
 
     floored_total = sum(_floor_duration(day) for day in days)
+    lower_bound = (
+        max_minutes
+        * RACE_WEEK_DAILY_LOAD_FRACTION
+        / TAPER_DAILY_LOAD_FRACTION
+    )
     removed: List[str] = []
     candidates = sorted(
         (
@@ -477,7 +486,10 @@ def _evict_over_budget_fillers(
     for day in candidates:
         if floored_total <= max_minutes:
             break
-        floored_total -= _floor_duration(day)
+        candidate_minutes = _floor_duration(day)
+        if floored_total - candidate_minutes < lower_bound:
+            break
+        floored_total -= candidate_minutes
         removed.append(day.get('name', ''))
         day.update({
             'name': 'Rest Day',
@@ -899,12 +911,12 @@ def _build_week(
         if day_caps and workout.get('role') != 'off' and workout.get('duration', 0) > 0:
             workout = _fit_workout_to_cap(workout, day_caps.get(day, 0))
         if (week_type == 'taper' and workout.get('role') == 'long_ride'
-                and taper_long_ride_cap_minutes is not None
-                and workout.get('duration', 0) > taper_long_ride_cap_minutes):
-            original_duration = workout['duration']
-            workout['duration'] = int(taper_long_ride_cap_minutes)
-            workout['tss'] = round(
-                workout['tss'] * workout['duration'] / original_duration)
+                and taper_long_ride_cap_minutes is not None):
+            if workout.get('duration', 0) > taper_long_ride_cap_minutes:
+                original_duration = workout['duration']
+                workout['duration'] = int(taper_long_ride_cap_minutes)
+                workout['tss'] = round(
+                    workout['tss'] * workout['duration'] / original_duration)
             workout['taper_capped'] = True
             workout['session_floor_min'] = int(taper_long_ride_cap_minutes)
 

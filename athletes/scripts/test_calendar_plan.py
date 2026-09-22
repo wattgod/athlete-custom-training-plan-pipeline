@@ -383,6 +383,25 @@ class TestRaceAndTaperHouseTemplates:
 
         assert days == before
 
+    def test_taper_refuses_eviction_that_crosses_lower_load_band(self):
+        days = [
+            {'day': 'Tue', 'name': 'Stars In Your Eyes', 'level': 2,
+             'duration': 60, 'tss': 63, 'role': 'intensity'},
+            {'day': 'Wed', 'name': 'Endurance', 'level': 1,
+             'duration': 60, 'tss': 55, 'role': 'filler'},
+            {'day': 'Thu', 'name': 'Endurance Blocks', 'level': 1,
+             'duration': 140, 'tss': 80, 'role': 'filler'},
+            {'day': 'Sat', 'name': 'Endurance with Surges', 'level': 1,
+             'duration': 60, 'tss': 48, 'role': 'long_ride'},
+        ]
+
+        removed = _evict_over_budget_fillers(
+            days, week_type='taper', max_minutes=200, floor_min=60)
+
+        assert removed == ['Endurance']
+        assert sum(day['duration'] for day in days) == 260
+        assert next(day for day in days if day['name'] == 'Endurance Blocks')
+
     def test_house_sessions_render_the_required_stimulus(self):
         from workout_mapper import (RACE_WEEK_SHARPENER_WINDOW,
                                     calibrate_race_week_sharpener,
