@@ -180,6 +180,8 @@ def build_calendar_week(
     floor_pct_override: Optional[float] = None,
     taper_budget_minutes: Optional[float] = None,
     taper_long_ride_cap_minutes: Optional[float] = None,
+    race_week_target_tss: Optional[float] = None,
+    race_week_tss_per_hour: float = 55.0,
 ) -> Dict[str, Any]:
     """Build one week whose type and phase come from the calendar (plan_dates).
 
@@ -228,6 +230,8 @@ def build_calendar_week(
         floor_pct_override=floor_pct_override,
         taper_budget_minutes=taper_budget_minutes,
         taper_long_ride_cap_minutes=taper_long_ride_cap_minutes,
+        race_week_target_tss=race_week_target_tss,
+        race_week_tss_per_hour=race_week_tss_per_hour,
     )
     week['block_number'] = block_number
     return week
@@ -636,6 +640,8 @@ def _build_week(
     floor_pct_override: Optional[float] = None,
     taper_budget_minutes: Optional[float] = None,
     taper_long_ride_cap_minutes: Optional[float] = None,
+    race_week_target_tss: Optional[float] = None,
+    race_week_tss_per_hour: float = 55.0,
 ) -> Dict[str, Any]:
     """Build a single week with day-by-day workout assignments."""
 
@@ -653,6 +659,8 @@ def _build_week(
             athlete_age=athlete_age,
             stress_level=stress_level,
             session_floor_min=session_floor_min,
+            target_pre_race_tss=race_week_target_tss,
+            tss_per_hour=race_week_tss_per_hour,
         )
 
     # Get workout menu for this week
@@ -971,6 +979,8 @@ def _build_race_week(
     athlete_age: Optional[int] = None,
     stress_level: Optional[str] = None,
     session_floor_min: int = SESSION_FLOOR_MIN,
+    target_pre_race_tss: Optional[float] = None,
+    tss_per_hour: float = 55.0,
 ) -> Dict[str, Any]:
     """Build the coach-approved race-week microcycle.
 
@@ -1053,7 +1063,49 @@ def _build_race_week(
     apply_session_floor(days, hours_per_week=0, day_caps=day_caps, week_type='race',
                         floor_min=session_floor_min, grow_to_weekday_target=False)
 
-    return {
+    load_shortfall_tss = None
+    if target_pre_race_tss is not None:
+        pre_race_days = days[:race_index]
+        eligible = [
+            day for day in pre_race_days
+            if day.get('name') in ('Endurance', 'Cadence Work')
+            and day.get('role') == 'filler'
+            and day.get('duration', 0) > 0
+        ]
+        current_tss = sum(day.get('tss', 0) for day in pre_race_days)
+        deficit = max(0.0, float(target_pre_race_tss) - current_tss)
+        capacities = []
+        for day in eligible:
+            cap = (day_caps or {}).get(day['day'], 90) or 90
+            capacities.append(max(0, min(int(cap), 90) - day['duration']))
+        total_capacity = sum(capacities)
+        if deficit > 0 and total_capacity > 0 and tss_per_hour > 0:
+            requested_minutes = deficit * 60 / tss_per_hour
+            extension_minutes = min(float(total_capacity), requested_minutes)
+            raw_extensions = [
+                capacity * extension_minutes / total_capacity
+                for capacity in capacities
+            ]
+            extensions = [int(value) for value in raw_extensions]
+            remainder = round(extension_minutes - sum(extensions))
+            for index in sorted(
+                    range(len(eligible)),
+                    key=lambda item: raw_extensions[item] - extensions[item],
+                    reverse=True):
+                if remainder <= 0:
+                    break
+                if extensions[index] < capacities[index]:
+                    extensions[index] += 1
+                    remainder -= 1
+            for day, extension in zip(eligible, extensions):
+                if extension <= 0:
+                    continue
+                day['duration'] += extension
+                day['tss'] = round(day['duration'] * tss_per_hour / 60)
+            current_tss = sum(day.get('tss', 0) for day in pre_race_days)
+        load_shortfall_tss = round(max(0.0, target_pre_race_tss - current_tss), 1)
+
+    result = {
         'week_num': week_num,
         'week_type': 'race',
         'phase': phase,
@@ -1061,3 +1113,6 @@ def _build_race_week(
         'total_duration': sum(d['duration'] for d in days),
         'days': days,
     }
+    if load_shortfall_tss:
+        result['load_shortfall_tss'] = load_shortfall_tss
+    return result

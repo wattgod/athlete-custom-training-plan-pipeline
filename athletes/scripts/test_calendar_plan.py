@@ -195,6 +195,36 @@ class TestRaceAndTaperHouseTemplates:
         assert by_day['Tue']['name'] == 'Stars In Your Eyes'
         assert by_day['Wed']['name'] == 'Endurance'
 
+    def test_race_week_extends_easy_ride_to_target_with_two_off_days(self):
+        plan = self._plan(
+            off_days=['Mon', 'Fri'],
+            race_week_target_tss=160,
+            race_week_tss_per_hour=55,
+        )
+        week = _week(plan, 2)
+        by_day = {d['day']: d for d in week['days']}
+        pre_race_tss = sum(
+            day['tss'] for day in week['days']
+            if day['day'] in ('Mon', 'Tue', 'Wed', 'Thu', 'Fri'))
+        assert pre_race_tss >= 160
+        assert by_day['Wed']['duration'] > 50
+        assert 'load_shortfall_tss' not in week
+
+    def test_race_week_extension_leaves_sharpener_and_openers_untouched(self):
+        baseline = _week(self._plan(off_days=['Mon', 'Fri']), 2)
+        extended = _week(self._plan(
+            off_days=['Mon', 'Fri'],
+            race_week_target_tss=999,
+            race_week_tss_per_hour=55,
+        ), 2)
+        baseline_by_day = {d['day']: d for d in baseline['days']}
+        extended_by_day = {d['day']: d for d in extended['days']}
+        for day in ('Tue', 'Thu'):
+            assert extended_by_day[day]['name'] == baseline_by_day[day]['name']
+            assert extended_by_day[day]['duration'] == baseline_by_day[day]['duration']
+            assert extended_by_day[day]['tss'] == baseline_by_day[day]['tss']
+        assert extended['load_shortfall_tss'] > 0
+
     def test_taper_has_short_short_cadence_and_burst_endurance(self):
         plan = self._plan()
         week = _week(plan, 1)

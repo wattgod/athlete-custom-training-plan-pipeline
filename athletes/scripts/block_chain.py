@@ -19,7 +19,7 @@ Source: block-builder SKILL.md, adapted for continuous plan generation
 
 from typing import Dict, List, Any, Optional
 from archetype import determine_phase
-from block_builder import build_block, build_calendar_week, trim_week_to_budget
+from block_builder import DAY_ORDER, build_block, build_calendar_week, trim_week_to_budget
 from series_tracker import SeriesTracker
 
 # plan_dates phase → block-builder phase
@@ -376,6 +376,8 @@ def build_plan_from_calendar(
     hours_schedule: Optional[Dict[int, float]] = None,
     taper_budget_minutes: Optional[float] = None,
     taper_long_ride_cap_minutes: Optional[float] = None,
+    race_week_target_tss: Optional[float] = None,
+    race_week_tss_per_hour: float = 55.0,
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -461,6 +463,8 @@ def build_plan_from_calendar(
         )
         _taper_budget_minutes = taper_budget_minutes
         _taper_long_ride_cap_minutes = taper_long_ride_cap_minutes
+        _race_week_target_tss = None
+        _race_week_tss_per_hour = race_week_tss_per_hour
         if week_type == 'taper':
             from taper_prescription import (
                 TAPER_DAILY_LOAD_FRACTION,
@@ -493,6 +497,46 @@ def build_plan_from_calendar(
                 if long_durations:
                     if _taper_long_ride_cap_minutes is None:
                         _taper_long_ride_cap_minutes = max(long_durations) * 0.60
+        elif week_type == 'race':
+            from taper_prescription import (
+                RACE_WEEK_DAILY_LOAD_FRACTION,
+                pre_taper_daily_average_tss,
+            )
+            taper_weeks = [
+                d for d in week_descriptors if d.get('week_type') == 'taper'
+            ]
+            if taper_weeks:
+                taper_start = min(d['plan_week'] for d in taper_weeks)
+                pre_taper_avg = pre_taper_daily_average_tss(
+                    all_weeks, taper_start)
+            else:
+                load_weeks = [
+                    previous for previous in all_weeks
+                    if previous.get('week_type') in ('load', 'testing')
+                ]
+                pre_taper_avg = (
+                    sum(w.get('total_tss', 0) for w in load_weeks[-2:]) / 14
+                    if load_weeks else 0.0
+                )
+            load_weeks = [
+                previous for previous in all_weeks
+                if previous.get('week_type') in ('load', 'testing')
+            ]
+            total_tss = sum(w.get('total_tss', 0) for w in load_weeks)
+            total_hours = sum(w.get('total_duration', 0) for w in load_weeks) / 60
+            if race_week_tss_per_hour == 55.0 and total_hours > 0:
+                _race_week_tss_per_hour = total_tss / total_hours
+            race_day = desc.get('race_day')
+            race_index = DAY_ORDER.index(race_day) if race_day in DAY_ORDER else 6
+            # The target is a weekly-load fraction expressed across the
+            # available pre-race window.  ``pre_taper_avg`` is daily TSS, so
+            # convert it back to the seven-day equivalent before holding the
+            # 50% race-week load target.  race_index still gates races with
+            # no pre-race days and identifies the Mon..race-eve window.
+            _race_week_target_tss = race_week_target_tss or (
+                RACE_WEEK_DAILY_LOAD_FRACTION * pre_taper_avg * 7
+                if pre_taper_avg > 0 and race_index > 0 else None
+            )
 
         if prev_phase is not None and bb_phase != prev_phase:
             # Phase transition closes the running block: workouts change
@@ -554,6 +598,10 @@ def build_plan_from_calendar(
             floor_pct_override=floor_pct_override,
             taper_budget_minutes=_taper_budget_minutes,
             taper_long_ride_cap_minutes=_taper_long_ride_cap_minutes,
+            race_week_target_tss=(
+                _race_week_target_tss
+                if week_type == 'race' else race_week_target_tss),
+            race_week_tss_per_hour=_race_week_tss_per_hour,
         )
         week['plan_week'] = plan_week
         week['block_number'] = block_number
