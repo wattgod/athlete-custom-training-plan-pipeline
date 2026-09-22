@@ -2441,7 +2441,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                     json.dumps(_jsonable(_bb_plan), indent=1) + '\n')
             except (OSError, TypeError, ValueError):
                 pass
-        _start_ctl = estimate_start_ctl(profile)
+        _start_ctl = estimate_start_ctl(profile, plan=_bb_plan)
         _b_race_dates = [
             event.get('date')
             for event in (profile.get('b_events', []) or [])

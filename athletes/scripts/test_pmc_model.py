@@ -98,6 +98,32 @@ def test_estimate_start_ctl_measured_inferred_and_missing():
     assert estimate_start_ctl({})["ctl"] == 0
 
 
+def test_estimate_start_ctl_uses_plan_load_week_density():
+    plan = {
+        "weeks": [
+            {
+                "week_type": "load",
+                "days": [
+                    {"tss": 200, "duration": 300},
+                    {"tss": 200, "duration": 300},
+                ],
+            },
+            {
+                "week_type": "recovery",
+                "days": [{"tss": 400, "duration": 600}],
+            },
+        ]
+    }
+    result = estimate_start_ctl(
+        {"training_history": {"current_weekly_hours": 7}},
+        plan=plan,
+    )
+    assert result["ctl"] == 40
+    assert result["inputs"]["tss_per_hour"] == 40
+    assert result["inputs"]["source"] == "plan_load_weeks"
+    assert "40.0 TSS/h" in result["basis"]
+
+
 def _synthetic_plan():
     plan_dates = calculate_plan_dates(
         "2027-01-24",
@@ -131,7 +157,7 @@ def test_plan_daily_tss_and_trajectory_race_and_b_conventions():
     assert len(daily) == 28
     assert all(entry["tss"] == 50 for entry in daily)
     plan["weeks"][0]["days"][0]["sessions"] = [{"tss": 20}]
-    assert plan_daily_tss(plan, plan_dates)[0]["tss"] == 70
+    assert plan_daily_tss(plan, plan_dates)[0]["tss"] == 50
     trajectory = build_trajectory(
         plan,
         plan_dates,

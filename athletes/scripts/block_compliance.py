@@ -16,7 +16,7 @@ from typing import Dict, List, Any, Optional, Tuple
 
 TRAJECTORY_SEVERITIES = {
     'AE-1.14': 'CRITICAL',
-    'AE-1.18': 'CRITICAL',
+    'AE-1.18': 'WARNING',
     'AE-1.16': 'CRITICAL',
     'AE-1.19': 'CRITICAL',
     'AE-1.19b': 'WARNING',

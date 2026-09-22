@@ -1,4 +1,4 @@
-"""CTL/ATL/TSB trajectory model for planned training load."""
+"""CTL/ATL/TSB trajectory model for planned bike load only."""
 
 from dataclasses import dataclass
 from datetime import date
@@ -73,7 +73,23 @@ def _hours_from_profile(profile: dict) -> float:
     return 0.0
 
 
-def estimate_start_ctl(profile: dict) -> dict:
+def _plan_load_density(plan: Optional[dict]) -> Optional[float]:
+    total_tss = 0.0
+    total_hours = 0.0
+    for week in (plan or {}).get("weeks", []):
+        if week.get("week_type") != "load":
+            continue
+        for day in week.get("days", []):
+            duration = float(day.get("duration") or 0)
+            if duration > 0:
+                total_tss += float(day.get("tss") or 0)
+                total_hours += duration / 60
+    if total_hours <= 0:
+        return None
+    return total_tss / total_hours
+
+
+def estimate_start_ctl(profile: dict, plan: Optional[dict] = None) -> dict:
     """Estimate the athlete's starting CTL and preserve its provenance."""
     markers = (profile or {}).get("fitness_markers", {}) or {}
     if _number(markers.get("ctl")):
@@ -86,22 +102,32 @@ def estimate_start_ctl(profile: dict) -> dict:
         }
 
     hours = _hours_from_profile(profile or {})
-    value = hours * ESTIMATED_TSS_PER_HOUR / 7
+    tss_per_hour = _plan_load_density(plan)
+    if tss_per_hour is None:
+        tss_per_hour = ESTIMATED_TSS_PER_HOUR
+        basis = "training_history weekly hours at default 55 TSS/hour ÷ 7"
+        source = "default"
+    else:
+        basis = (
+            "training_history weekly hours at this plan's load-week "
+            f"dose density ({tss_per_hour:.1f} TSS/h) ÷ 7"
+        )
+        source = "plan_load_weeks"
+    value = hours * tss_per_hour / 7
     return {
         "ctl": value,
         "value_class": "inferred",
-        "basis": "training_history weekly hours × 55 TSS/hour ÷ 7 days",
+        "basis": basis,
         "inputs": {
             "current_weekly_hours": hours,
-            "estimated_tss_per_hour": ESTIMATED_TSS_PER_HOUR,
+            "tss_per_hour": tss_per_hour,
+            "source": source,
         },
     }
 
 
 def _day_tss(day: dict) -> float:
-    base = float(day.get("tss") or 0)
-    sessions = day.get("sessions") or []
-    return base + sum(float(session.get("tss") or 0) for session in sessions)
+    return float(day.get("tss") or 0)
 
 
 def plan_daily_tss(plan: dict, plan_dates: dict) -> List[dict]:
@@ -145,13 +171,6 @@ def _week_start_state(
 ) -> float:
     prior = [day["ctl"] for day in days if day["plan_week"] < plan_week]
     return prior[-1] if prior else float(start_ctl)
-
-
-def _ctl_on_date(days: List[dict], target_date: Optional[str], default: float) -> float:
-    for day in days:
-        if day["date"] == target_date:
-            return day["ctl"]
-    return default
 
 
 def build_trajectory(
