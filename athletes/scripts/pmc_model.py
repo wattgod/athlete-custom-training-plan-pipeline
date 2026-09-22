@@ -57,21 +57,34 @@ def _number(value: Any) -> bool:
     return isinstance(value, Number) and not isinstance(value, bool)
 
 
-def _hours_from_profile(profile: dict) -> float:
+def _hours_from_profile(profile: dict) -> tuple[float, str, bool]:
     history = (profile or {}).get("training_history", {}) or {}
     sources = (
-        (history, ("current_weekly_hours", "weekly_hours", "hours")),
-        (profile or {}, ("weekly_hours", "hours")),
+        (history, ("current_weekly_hours", "weekly_hours", "hours"),
+         "training_history"),
+        (profile or {}, ("weekly_hours", "hours"), "profile"),
     )
-    for source, keys in sources:
+    for source, keys, source_name in sources:
         for key in keys:
             value = source.get(key)
             if value not in (None, ""):
                 try:
-                    return float(value)
+                    hours = float(value)
+                    if hours > 0:
+                        return hours, f"{source_name}.{key}", False
                 except (TypeError, ValueError):
                     pass
-    return 0.0
+    availability = (profile or {}).get("weekly_availability", {}) or {}
+    for key in ("cycling_hours_target", "total_hours_available"):
+        value = availability.get(key)
+        if value not in (None, ""):
+            try:
+                hours = float(value)
+                if hours > 0:
+                    return hours, f"weekly_availability.{key}", True
+            except (TypeError, ValueError):
+                pass
+    return 0.0, "unknown", False
 
 
 def _plan_load_density(plan: Optional[dict]) -> Optional[float]:
@@ -121,7 +134,7 @@ def estimate_start_ctl(
             "inputs": {"ctl": value},
         }
 
-    hours = _hours_from_profile(profile or {})
+    hours, hours_source, hours_fallback = _hours_from_profile(profile or {})
     tss_per_hour = _plan_load_density(plan)
     cycle_factor, effective_meso_pattern = _cycle_factor(
         meso_pattern or (plan or {}).get("meso_pattern"),
@@ -140,6 +153,8 @@ def estimate_start_ctl(
             f"dose density ({tss_per_hour:.1f} TSS/h) ÷ 7 × cycle factor"
         )
         source = "plan_load_weeks"
+    if hours_fallback:
+        basis += " (current hours not reported; assumed at plan target)"
     value = hours * tss_per_hour / 7 * cycle_factor
     return {
         "ctl": value,
@@ -147,6 +162,7 @@ def estimate_start_ctl(
         "basis": basis,
         "inputs": {
             "current_weekly_hours": hours,
+            "hours_source": hours_source,
             "tss_per_hour": tss_per_hour,
             "source": source,
             "cycle_factor": cycle_factor,

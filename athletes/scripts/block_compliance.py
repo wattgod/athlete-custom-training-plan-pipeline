@@ -26,6 +26,16 @@ TRAJECTORY_SEVERITIES = {
     'AE-1.4c': 'WARNING',
     'AE-1.22': 'WARNING',
 }
+SHORT_RUNWAY_WEEKS = 8
+
+
+def _trajectory_severity(rule_id: str, trajectory: dict) -> str:
+    if (
+        rule_id == 'AE-1.14'
+        and len((trajectory or {}).get('weeks', [])) < SHORT_RUNWAY_WEEKS
+    ):
+        return 'WARNING'
+    return TRAJECTORY_SEVERITIES[rule_id]
 
 
 # ============================================================
@@ -645,7 +655,7 @@ def validate_plan(
         }
         for rule_id, result in trajectory_rules.items():
             rules[rule_id] = {
-                'severity': TRAJECTORY_SEVERITIES[rule_id],
+                'severity': _trajectory_severity(rule_id, trajectory),
                 **_rule_result(*result),
             }
 
