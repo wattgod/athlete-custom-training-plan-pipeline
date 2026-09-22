@@ -10,6 +10,7 @@ Usage: python3 generate_athlete_package.py <athlete_id>
 """
 
 import html
+import math
 import re
 import os
 import sys
@@ -5512,26 +5513,12 @@ GO GET IT, {athlete_name.upper()}!
     if _use_block_builder:
         from block_compliance import validate_plan as _bb_validate, \
             format_compliance_report as _bb_report
-        from pmc_model import build_trajectory, estimate_start_ctl
+        from pmc_model import (
+            build_trajectory,
+            day_total_tss,
+            estimate_start_ctl,
+        )
         from zwo_parser import parse_zwo_text
-
-        daily_tss_by_date = {}
-        for record in _tp_manifest_records:
-            if record.get('tp_kind') not in ('bike', 'race'):
-                continue
-            date = record.get('date')
-            content = _authored_documents.get(record.get('filename_stem'))
-            if not date or not content:
-                continue
-            metrics = parse_zwo_text(
-                content,
-                ftp=float(_athlete_ftp or 1),
-                source_name=record.get('filename_stem') or 'session',
-            )
-            daily_tss_by_date[date] = (
-                daily_tss_by_date.get(date, 0)
-                + float(metrics.get('tss') or 0)
-            )
 
         date_by_day = {
             (calendar_week.get('week', calendar_week.get('plan_week')),
@@ -5539,6 +5526,13 @@ GO GET IT, {athlete_name.upper()}!
             for calendar_week in plan_dates.get('weeks', [])
             for calendar_day in calendar_week.get('days', [])
         }
+        block_day_by_date = {}
+        for block_week in _bb_plan.get('weeks', []):
+            plan_week = block_week.get('plan_week', block_week.get('week'))
+            for block_day in block_week.get('days', []):
+                date = date_by_day.get((plan_week, block_day.get('day')))
+                if date:
+                    block_day_by_date[date] = block_day
         overlay_dates = {
             calendar_day.get('date')
             for calendar_week in plan_dates.get('weeks', [])
@@ -5549,35 +5543,50 @@ GO GET IT, {athlete_name.upper()}!
                 'is_b_race_easy',
             ))
         }
-        for block_week in _bb_plan.get('weeks', []):
-            plan_week = block_week.get('plan_week', block_week.get('week'))
-            for block_day in block_week.get('days', []):
-                date = date_by_day.get((plan_week, block_day.get('day')))
-                if not date or date not in overlay_dates:
-                    continue
-                if any(block_day.get(flag) for flag in (
-                    'sessions_included',
-                    'nested_sessions_included',
-                    'sessions_tss_included',
-                    'nested_load_included',
-                    'fixed_tss_included',
-                )):
-                    continue
-                daily_tss_by_date[date] = (
-                    daily_tss_by_date.get(date, 0)
-                    + sum(float(session.get('tss') or 0)
-                          for session in block_day.get('sessions', []))
-                )
+        try:
+            projection_ftp = float(_athlete_ftp)
+        except (TypeError, ValueError):
+            projection_ftp = None
+        if projection_ftp is not None and (
+                not math.isfinite(projection_ftp) or projection_ftp <= 0):
+            projection_ftp = None
 
-        daily_override = [
-            {
-                'date': calendar_day.get('date'),
-                'tss': daily_tss_by_date.get(calendar_day.get('date'), 0),
-            }
-            for calendar_week in plan_dates.get('weeks', [])
-            for calendar_day in calendar_week.get('days', [])
-            if calendar_day.get('date') in overlay_dates
-        ]
+        changed_records = {}
+        for record in _tp_manifest_records:
+            if record.get('tp_kind') != 'bike':
+                continue
+            date = record.get('date')
+            if not date or date not in block_day_by_date:
+                continue
+            block_day = block_day_by_date[date]
+            planned_name = block_day.get('name')
+            emitted_name = record.get('archetype_id')
+            replaced = (
+                date in overlay_dates
+                or not emitted_name
+                or emitted_name != planned_name
+            )
+            if replaced:
+                changed_records.setdefault(date, []).append(record)
+
+        daily_override = []
+        if projection_ftp is not None:
+            for date, records in changed_records.items():
+                emitted_tss = 0.0
+                parsed = False
+                for record in records:
+                    content = _authored_documents.get(record.get('filename_stem'))
+                    if not content:
+                        continue
+                    metrics = parse_zwo_text(
+                        content,
+                        ftp=projection_ftp,
+                        source_name=record.get('filename_stem') or 'session',
+                    )
+                    emitted_tss += float(metrics.get('tss') or 0)
+                    parsed = True
+                if parsed:
+                    daily_override.append({'date': date, 'tss': emitted_tss})
         if os.environ.get('GG_DUMP_BB_PLAN'):
             def _jsonable(o):
                 if isinstance(o, dict):
