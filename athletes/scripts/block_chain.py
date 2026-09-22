@@ -454,6 +454,8 @@ def build_plan_from_calendar(
     phase_block_index = max(1, phase_block_start)
     prev_phase = None
     cadence_skill_level = 0
+    block_level_offset = 0
+    prev_load_week_hours = None
 
     for desc in week_descriptors:
         plan_week = desc['plan_week']
@@ -552,7 +554,24 @@ def build_plan_from_calendar(
             block_number += 1
             phase_block_index = 1
             week_in_block = 1
+            block_level_offset = 0
+            prev_load_week_hours = None
         prev_phase = bb_phase
+
+        progression_lever = None
+        if week_type == 'load':
+            if prev_load_week_hours is None:
+                level_delta = None
+            else:
+                ramp = (
+                    hours_schedule is not None
+                    and week_hours > prev_load_week_hours + 0.05
+                )
+                level_delta = 0 if ramp else 1
+                tracker.advance_week(level_delta=level_delta)
+                block_level_offset += level_delta
+                progression_lever = 'volume' if ramp else 'intensity'
+            prev_load_week_hours = week_hours
 
         if week_type == 'load':
             wk_intensity = max_intensity
@@ -606,10 +625,14 @@ def build_plan_from_calendar(
                 _race_week_target_tss
                 if week_type == 'race' else race_week_target_tss),
             race_week_tss_per_hour=_race_week_tss_per_hour,
+            level_offset=(
+                block_level_offset if week_type == 'load' else None
+            ),
         )
         week['plan_week'] = plan_week
         week['block_number'] = block_number
         week['target_hours'] = week_hours
+        week['progression_lever'] = progression_lever
 
         # Cadence Work is a learned skill, unlike a phase-specific interval
         # series.  A new phase must not reissue its Level-1 introductory
@@ -683,8 +706,7 @@ def build_plan_from_calendar(
         all_weeks.append(week)
 
         # Block bookkeeping: a recovery/taper/race week closes the block.
-        # Level progression within a block comes from week_in_block
-        # (workout selection adds week_in_block - 1 to base_level).
+        # Load-week progression uses the block-local one-lever offset above.
         if week_type == 'testing':
             # Standalone assessment block: the battery is one-off tests, not
             # a training series — close it so the series tracker never pairs
@@ -696,8 +718,9 @@ def build_plan_from_calendar(
             block_number += 1
             phase_block_index += 1
             week_in_block = 1
+            block_level_offset = 0
+            prev_load_week_hours = None
         elif week_type == 'load':
-            tracker.advance_week()
             week_in_block += 1
         else:
             violations.extend(tracker.validate_block())
@@ -708,6 +731,8 @@ def build_plan_from_calendar(
             week_in_block = 1
             # Next block starts one level up, capped by training age.
             block_base_level = min(block_base_level + 1, max_level)
+            block_level_offset = 0
+            prev_load_week_hours = None
 
     return {
         'total_weeks': len(week_descriptors),

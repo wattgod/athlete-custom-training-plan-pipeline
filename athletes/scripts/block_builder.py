@@ -182,6 +182,7 @@ def build_calendar_week(
     taper_long_ride_cap_minutes: Optional[float] = None,
     race_week_target_tss: Optional[float] = None,
     race_week_tss_per_hour: float = 55.0,
+    level_offset: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Build one week whose type and phase come from the calendar (plan_dates).
 
@@ -232,6 +233,7 @@ def build_calendar_week(
         taper_long_ride_cap_minutes=taper_long_ride_cap_minutes,
         race_week_target_tss=race_week_target_tss,
         race_week_tss_per_hour=race_week_tss_per_hour,
+        level_offset=level_offset,
     )
     week['block_number'] = block_number
     return week
@@ -646,6 +648,7 @@ def _build_week(
     taper_long_ride_cap_minutes: Optional[float] = None,
     race_week_target_tss: Optional[float] = None,
     race_week_tss_per_hour: float = 55.0,
+    level_offset: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Build a single week with day-by-day workout assignments."""
 
@@ -684,6 +687,7 @@ def _build_week(
         avoid_series=avoid_series,
         methodology_profile=methodology_profile,
         event_format=event_format,
+        level_offset=level_offset,
     )
 
     # Organize menu by role
