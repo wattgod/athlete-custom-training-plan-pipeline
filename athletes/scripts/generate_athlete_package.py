@@ -5539,11 +5539,21 @@ GO GET IT, {athlete_name.upper()}!
             for calendar_week in plan_dates.get('weeks', [])
             for calendar_day in calendar_week.get('days', [])
         }
+        overlay_dates = {
+            calendar_day.get('date')
+            for calendar_week in plan_dates.get('weeks', [])
+            for calendar_day in calendar_week.get('days', [])
+            if any(calendar_day.get(flag) for flag in (
+                'is_b_race_day',
+                'is_b_race_opener',
+                'is_b_race_easy',
+            ))
+        }
         for block_week in _bb_plan.get('weeks', []):
             plan_week = block_week.get('plan_week', block_week.get('week'))
             for block_day in block_week.get('days', []):
                 date = date_by_day.get((plan_week, block_day.get('day')))
-                if not date:
+                if not date or date not in overlay_dates:
                     continue
                 if any(block_day.get(flag) for flag in (
                     'sessions_included',
@@ -5566,6 +5576,7 @@ GO GET IT, {athlete_name.upper()}!
             }
             for calendar_week in plan_dates.get('weeks', [])
             for calendar_day in calendar_week.get('days', [])
+            if calendar_day.get('date') in overlay_dates
         ]
         if os.environ.get('GG_DUMP_BB_PLAN'):
             def _jsonable(o):
