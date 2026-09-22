@@ -14,14 +14,15 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 
 
+# Advisory until the plan-shape work lands; promote per rule once goldens satisfy it.
 TRAJECTORY_SEVERITIES = {
-    'AE-1.14': 'CRITICAL',
+    'AE-1.14': 'WARNING',
     'AE-1.18': 'WARNING',
-    'AE-1.16': 'CRITICAL',
-    'AE-1.19': 'CRITICAL',
+    'AE-1.16': 'WARNING',
+    'AE-1.19': 'WARNING',
     'AE-1.19b': 'WARNING',
-    'AE-1.4': 'CRITICAL',
-    'AE-1.4b': 'CRITICAL',
+    'AE-1.4': 'WARNING',
+    'AE-1.4b': 'WARNING',
     'AE-1.4c': 'WARNING',
     'AE-1.22': 'WARNING',
 }

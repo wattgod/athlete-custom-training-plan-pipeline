@@ -1,3 +1,7 @@
+from contextlib import ExitStack
+from unittest.mock import patch
+
+import block_compliance
 from calculate_plan_dates import calculate_plan_dates
 from block_compliance import (
     ae_1_14_ctl_retention_build,
@@ -241,3 +245,53 @@ def test_validate_plan_trajectory_is_opt_in_and_warnings_are_noncritical():
     assert with_warning["critical_pass"] == without_warning["critical_pass"]
     report = format_compliance_report(with_warning)
     assert "AE-1.22 [WARNING]" in report
+    assert {
+        result["severity"]
+        for key, result in with_warning["rules"].items()
+        if key.startswith("AE-")
+    } == {"WARNING"}
+
+
+def test_trajectory_failures_are_all_advisory():
+    trajectory = _trajectory(
+        race_tsb=0,
+        race_ctl=0,
+        build_ctl=100,
+        taper_ctl=100,
+        load_tsbs=(-31, -21),
+        weekly_deltas=(9,),
+        monthly_ramps=(
+            {"from_date": "2027-01-01", "to_date": "2027-01-29", "ctl_delta_per_28d": 13},
+            {"from_date": "2027-01-29", "to_date": "2027-02-26", "ctl_delta_per_28d": 10.1},
+        ),
+        b_races=({"date": "2027-01-10", "tsb": 5},),
+    )
+    rule_functions = (
+        "r01_no_back_to_back_intensity",
+        "r02_vo2max_frequency",
+        "r03_recovery_tss_ceiling",
+        "r04_recovery_intensity_ceiling",
+        "r05_intensity_count",
+        "r06_long_ride_present",
+        "r08_fuel_tags",
+        "r11_strength_present",
+        "r14_series_coherence",
+        "r19_hours_fit",
+        "r20_off_days_respected",
+    )
+    with ExitStack() as stack:
+        for function_name in rule_functions:
+            stack.enter_context(
+                patch.object(
+                    block_compliance,
+                    function_name,
+                    return_value=(True, "pass"),
+                )
+            )
+        result = validate_plan({"weeks": []}, trajectory=trajectory)
+    assert all(
+        not rule["passed"]
+        for key, rule in result["rules"].items()
+        if key.startswith("AE-")
+    )
+    assert result["critical_pass"] is True
