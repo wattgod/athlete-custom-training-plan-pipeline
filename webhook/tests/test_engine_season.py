@@ -538,6 +538,27 @@ class TestOptionalFields:
                   'traditional_pyramidal']:
             assert _post(client, _payload(methodology=m)).status_code == 200, m
 
+    def test_age_controls_meso_pattern_for_every_methodology(self):
+        from engine_season import generate_season, validate_request
+
+        methodologies = [
+            'polarized_80_20',
+            'time_crunched',
+            'g_spot',
+            'traditional_pyramidal',
+        ]
+        for age, expected_recovery_weeks in ((30, [4, 8]), (45, [3, 6, 9])):
+            for methodology in methodologies:
+                body = _payload(methodology=methodology)
+                body['athlete']['age'] = age
+                params, errors = validate_request(body)
+                assert not errors
+                season = generate_season(params)
+                assert [
+                    week['number'] for week in season['weeks']
+                    if week['type'] == 'recovery'
+                ] == expected_recovery_weeks
+
 
 # =============================================================================
 # ADAPTER UNIT TESTS (no HTTP)

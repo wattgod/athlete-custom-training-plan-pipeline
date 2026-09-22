@@ -40,7 +40,10 @@ def _trajectory(
     weekly_deltas=(1,),
     monthly_ramps=(),
     b_races=(),
+    week_types=None,
 ):
+    if week_types is None:
+        week_types = ("load",) * len(weekly_deltas)
     return {
         "start_ctl": 100,
         "build_ctl": build_ctl,
@@ -58,7 +61,7 @@ def _trajectory(
         "weeks": [
             {
                 "plan_week": i + 1,
-                "week_type": "load",
+                "week_type": week_types[i],
                 "start_ctl": 100,
                 "end_ctl": 100 + delta,
                 "ctl_delta": delta,
@@ -415,7 +418,17 @@ def test_short_runway_ae_1_14_is_advisory():
             trajectory=_trajectory(
                 race_ctl=89,
                 build_ctl=100,
-                weekly_deltas=(1,) * 6,
+                weekly_deltas=(1,) * 7,
+                week_types=("load",) * 6 + ("race",),
+            ),
+        )
+        short_with_recovery = validate_plan(
+            {"weeks": []},
+            trajectory=_trajectory(
+                race_ctl=89,
+                build_ctl=100,
+                weekly_deltas=(1,) * 8,
+                week_types=("load",) * 6 + ("race", "recovery"),
             ),
         )
         long = validate_plan(
@@ -423,10 +436,13 @@ def test_short_runway_ae_1_14_is_advisory():
             trajectory=_trajectory(
                 race_ctl=89,
                 build_ctl=100,
-                weekly_deltas=(1,) * 12,
+                weekly_deltas=(1,) * 8,
+                week_types=("load",) * 7 + ("race",),
             ),
         )
     assert short["rules"]["AE-1.14"]["severity"] == "WARNING"
     assert short["critical_pass"] is True
+    assert short_with_recovery["rules"]["AE-1.14"]["severity"] == "WARNING"
+    assert short_with_recovery["critical_pass"] is True
     assert long["rules"]["AE-1.14"]["severity"] == "CRITICAL"
     assert long["critical_pass"] is False

@@ -30,11 +30,37 @@ SHORT_RUNWAY_WEEKS = 8
 
 
 def _trajectory_severity(rule_id: str, trajectory: dict) -> str:
-    if (
-        rule_id == 'AE-1.14'
-        and len((trajectory or {}).get('weeks', [])) < SHORT_RUNWAY_WEEKS
-    ):
-        return 'WARNING'
+    if rule_id == 'AE-1.14' and trajectory:
+        weeks = trajectory.get('weeks') or []
+        race_index = next(
+            (
+                index for index, week in enumerate(weeks)
+                if week.get('week_type') == 'race'
+            ),
+            None,
+        )
+        if race_index is None:
+            race_date = (trajectory.get('race_day') or {}).get('date')
+            race_plan_week = next(
+                (
+                    day.get('plan_week')
+                    for day in trajectory.get('days', [])
+                    if day.get('date') == race_date
+                ),
+                None,
+            )
+            race_index = next(
+                (
+                    index for index, week in enumerate(weeks)
+                    if week.get('plan_week') == race_plan_week
+                ),
+                None,
+            )
+        runway_weeks = (
+            race_index + 1 if race_index is not None else len(weeks)
+        )
+        if runway_weeks < SHORT_RUNWAY_WEEKS:
+            return 'WARNING'
     return TRAJECTORY_SEVERITIES[rule_id]
 
 
