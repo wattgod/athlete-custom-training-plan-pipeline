@@ -96,9 +96,9 @@ def test_estimate_start_ctl_measured_inferred_and_missing():
     inferred = estimate_start_ctl(
         {"training_history": {"current_weekly_hours": 7}}
     )
-    assert inferred["ctl"] == 55
+    assert inferred["ctl"] == 55 * ((3 + 0.65) / 4)
     assert inferred["value_class"] == "inferred"
-    assert estimate_start_ctl({"weekly_hours": 7})["ctl"] == 55
+    assert estimate_start_ctl({"weekly_hours": 7})["ctl"] == 55 * ((3 + 0.65) / 4)
     assert estimate_start_ctl({})["ctl"] == 0
 
 
@@ -122,10 +122,23 @@ def test_estimate_start_ctl_uses_plan_load_week_density():
         {"training_history": {"current_weekly_hours": 7}},
         plan=plan,
     )
-    assert result["ctl"] == 40
+    cycle_factor = (3 + 0.65) / 4
+    assert result["ctl"] == 40 * cycle_factor
     assert result["inputs"]["tss_per_hour"] == 40
     assert result["inputs"]["source"] == "plan_load_weeks"
+    assert result["inputs"]["cycle_factor"] == cycle_factor
+    assert result["inputs"]["meso_pattern"] == "3:1"
     assert "40.0 TSS/h" in result["basis"]
+
+
+def test_estimate_start_ctl_uses_explicit_meso_pattern():
+    result = estimate_start_ctl(
+        {"training_history": {"current_weekly_hours": 7}},
+        plan={"weeks": []},
+        meso_pattern="2:1",
+    )
+    assert result["ctl"] == 55 * 7 / 7 * ((2 + 0.65) / 3)
+    assert result["inputs"]["meso_pattern"] == "2:1"
 
 
 def _synthetic_plan():

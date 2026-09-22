@@ -388,31 +388,28 @@ def r19_hours_fit(weeks: List[dict], target_hours: float) -> Tuple[bool, str]:
     """R19 [CRITICAL]: Weekly hours within ±10% of available.
     Very low-hour athletes (<6h) get 15% tolerance due to minimum workout durations.
     """
-    tolerance = 0.15 if target_hours < 6 else 0.10
-    max_hours = target_hours * (1 + tolerance) * 60  # Convert to minutes
-    # LOAD weeks must also hit a FLOOR — an upper-bound-only check let a
-    # broken archetype ship five 3.8h "load" weeks to a 10h athlete.
-    # Floor is generous (35% under) because W1 ramps in and day caps bite.
-    min_hours = target_hours * 0.65 * 60
-
     violations = []
     for week in weeks:
         wtype = week.get('week_type')
+        week_target_hours = week.get('target_hours') or target_hours
+        week_tolerance = 0.15 if week_target_hours < 6 else 0.10
+        week_max_hours = week_target_hours * (1 + week_tolerance) * 60
+        week_min_hours = week_target_hours * 0.65 * 60
         if wtype == 'recovery':
             continue
         if _week_has_race_day(week):
             continue  # Race duration is set by the event, not availability
         total_min = week.get('total_duration', 0)
-        if total_min > max_hours:
+        if total_min > week_max_hours:
             violations.append(
-                f"W{week.get('plan_week')}: {total_min}min > {max_hours:.0f}min max"
+                f"W{week.get('plan_week')}: {total_min}min > {week_max_hours:.0f}min max"
             )
-        elif (wtype == 'load' and total_min < min_hours
+        elif (wtype == 'load' and total_min < week_min_hours
               # first base block is the deliberate ramp-in (matches the
               # builder's grow-to-floor exemption)
               and not (week.get('phase') == 'base' and week.get('plan_week', 1) <= 4)):
             violations.append(
-                f"W{week.get('plan_week')}: {total_min}min < {min_hours:.0f}min floor (load week)"
+                f"W{week.get('plan_week')}: {total_min}min < {week_min_hours:.0f}min floor (load week)"
             )
 
     if violations:

@@ -92,6 +92,7 @@ from calculate_plan_dates import (  # noqa: E402
     calculate_plan_dates,
     validate_plan_dates,
 )
+from plan_load_schedule import default_meso_pattern  # noqa: E402
 
 PRIORITIES = {'A', 'B', 'C'}
 MIN_SEASON_WEEKS = 4
@@ -270,6 +271,7 @@ def validate_request(payload: Any) -> Tuple[Dict[str, Any], Dict[str, str]]:
         'start_date': start_raw if isinstance(start_raw, str) else '',
         'races': sorted(clean_races, key=lambda r: (r['date'], r['name'])),
         'methodology': methodology,
+        'age': athlete.get('age'),
     })
     return params, errors
 
@@ -394,12 +396,15 @@ def generate_season(params: Dict[str, Any]) -> Dict[str, Any]:
     b_events = [{'name': r['name'], 'date': r['date']}
                 for r in params['races'] if r['priority'] in ('B', 'C')]
 
+    meso_pattern = _methodology_meso_patterns().get(params['methodology'])
+    if not meso_pattern:
+        meso_pattern = default_meso_pattern(params.get('age'))
     plan = calculate_plan_dates(
         anchor['date'],
         plan_weeks=params['plan_weeks'],
         preferred_start=params['start_monday'],
         b_events=b_events,
-        meso_pattern=_methodology_meso_patterns().get(params['methodology']),
+        meso_pattern=meso_pattern,
         clamp_past_start=False,
     )
 

@@ -5,6 +5,7 @@ from datetime import date
 from numbers import Number
 from typing import Any, Dict, List, Optional, Sequence
 
+from plan_load_schedule import default_meso_pattern
 
 TAU_CTL = 42
 TAU_ATL_DEFAULT = 7
@@ -89,7 +90,26 @@ def _plan_load_density(plan: Optional[dict]) -> Optional[float]:
     return total_tss / total_hours
 
 
-def estimate_start_ctl(profile: dict, plan: Optional[dict] = None) -> dict:
+def _cycle_factor(
+    meso_pattern: Optional[str],
+    athlete_age: Optional[int],
+) -> tuple[float, str]:
+    pattern = meso_pattern or default_meso_pattern(athlete_age)
+    try:
+        load_weeks = int(str(pattern).split(':', 1)[0])
+    except (TypeError, ValueError):
+        pattern = default_meso_pattern(athlete_age)
+        load_weeks = int(pattern.split(':', 1)[0])
+    factor = (load_weeks + 0.65) / (load_weeks + 1)
+    return factor, pattern
+
+
+def estimate_start_ctl(
+    profile: dict,
+    plan: Optional[dict] = None,
+    meso_pattern: Optional[str] = None,
+    athlete_age: Optional[int] = None,
+) -> dict:
     """Estimate the athlete's starting CTL and preserve its provenance."""
     markers = (profile or {}).get("fitness_markers", {}) or {}
     if _number(markers.get("ctl")):
@@ -103,17 +123,24 @@ def estimate_start_ctl(profile: dict, plan: Optional[dict] = None) -> dict:
 
     hours = _hours_from_profile(profile or {})
     tss_per_hour = _plan_load_density(plan)
+    cycle_factor, effective_meso_pattern = _cycle_factor(
+        meso_pattern or (plan or {}).get("meso_pattern"),
+        athlete_age if athlete_age is not None else (profile or {}).get("age"),
+    )
     if tss_per_hour is None:
         tss_per_hour = ESTIMATED_TSS_PER_HOUR
-        basis = "training_history weekly hours at default 55 TSS/hour ÷ 7"
+        basis = (
+            "training_history weekly hours at default 55 TSS/hour ÷ 7 "
+            "× cycle factor"
+        )
         source = "default"
     else:
         basis = (
             "training_history weekly hours at this plan's load-week "
-            f"dose density ({tss_per_hour:.1f} TSS/h) ÷ 7"
+            f"dose density ({tss_per_hour:.1f} TSS/h) ÷ 7 × cycle factor"
         )
         source = "plan_load_weeks"
-    value = hours * tss_per_hour / 7
+    value = hours * tss_per_hour / 7 * cycle_factor
     return {
         "ctl": value,
         "value_class": "inferred",
@@ -122,6 +149,8 @@ def estimate_start_ctl(profile: dict, plan: Optional[dict] = None) -> dict:
             "current_weekly_hours": hours,
             "tss_per_hour": tss_per_hour,
             "source": source,
+            "cycle_factor": cycle_factor,
+            "meso_pattern": effective_meso_pattern,
         },
     }
 

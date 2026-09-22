@@ -177,6 +177,7 @@ def build_calendar_week(
     session_floor_min: int = SESSION_FLOOR_MIN,
     grow_to_weekday_target: bool = True,
     preferred_intensity_days: Optional[List[str]] = None,
+    floor_pct_override: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Build one week whose type and phase come from the calendar (plan_dates).
 
@@ -222,6 +223,7 @@ def build_calendar_week(
         stress_level=stress_level,
         session_floor_min=session_floor_min,
         grow_to_weekday_target=grow_to_weekday_target,
+        floor_pct_override=floor_pct_override,
     )
     week['block_number'] = block_number
     return week
@@ -613,6 +615,7 @@ def _build_week(
     stress_level: Optional[str] = None,
     session_floor_min: int = SESSION_FLOOR_MIN,
     grow_to_weekday_target: bool = True,
+    floor_pct_override: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Build a single week with day-by-day workout assignments."""
 
@@ -792,14 +795,17 @@ def _build_week(
     # weeks for high-volume athletes filled at ~50% of stated hours (a
     # 16h GOAT got 8.2h base weeks). Level UP until the week reaches the
     # floor — long ride first (cheapest quality volume), then fillers —
-    # respecting per-day caps and the level ceiling.
-    # The first base block is the deliberate ramp-in — no floor there.
+    # respecting per-day caps and the level ceiling.  The first base block is
+    # the deliberate ramp-in unless an explicit schedule owns its floor.
     if (max_minutes is not None and week_type == 'load'
-            and not (phase == 'base' and block_number <= 1)):
+            and not (phase == 'base' and block_number <= 1
+                     and floor_pct_override is None)):
         # Phase-aware floor preserves periodized PROGRESSION: base ramps
         # (lower floor, rising per block) while build/peak fill near target.
         # A flat 0.80 floor made W1 as big as W19.
-        if phase == 'base':
+        if floor_pct_override is not None:
+            floor_pct = floor_pct_override
+        elif phase == 'base':
             floor_pct = min(0.62 + 0.05 * max(block_number - 1, 0), 0.75)
         elif phase == 'build':
             floor_pct = 0.82

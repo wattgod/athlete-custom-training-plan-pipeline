@@ -2128,6 +2128,15 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         _short_ok = bool((profile.get('weekly_availability') or {}).get('short_sessions_ok'))
         _session_floor_min = (block_builder_module.SESSION_FLOOR_MIN_OPT_IN if _short_ok
                               else block_builder_module.SESSION_FLOOR_MIN)
+        from plan_load_schedule import build_hours_schedule
+        from pmc_model import ESTIMATED_TSS_PER_HOUR
+        _current_hours = training_history.get('current_weekly_hours') or _builder_hours
+        _hours_schedule = build_hours_schedule(
+            plan_dates,
+            current_hours=_current_hours,
+            target_hours=_builder_hours,
+            tss_per_hour=ESTIMATED_TSS_PER_HOUR,
+        )
         _bb_plan = build_plan_from_calendar(
             session_floor_min=_session_floor_min,
             grow_to_weekday_target=not _short_ok,
@@ -2149,6 +2158,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             athlete_age=athlete_age,
             stress_level=(profile.get('health_factors', {}) or {}).get('stress_level'),
             preferred_intensity_days=_explicit_interval_abbrevs or None,
+            hours_schedule=_hours_schedule,
         )
 
         # T4: Build/peak long rides are not generic surge loops.  Mark the
@@ -2441,7 +2451,12 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                     json.dumps(_jsonable(_bb_plan), indent=1) + '\n')
             except (OSError, TypeError, ValueError):
                 pass
-        _start_ctl = estimate_start_ctl(profile, plan=_bb_plan)
+        _start_ctl = estimate_start_ctl(
+            profile,
+            plan=_bb_plan,
+            meso_pattern=plan_dates.get('meso_pattern'),
+            athlete_age=athlete_age,
+        )
         _b_race_dates = [
             event.get('date')
             for event in (profile.get('b_events', []) or [])
@@ -2454,6 +2469,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             b_race_dates=_b_race_dates,
         )
         _trajectory['start_ctl_provenance'] = _start_ctl
+        _trajectory['hours_schedule'] = _hours_schedule
         try:
             (athlete_dir / 'pmc_trajectory.json').write_text(
                 json.dumps(_trajectory, indent=2) + '\n')
@@ -3885,9 +3901,13 @@ Stay loose, {athlete_name}!"""
     # slot gets the same archetype variation. Level progresses +1/week within meso.
     # New mesocycle = new archetype variation for variety.
     from calculate_plan_dates import parse_meso_pattern
-    _meso_load, _meso_recovery = parse_meso_pattern(
-        methodology.get('configuration', {}).get('meso_pattern', DEFAULT_MESO_PATTERN)
+    from plan_load_schedule import default_meso_pattern
+    _meso_pattern = (
+        plan_dates.get('meso_pattern')
+        or methodology.get('configuration', {}).get('meso_pattern')
+        or default_meso_pattern(athlete_age)
     )
+    _meso_load, _meso_recovery = parse_meso_pattern(_meso_pattern)
     _meso_cycle_len = _meso_load + _meso_recovery
     meso_archetype_map = {}  # (meso_index, day_abbrev, nate_type) → variation
     global_variation_counter = {}  # nate_type → next variation index

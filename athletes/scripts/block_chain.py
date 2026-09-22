@@ -373,6 +373,7 @@ def build_plan_from_calendar(
     session_floor_min: int = 60,
     grow_to_weekday_target: bool = True,
     preferred_intensity_days: Optional[List[str]] = None,
+    hours_schedule: Optional[Dict[int, float]] = None,
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -411,6 +412,8 @@ def build_plan_from_calendar(
             profile classifier.  It sets only the initial series entry level;
             all normal block progression and day-level adjustments remain in
             place.
+        hours_schedule: Optional plan-week load-hour targets from the
+            periodized schedule substrate.
 
     Returns:
         Plan dict shaped like chain_blocks() output: {'weeks': [...], ...}
@@ -448,6 +451,12 @@ def build_plan_from_calendar(
         plan_week = desc['plan_week']
         bb_phase = CALENDAR_PHASE_MAP.get(desc.get('phase', 'base'), 'base')
         week_type = desc.get('week_type', 'load')
+        week_hours = (hours_schedule or {}).get(plan_week, hours_per_week)
+        floor_pct_override = (
+            0.90 if hours_schedule is not None
+            and bb_phase == 'base' and week_type == 'load'
+            else None
+        )
 
         if prev_phase is not None and bb_phase != prev_phase:
             # Phase transition closes the running block: workouts change
@@ -474,11 +483,11 @@ def build_plan_from_calendar(
         # multiplier to give it a prescribed budget whose final total (after
         # G4 materializes fixed sessions) is the calendar's TOTAL target.
         target_multiplier = {
-            'load': 1.10 if hours_per_week >= 6 else 1.15,
-            'testing': 1.10 if hours_per_week >= 6 else 1.15,
+            'load': 1.10 if week_hours >= 6 else 1.15,
+            'testing': 1.10 if week_hours >= 6 else 1.15,
             'recovery': 0.80, 'taper': 0.70, 'race': 0.60,
         }.get(week_type, 1.0)
-        prescribed_hours = max(0.0, hours_per_week - fixed_minutes / (60 * target_multiplier))
+        prescribed_hours = max(0.0, week_hours - fixed_minutes / (60 * target_multiplier))
 
         week = build_calendar_week(
             preferred_intensity_days=preferred_intensity_days,
@@ -506,9 +515,11 @@ def build_plan_from_calendar(
             stress_level=stress_level,
             session_floor_min=session_floor_min,
             grow_to_weekday_target=grow_to_weekday_target,
+            floor_pct_override=floor_pct_override,
         )
         week['plan_week'] = plan_week
         week['block_number'] = block_number
+        week['target_hours'] = week_hours
 
         # Cadence Work is a learned skill, unlike a phase-specific interval
         # series.  A new phase must not reissue its Level-1 introductory
@@ -550,12 +561,12 @@ def build_plan_from_calendar(
         # over the athlete's calendar allowance by proportionally trimming
         # the longest remaining bike session (the renderer applies this cap).
         weekly_multiplier = {
-            'load': 1.10 if hours_per_week >= 6 else 1.15,
-            'testing': 1.10 if hours_per_week >= 6 else 1.15,
+            'load': 1.10 if week_hours >= 6 else 1.15,
+            'testing': 1.10 if week_hours >= 6 else 1.15,
             'recovery': 0.80, 'taper': 0.70, 'race': 0.60,
         }.get(week_type)
         if weekly_multiplier is not None:
-            budget = int(hours_per_week * 60 * weekly_multiplier)
+            budget = int(week_hours * 60 * weekly_multiplier)
             # AE-2.7 (amended 2026-09-17): minutes the session floor added are
             # never "overflow" -- volume is not a reason to ship a stub.
             budget += sum(int(d.get('floor_extended_min') or 0) for d in week.get('days', []))
