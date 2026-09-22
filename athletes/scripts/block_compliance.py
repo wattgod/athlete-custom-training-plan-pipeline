@@ -14,11 +14,11 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 
 
-# AE-1.16/1.18 stay advisory until the AE-1.17 taper prescription lands.
+# AE-1.16/1.18 are promoted after all acceptance goldens met the taper gates.
 TRAJECTORY_SEVERITIES = {
     'AE-1.14': 'CRITICAL',
-    'AE-1.18': 'WARNING',
-    'AE-1.16': 'WARNING',
+    'AE-1.18': 'CRITICAL',
+    'AE-1.16': 'CRITICAL',
     'AE-1.19': 'CRITICAL',
     'AE-1.19b': 'WARNING',
     'AE-1.4': 'CRITICAL',

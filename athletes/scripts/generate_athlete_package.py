@@ -1640,6 +1640,8 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
             if (week_type == 'race'
                     and bd.get('name') == 'Stars In Your Eyes'):
                 continue
+            if bd.get('race_week_extended'):
+                continue
             if not _library_selection_in_scope(bd):
                 continue
             _slot_filler_ordinal = None

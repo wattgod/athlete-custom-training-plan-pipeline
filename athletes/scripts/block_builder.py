@@ -1100,8 +1100,16 @@ def _build_race_week(
             for day, extension in zip(eligible, extensions):
                 if extension <= 0:
                     continue
+                original_duration = day['duration']
                 day['duration'] += extension
-                day['tss'] = round(day['duration'] * tss_per_hour / 60)
+                duration_factor = max(
+                    1.0, day['duration'] / original_duration)
+                day['tss'] = max(
+                    day.get('tss', 0),
+                    round(day['tss'] * duration_factor),
+                    round(day['duration'] * tss_per_hour / 60),
+                )
+                day['race_week_extended'] = True
             current_tss = sum(day.get('tss', 0) for day in pre_race_days)
         load_shortfall_tss = round(max(0.0, target_pre_race_tss - current_tss), 1)
 

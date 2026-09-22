@@ -225,6 +225,21 @@ class TestRaceAndTaperHouseTemplates:
             assert extended_by_day[day]['tss'] == baseline_by_day[day]['tss']
         assert extended['load_shortfall_tss'] > 0
 
+    def test_race_week_above_target_does_not_change_existing_sessions(self):
+        baseline = _week(self._plan(off_days=['Mon', 'Fri']), 2)
+        targeted = _week(self._plan(
+            off_days=['Mon', 'Fri'],
+            race_week_target_tss=100,
+            race_week_tss_per_hour=55,
+        ), 2)
+        baseline_by_day = {d['day']: d for d in baseline['days']}
+        targeted_by_day = {d['day']: d for d in targeted['days']}
+        for day in ('Tue', 'Wed', 'Thu'):
+            assert targeted_by_day[day]['name'] == baseline_by_day[day]['name']
+            assert targeted_by_day[day]['duration'] == baseline_by_day[day]['duration']
+            assert targeted_by_day[day]['tss'] == baseline_by_day[day]['tss']
+        assert 'load_shortfall_tss' not in targeted
+
     def test_taper_has_short_short_cadence_and_burst_endurance(self):
         plan = self._plan()
         week = _week(plan, 1)
