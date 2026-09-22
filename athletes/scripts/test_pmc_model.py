@@ -191,14 +191,16 @@ def test_plan_daily_tss_includes_nested_locked_session_load():
 
 def test_trajectory_uses_emitted_b_race_overlay_loads():
     plan_dates = {
-        "race_date": "2027-01-07",
+        "race_date": "2027-01-09",
         "weeks": [{
             "week": 1,
             "phase": "build",
             "days": [
-                {"day": day, "date": f"2027-01-0{index}"}
-                for index, day in enumerate(
-                    ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"), start=1
+                {"day": day, "date": date}
+                for day, date in zip(
+                    ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"),
+                    ("2027-01-04", "2027-01-05", "2027-01-06", "2027-01-07",
+                     "2027-01-08", "2027-01-09", "2027-01-10"),
                 )
             ],
         }],
@@ -214,15 +216,15 @@ def test_trajectory_uses_emitted_b_race_overlay_loads():
         }],
     }
     emitted = [
-        {"date": "2027-01-04", "tss": 20},  # B-race -2 Easy
-        {"date": "2027-01-05", "tss": 25},  # B-race -1 Openers
+        {"date": "2027-01-07", "tss": 20},  # Saturday B-race -2 Easy
+        {"date": "2027-01-08", "tss": 25},  # Saturday B-race -1 Openers
     ]
 
     trajectory = build_trajectory(plan, plan_dates, 0, daily_override=emitted)
     by_date = {day["date"]: day for day in trajectory["days"]}
 
-    assert by_date["2027-01-04"]["tss"] == 20
-    assert by_date["2027-01-05"]["tss"] == 25
+    assert by_date["2027-01-07"]["tss"] == 20
+    assert by_date["2027-01-08"]["tss"] == 25
 
 
 def test_trajectory_rules_pass_and_fail():
