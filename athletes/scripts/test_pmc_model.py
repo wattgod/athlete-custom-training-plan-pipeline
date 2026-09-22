@@ -22,6 +22,7 @@ from pmc_model import (
     TAU_CTL,
     PMCState,
     build_trajectory,
+    day_total_tss,
     estimate_start_ctl,
     plan_daily_tss,
     simulate,
@@ -215,6 +216,7 @@ def test_plan_daily_tss_includes_nested_locked_session_load():
     daily = plan_daily_tss(plan, plan_dates)
 
     assert daily[0]["tss"] == 70
+    assert day_total_tss(plan["weeks"][0]["days"][0]) == 70
 
 
 def test_trajectory_uses_emitted_b_race_overlay_loads():
