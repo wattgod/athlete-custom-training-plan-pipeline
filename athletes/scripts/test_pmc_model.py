@@ -241,7 +241,7 @@ def test_short_format_and_no_race_messages():
     assert ae_1_14_ctl_retention_build(no_race) == (True, "no race day in calendar")
 
 
-def test_validate_plan_trajectory_is_opt_in_and_warnings_are_noncritical():
+def test_validate_plan_trajectory_is_opt_in_and_severity_split_is_explicit():
     plan = {"weeks": []}
     without = validate_plan(plan)
     assert not any(key.startswith("AE-") for key in without["rules"])
@@ -262,10 +262,18 @@ def test_validate_plan_trajectory_is_opt_in_and_warnings_are_noncritical():
         result["severity"]
         for key, result in with_warning["rules"].items()
         if key.startswith("AE-")
-    } == {"WARNING"}
+    } == {"CRITICAL", "WARNING"}
+    assert {
+        key for key, result in with_warning["rules"].items()
+        if key.startswith("AE-") and result["severity"] == "CRITICAL"
+    } == {"AE-1.14", "AE-1.19", "AE-1.4", "AE-1.4b"}
+    assert {
+        key for key, result in with_warning["rules"].items()
+        if key.startswith("AE-") and result["severity"] == "WARNING"
+    } == {"AE-1.16", "AE-1.18", "AE-1.19b", "AE-1.4c", "AE-1.22"}
 
 
-def test_trajectory_failures_are_all_advisory():
+def test_trajectory_failures_report_critical_and_advisory_rules():
     trajectory = _trajectory(
         race_tsb=0,
         race_ctl=0,
@@ -307,4 +315,4 @@ def test_trajectory_failures_are_all_advisory():
         for key, rule in result["rules"].items()
         if key.startswith("AE-")
     )
-    assert result["critical_pass"] is True
+    assert result["critical_pass"] is False

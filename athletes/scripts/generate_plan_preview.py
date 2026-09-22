@@ -233,10 +233,17 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
         weeks_data.append({
             'week': wk_num,
             'phase': phase,
+            'week_type': (
+                'race' if is_race_week
+                else 'taper' if phase == 'taper'
+                else 'recovery' if week_info.get('is_recovery_week')
+                else 'load'
+            ),
             'monday_short': week_info.get('monday_short', ''),
             'sunday_short': week_info.get('sunday_short', ''),
             'b_race': b_race,
             'is_race_week': is_race_week,
+            'is_recovery': bool(week_info.get('is_recovery_week')),
             'days': days_data,
             'total_tss': week_tss,
             'total_hours': round(week_duration_sec / 3600, 1),
