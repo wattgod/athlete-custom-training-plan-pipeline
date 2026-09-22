@@ -402,6 +402,27 @@ class TestRaceAndTaperHouseTemplates:
         assert sum(day['duration'] for day in days) == 260
         assert next(day for day in days if day['name'] == 'Endurance Blocks')
 
+    def test_race_cadence_exemptions_avoid_unneeded_eviction(self):
+        days = [
+            {'day': 'Tue', 'name': 'Stars In Your Eyes', 'level': 2,
+             'duration': 62, 'tss': 63, 'role': 'intensity'},
+            {'day': 'Wed', 'name': 'Cadence Work', 'level': 1,
+             'duration': 45, 'tss': 35, 'role': 'filler'},
+            {'day': 'Thu', 'name': 'Cadence Work', 'level': 1,
+             'duration': 45, 'tss': 35, 'role': 'filler'},
+            {'day': 'Fri', 'name': 'Openers', 'level': 2,
+             'duration': 40, 'tss': 26, 'role': 'intensity'},
+            {'day': 'Sun', 'name': 'Endurance', 'level': 1,
+             'duration': 20, 'tss': 14, 'role': 'filler'},
+        ]
+
+        removed = _evict_over_budget_fillers(
+            days, week_type='race', max_minutes=6 * 60 * 0.60,
+            floor_min=60, day_caps={'Sun': 45})
+
+        assert removed == []
+        assert sum(day['duration'] for day in days) == 212
+
     def test_house_sessions_render_the_required_stimulus(self):
         from workout_mapper import (RACE_WEEK_SHARPENER_WINDOW,
                                     calibrate_race_week_sharpener,
