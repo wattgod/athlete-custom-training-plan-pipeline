@@ -356,7 +356,8 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
                          generation_revision: int = 1,
                          derived_at: str = None,
                          clamp_past_start: bool = True,
-                         post_event_recovery_weeks: int = 0) -> dict:
+                         post_event_recovery_weeks: int = 0,
+                         taper_weeks: int = 1) -> dict:
     """
     Calculate all plan dates working backwards from race date.
 
@@ -420,6 +421,13 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
             plan_weeks, race_week_monday, monday_on_or_after(today))
 
     race_plan_weeks = plan_weeks
+    try:
+        requested_taper_weeks = max(1, int(taper_weeks))
+    except (TypeError, ValueError):
+        requested_taper_weeks = 1
+    effective_taper_weeks = min(
+        requested_taper_weeks, max(1, race_plan_weeks - 1))
+    taper_start_week = race_plan_weeks - effective_taper_weeks
 
     # Month abbreviations
     month_abbrev = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -444,7 +452,7 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
 
         if week_num == race_plan_weeks:
             phase = 'race'
-        elif week_num >= race_plan_weeks - 1:
+        elif taper_start_week <= week_num < race_plan_weeks:
             phase = 'taper'
         elif in_maintenance_period:
             # After heavy training ends, switch to maintenance
@@ -500,8 +508,9 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
         for week_data in week_dates:
             wn = week_data['week']
             phase = week_data['phase']
-            # Never mark taper or race weeks as recovery
-            if phase in ('taper', 'race'):
+            # Never mark taper or race weeks as recovery.  The week immediately
+            # before taper is part of the taper runway, not a second deload.
+            if phase in ('taper', 'race') or wn == taper_start_week - 1:
                 continue
             # Position within the mesocycle (0-indexed)
             position_in_cycle = (wn - 1) % cycle_length
@@ -631,6 +640,8 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
         'plan_end': week_dates[-1]['sunday'],
         'week1_monday': week1_monday.strftime('%Y-%m-%d'),
         'race_week_monday': race_week_monday.strftime('%Y-%m-%d'),
+        'taper_weeks': effective_taper_weeks,
+        'taper_days': 7 * effective_taper_weeks + race_weekday,
         'weeks': week_dates,
         'workout_naming_convention': 'W{week:02d}_{day}_{month}{day}_{name}.zwo',
         'workout_example': f"W01_Mon_{month_abbrev[week1_monday.month - 1]}{week1_monday.day}_Endurance.zwo",
@@ -649,6 +660,8 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
         'b_event_count': len(b_events or []),
         'travel_date_count': len(travel_dates or []),
         'post_event_recovery_weeks': post_event_recovery_weeks,
+        'taper_weeks': effective_taper_weeks,
+        'taper_days': result['taper_days'],
     }
 
     def record(identifier, field, basis, inputs=None, sensitivity='personal'):
@@ -668,6 +681,10 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
         record('CALENDAR_PLAN_END', 'plan_end', 'Sunday ending the explicit planning horizon'),
         record('CALENDAR_WEEK1_MONDAY', 'week1_monday', 'canonical first-week boundary'),
         record('CALENDAR_RACE_WEEK_MONDAY', 'race_week_monday', 'Monday containing target race'),
+        record('CALENDAR_TAPER_WEEKS', 'taper_weeks',
+               'taper duration scaled to estimated race duration'),
+        record('CALENDAR_TAPER_DAYS', 'taper_days',
+               'taper weeks plus race-day offset within race week'),
         record('CALENDAR_WEEKS', 'weeks',
                'calendar owner phase, recovery, race, travel, and day overlays'),
         record('CALENDAR_NAMING', 'workout_naming_convention',
@@ -895,10 +912,26 @@ def main():
     else:
         post_event_recovery_weeks = post_event_recovery_weeks_for_horizon(
             race_date, fulfillment.get('planning_horizon_end'))
+        target_race = profile.get('target_race') or {}
+        try:
+            from calculate_fueling import estimate_race_duration
+            from archetype import derive_discipline
+            est_race_hours = estimate_race_duration(
+                target_race.get('distance_miles', 0),
+                target_race.get('goal_type', target_race.get('goal', 'finish')),
+                target_race.get('elevation_ft', 0),
+                derive_discipline(profile),
+            )
+        except (ImportError, TypeError, ValueError):
+            est_race_hours = 0
+        taper_weeks = (
+            2 if plan_weeks >= 10 and est_race_hours >= 8 else 1
+        )
         plan_dates = calculate_plan_dates(
             race_date, plan_weeks, preferred_start, heavy_training_end, b_events,
             meso_pattern, travel_dates, generation_revision, derived_at,
-            post_event_recovery_weeks=post_event_recovery_weeks)
+            post_event_recovery_weeks=post_event_recovery_weeks,
+            taper_weeks=taper_weeks)
 
     # Print summary
     print("=" * 60)

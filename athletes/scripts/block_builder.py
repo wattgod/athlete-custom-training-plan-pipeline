@@ -178,6 +178,8 @@ def build_calendar_week(
     grow_to_weekday_target: bool = True,
     preferred_intensity_days: Optional[List[str]] = None,
     floor_pct_override: Optional[float] = None,
+    taper_budget_minutes: Optional[float] = None,
+    taper_long_ride_cap_minutes: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Build one week whose type and phase come from the calendar (plan_dates).
 
@@ -224,6 +226,8 @@ def build_calendar_week(
         session_floor_min=session_floor_min,
         grow_to_weekday_target=grow_to_weekday_target,
         floor_pct_override=floor_pct_override,
+        taper_budget_minutes=taper_budget_minutes,
+        taper_long_ride_cap_minutes=taper_long_ride_cap_minutes,
     )
     week['block_number'] = block_number
     return week
@@ -397,7 +401,7 @@ def apply_session_floor(days: List[Dict[str, Any]], *, hours_per_week: float,
         dur = d.get('duration', 0)
         if dur <= 0 or d.get('role') in ('off', 'race', 'rest') or d.get('name') == 'Rest Day':
             continue
-        if week_type == 'race' and d.get('name') == 'Openers':
+        if week_type == 'race' and d.get('name') in {'Openers', 'Cadence Work'}:
             continue
         cap = (day_caps or {}).get(d.get('day'), 0) or 0
         if cap and cap < floor_min:
@@ -448,7 +452,12 @@ def _fit_workout_to_cap(workout: Dict[str, Any], cap: int) -> Dict[str, Any]:
     return workout
 
 
-def trim_week_to_budget(days: List[Dict[str, Any]], week_type: str, hours_per_week: float) -> Optional[float]:
+def trim_week_to_budget(
+    days: List[Dict[str, Any]],
+    week_type: str,
+    hours_per_week: float,
+    budget_minutes: Optional[float] = None,
+) -> Optional[float]:
     """Shrink-only pass: trim ``days`` in place until total duration fits
     the athlete's weekly-hour budget for this week type.
 
@@ -489,6 +498,8 @@ def trim_week_to_budget(days: List[Dict[str, Any]], week_type: str, hours_per_we
 
     if max_minutes is None:
         return None
+    if budget_minutes is not None and week_type == 'taper':
+        max_minutes = min(max_minutes, float(budget_minutes))
 
     # AE-2.7 (amended 2026-09-17): the weekly budget (R19) still binds, but
     # a session is never shrunk under its floor to meet it -- an over-budget
@@ -497,16 +508,17 @@ def trim_week_to_budget(days: List[Dict[str, Any]], week_type: str, hours_per_we
 
     total_duration = sum(d.get('duration', 0) for d in days)
     if total_duration > max_minutes:
-        for i in range(len(days) - 1, -1, -1):
-            if total_duration <= max_minutes:
-                break
-            if days[i]['role'] == 'filler' and days[i]['name'] != 'Rest Day':
-                removed_dur = days[i]['duration']
-                days[i] = {
-                    'day': days[i]['day'], 'name': 'Rest Day', 'level': 1,
-                    'tss': 0, 'duration': 0, 'role': 'filler',
-                }
-                total_duration -= removed_dur
+        if week_type != 'taper':
+            for i in range(len(days) - 1, -1, -1):
+                if total_duration <= max_minutes:
+                    break
+                if days[i]['role'] == 'filler' and days[i]['name'] != 'Rest Day':
+                    removed_dur = days[i]['duration']
+                    days[i] = {
+                        'day': days[i]['day'], 'name': 'Rest Day', 'level': 1,
+                        'tss': 0, 'duration': 0, 'role': 'filler',
+                    }
+                    total_duration -= removed_dur
 
         # Floor growth is optional volume, the budget is not: give back the
         # weekday-target extension on grown sessions (back to their floor)
@@ -544,7 +556,13 @@ def trim_week_to_budget(days: List[Dict[str, Any]], week_type: str, hours_per_we
                           and get_workout_duration(d['name'], d['level'] - 1) >= _r06_min]
             if week_type != 'load':
                 long_rides = [d for d in days if d.get('role') == 'long_ride' and d.get('level', 1) > 1]
-            candidates = intensity or long_rides
+            fillers = [
+                d for d in days
+                if d.get('role') == 'filler'
+                and d.get('name') != 'Rest Day'
+                and d.get('level', 1) > 1
+            ]
+            candidates = intensity or long_rides or fillers
             if not candidates:
                 break
             longest = max(candidates, key=lambda d: d.get('duration', 0))
@@ -616,6 +634,8 @@ def _build_week(
     session_floor_min: int = SESSION_FLOOR_MIN,
     grow_to_weekday_target: bool = True,
     floor_pct_override: Optional[float] = None,
+    taper_budget_minutes: Optional[float] = None,
+    taper_long_ride_cap_minutes: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Build a single week with day-by-day workout assignments."""
 
@@ -656,6 +676,12 @@ def _build_week(
 
     # Organize menu by role
     intensity_workouts = [w for w in workout_menu if w['role'] == 'intensity']
+    taper_sharpener = None
+    if week_type == 'taper':
+        from workout_mapper import calibrate_race_week_sharpener
+        taper_sharpener = calibrate_race_week_sharpener(
+            requested_level=2, athlete_age=athlete_age,
+            stress_level=stress_level)
     long_ride_workout = next((w for w in workout_menu if w['role'] == 'long_ride'), None)
     filler_workout = next((w for w in workout_menu if w['role'] == 'filler'), None)
     rest_workout = next((w for w in workout_menu if w['role'] == 'rest'), None)
@@ -675,6 +701,20 @@ def _build_week(
 
         elif role == 'intensity' and intensity_idx < len(intensity_workouts):
             w = intensity_workouts[intensity_idx]
+            if week_type == 'taper' and intensity_idx == 0:
+                w = {
+                    'name': 'Stars In Your Eyes',
+                    'level': taper_sharpener['level'],
+                    'role': 'intensity',
+                    'duration': round(taper_sharpener['duration_min']),
+                    'tss': taper_sharpener['tss'],
+                }
+            elif week_type == 'taper' and intensity_idx > 0:
+                w = {
+                    'name': 'Cadence Work',
+                    'level': 1,
+                    'role': 'filler',
+                }
             # Track series coherence
             slot = w.get('slot', f'intensity_{intensity_idx + 1}')
             tracked = series_tracker.assign(slot, w['name'], w['level'])
@@ -685,14 +725,14 @@ def _build_week(
                 # final emitted assignment seam (AE-3.1).
                 tracked_level = _road_ae31_level(
                     tracked['name'], tracked_level)
-            tss = get_workout_tss(tracked['name'], tracked_level)
-            dur = get_workout_duration(tracked['name'], tracked_level)
+            tss = w.get('tss', get_workout_tss(tracked['name'], tracked_level))
+            dur = w.get('duration', get_workout_duration(tracked['name'], tracked_level))
             workout = {
                 'name': tracked['name'],
                 'level': tracked_level,
                 'tss': tss,
                 'duration': dur,
-                'role': 'intensity',
+                'role': w.get('role', 'intensity'),
                 'series_coherent': tracked['coherent'],
             }
             intensity_idx += 1
@@ -777,6 +817,13 @@ def _build_week(
         # Per-day duration cap (athlete availability). Off days excluded.
         if day_caps and workout.get('role') != 'off' and workout.get('duration', 0) > 0:
             workout = _fit_workout_to_cap(workout, day_caps.get(day, 0))
+        if (week_type == 'taper' and workout.get('role') == 'long_ride'
+                and taper_long_ride_cap_minutes is not None
+                and workout.get('duration', 0) > taper_long_ride_cap_minutes):
+            original_duration = workout['duration']
+            workout['duration'] = int(taper_long_ride_cap_minutes)
+            workout['tss'] = round(
+                workout['tss'] * workout['duration'] / original_duration)
 
         total_tss += workout.get('tss', 0)
         days.append({
@@ -788,7 +835,9 @@ def _build_week(
     # from the end) until within budget, then down-level, then shave any
     # remainder. See trim_week_to_budget for the per-week-type budget math
     # (load = hours x 1.10/1.15, recovery x 0.80, taper x 0.70, race x 0.60).
-    max_minutes = trim_week_to_budget(days, week_type, hours_per_week)
+    max_minutes = trim_week_to_budget(
+        days, week_type, hours_per_week,
+        budget_minutes=taper_budget_minutes)
     total_tss = sum(d.get('tss', 0) for d in days)
 
     # Grow-to-floor: the trim above only shrinks. Without growth, LOAD
@@ -892,14 +941,15 @@ def _build_week(
     if max_minutes is not None:
         _total = sum(d.get('duration', 0) for d in days)
         # smallest filler first: a 3% overage must not cost the Sunday ride
-        for d in sorted((x for x in days if x.get('role') == 'filler'
-                         and x.get('name') != 'Rest Day' and x.get('duration', 0) > 0),
-                        key=lambda x: x.get('duration', 0)):
-            if _total <= int(max_minutes):
-                break
-            _total -= d['duration']
-            d.update({'name': 'Rest Day', 'level': 1, 'tss': 0, 'duration': 0, 'role': 'filler'})
-            d.pop('floor_extended_min', None); d.pop('session_floor_min', None)
+        if week_type != 'taper':
+            for d in sorted((x for x in days if x.get('role') == 'filler'
+                             and x.get('name') != 'Rest Day' and x.get('duration', 0) > 0),
+                            key=lambda x: x.get('duration', 0)):
+                if _total <= int(max_minutes):
+                    break
+                _total -= d['duration']
+                d.update({'name': 'Rest Day', 'level': 1, 'tss': 0, 'duration': 0, 'role': 'filler'})
+                d.pop('floor_extended_min', None); d.pop('session_floor_min', None)
     total_tss = sum(d.get('tss', 0) for d in days)
 
     return {
@@ -990,7 +1040,11 @@ def _build_race_week(
             # range rather than emitting a normal 70min Endurance L1.
             workout = _session('Endurance', 1, 'filler', duration=50, tss=39)
         else:
-            workout = {'name': 'Rest Day', 'level': 1, 'tss': 0, 'duration': 0, 'role': 'rest'}
+            if DAY_ORDER.index(day) < race_index - 1:
+                workout = _session(
+                    'Cadence Work', 1, 'filler', duration=45, tss=35)
+            else:
+                workout = {'name': 'Rest Day', 'level': 1, 'tss': 0, 'duration': 0, 'role': 'rest'}
 
         if day_caps and workout['role'] not in ('off', 'race') and workout['duration'] > 0:
             workout = _fit_workout_to_cap(workout, day_caps.get(day, 0))

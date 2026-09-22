@@ -174,7 +174,8 @@ class TestRaceAndTaperHouseTemplates:
         assert by_day['Wed']['name'] == 'Endurance'
         assert by_day['Fri']['name'] == 'Openers'
         assert by_day['Sat']['role'] == 'race'  # legacy overlay still owns it
-        assert [by_day[day]['name'] for day in ('Thu', 'Sun')] == ['Rest Day', 'Rest Day']
+        assert by_day['Thu']['name'] == 'Cadence Work'
+        assert by_day['Sun']['name'] == 'Rest Day'
         assert all(day in by_day for day in ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'))
 
     def test_race_week_respects_caps_and_off_days(self):
@@ -198,10 +199,33 @@ class TestRaceAndTaperHouseTemplates:
         plan = self._plan()
         week = _week(plan, 1)
         names = {d['name'] for d in week['days']}
-        assert {'Thirty-Fifteens', 'Cadence Work', 'Taper Burst Endurance'} <= names
+        assert {'Stars In Your Eyes', 'Cadence Work', 'Taper Burst Endurance'} <= names
         assert 'Endurance' in names  # remaining available day stays easy
         compliance = validate_plan(plan, target_hours=10, off_days=['Mon'], max_intensity=3)
         assert compliance['critical_pass']
+
+    def test_taper_holds_frequency_and_caps_long_ride(self):
+        plan = self._plan(
+            week_descriptors=[
+                {'plan_week': 1, 'phase': 'build', 'week_type': 'load'},
+                {'plan_week': 2, 'phase': 'taper', 'week_type': 'taper'},
+                {'plan_week': 3, 'phase': 'race', 'week_type': 'race',
+                 'race_day': 'Sat'},
+            ],
+            taper_long_ride_cap_minutes=60,
+            taper_budget_minutes=600,
+        )
+        load = _week(plan, 1)
+        taper = _week(plan, 2)
+        load_riding = [d for d in load['days'] if d['duration'] > 0]
+        taper_riding = [d for d in taper['days'] if d['duration'] > 0]
+        assert len(taper_riding) == len(load_riding)
+        taper_long = next(d for d in taper['days'] if d['role'] == 'long_ride')
+        assert taper_long['duration'] <= 60
+        assert any(
+            d['name'] == 'Stars In Your Eyes' for d in taper['days'])
+        assert any(
+            d['name'] == 'Cadence Work' for d in taper['days'])
 
     def test_house_sessions_render_the_required_stimulus(self):
         from workout_mapper import (RACE_WEEK_SHARPENER_WINDOW,
@@ -309,7 +333,7 @@ class TestCalendarPlan:
         plan = _build_jesse_plan()
         w21 = _week(plan, 21)
         total = sum(d['duration'] for d in w21['days'])
-        assert total <= 240, f"Race week too heavy: {total}min"
+        assert total <= 300, f"Race week too heavy: {total}min"
 
     def test_load_weeks_have_two_or_three_intensity(self):
         plan = _build_jesse_plan()

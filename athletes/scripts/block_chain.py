@@ -374,6 +374,8 @@ def build_plan_from_calendar(
     grow_to_weekday_target: bool = True,
     preferred_intensity_days: Optional[List[str]] = None,
     hours_schedule: Optional[Dict[int, float]] = None,
+    taper_budget_minutes: Optional[float] = None,
+    taper_long_ride_cap_minutes: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -457,6 +459,40 @@ def build_plan_from_calendar(
             and bb_phase == 'base' and week_type == 'load'
             else None
         )
+        _taper_budget_minutes = taper_budget_minutes
+        _taper_long_ride_cap_minutes = taper_long_ride_cap_minutes
+        if week_type == 'taper':
+            from taper_prescription import (
+                TAPER_DAILY_LOAD_FRACTION,
+                pre_taper_daily_average_tss,
+            )
+            from pmc_model import ESTIMATED_TSS_PER_HOUR
+            taper_start = min(
+                d['plan_week'] for d in week_descriptors
+                if d.get('week_type') == 'taper')
+            pre_taper_avg = pre_taper_daily_average_tss(
+                all_weeks, taper_start)
+            load_weeks = [
+                previous for previous in all_weeks
+                if previous.get('week_type') in ('load', 'testing')
+            ]
+            total_tss = sum(w.get('total_tss', 0) for w in load_weeks)
+            total_hours = sum(w.get('total_duration', 0) for w in load_weeks) / 60
+            density = total_tss / total_hours if total_hours > 0 else ESTIMATED_TSS_PER_HOUR
+            if _taper_budget_minutes is None and pre_taper_avg > 0 and density > 0:
+                _taper_budget_minutes = (
+                    pre_taper_avg * 7 * TAPER_DAILY_LOAD_FRACTION
+                    / density * 60)
+            latest_load = load_weeks[-1:]
+            if latest_load:
+                long_durations = [
+                    day.get('duration', 0)
+                    for day in latest_load[0].get('days', [])
+                    if day.get('role') == 'long_ride'
+                ]
+                if long_durations:
+                    if _taper_long_ride_cap_minutes is None:
+                        _taper_long_ride_cap_minutes = max(long_durations) * 0.60
 
         if prev_phase is not None and bb_phase != prev_phase:
             # Phase transition closes the running block: workouts change
@@ -516,6 +552,8 @@ def build_plan_from_calendar(
             session_floor_min=session_floor_min,
             grow_to_weekday_target=grow_to_weekday_target,
             floor_pct_override=floor_pct_override,
+            taper_budget_minutes=_taper_budget_minutes,
+            taper_long_ride_cap_minutes=_taper_long_ride_cap_minutes,
         )
         week['plan_week'] = plan_week
         week['block_number'] = block_number
