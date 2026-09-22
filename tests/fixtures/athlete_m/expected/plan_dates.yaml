@@ -6,6 +6,8 @@ plan_start_short: Aug10
 plan_end: '2026-09-20'
 week1_monday: '2026-08-10'
 race_week_monday: '2026-09-14'
+taper_weeks: 1
+taper_days: 12
 weeks:
 - week: 0
   phase: pre_plan

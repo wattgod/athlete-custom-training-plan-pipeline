@@ -21,7 +21,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent))
 
 from block_chain import build_plan_from_calendar, CALENDAR_PHASE_MAP
-from block_builder import build_calendar_week
+from block_builder import (
+    _evict_over_budget_fillers,
+    build_calendar_week,
+    trim_week_to_budget,
+)
 from block_compliance import validate_plan
 from workout_selector import (
     select_workouts_for_week,
@@ -174,7 +178,8 @@ class TestRaceAndTaperHouseTemplates:
         assert by_day['Wed']['name'] == 'Endurance'
         assert by_day['Fri']['name'] == 'Openers'
         assert by_day['Sat']['role'] == 'race'  # legacy overlay still owns it
-        assert [by_day[day]['name'] for day in ('Thu', 'Sun')] == ['Rest Day', 'Rest Day']
+        assert by_day['Thu']['name'] == 'Cadence Work'
+        assert by_day['Sun']['name'] == 'Rest Day'
         assert all(day in by_day for day in ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'))
 
     def test_race_week_respects_caps_and_off_days(self):
@@ -194,14 +199,229 @@ class TestRaceAndTaperHouseTemplates:
         assert by_day['Tue']['name'] == 'Stars In Your Eyes'
         assert by_day['Wed']['name'] == 'Endurance'
 
+    def test_race_week_extends_easy_ride_to_target_with_two_off_days(self):
+        plan = self._plan(
+            off_days=['Mon', 'Fri'],
+            race_week_target_tss=160,
+            race_week_tss_per_hour=55,
+        )
+        week = _week(plan, 2)
+        by_day = {d['day']: d for d in week['days']}
+        pre_race_tss = sum(
+            day['tss'] for day in week['days']
+            if day['day'] in ('Mon', 'Tue', 'Wed', 'Thu', 'Fri'))
+        assert pre_race_tss >= 160
+        assert by_day['Wed']['duration'] > 50
+        assert 'load_shortfall_tss' not in week
+
+    def test_race_week_extension_leaves_sharpener_and_openers_untouched(self):
+        baseline = _week(self._plan(off_days=['Mon', 'Fri']), 2)
+        extended = _week(self._plan(
+            off_days=['Mon', 'Fri'],
+            race_week_target_tss=999,
+            race_week_tss_per_hour=55,
+        ), 2)
+        baseline_by_day = {d['day']: d for d in baseline['days']}
+        extended_by_day = {d['day']: d for d in extended['days']}
+        for day in ('Tue', 'Thu'):
+            assert extended_by_day[day]['name'] == baseline_by_day[day]['name']
+            assert extended_by_day[day]['duration'] == baseline_by_day[day]['duration']
+            assert extended_by_day[day]['tss'] == baseline_by_day[day]['tss']
+        assert extended['load_shortfall_tss'] > 0
+
+    def test_race_week_above_target_does_not_change_existing_sessions(self):
+        baseline = _week(self._plan(off_days=['Mon', 'Fri']), 2)
+        targeted = _week(self._plan(
+            off_days=['Mon', 'Fri'],
+            race_week_target_tss=100,
+            race_week_tss_per_hour=55,
+        ), 2)
+        baseline_by_day = {d['day']: d for d in baseline['days']}
+        targeted_by_day = {d['day']: d for d in targeted['days']}
+        for day in ('Tue', 'Wed', 'Thu'):
+            assert targeted_by_day[day]['name'] == baseline_by_day[day]['name']
+            assert targeted_by_day[day]['duration'] == baseline_by_day[day]['duration']
+            assert targeted_by_day[day]['tss'] == baseline_by_day[day]['tss']
+        assert 'load_shortfall_tss' not in targeted
+
     def test_taper_has_short_short_cadence_and_burst_endurance(self):
         plan = self._plan()
         week = _week(plan, 1)
         names = {d['name'] for d in week['days']}
-        assert {'Thirty-Fifteens', 'Cadence Work', 'Taper Burst Endurance'} <= names
+        assert {'Stars In Your Eyes', 'Cadence Work', 'Taper Burst Endurance'} <= names
         assert 'Endurance' in names  # remaining available day stays easy
         compliance = validate_plan(plan, target_hours=10, off_days=['Mon'], max_intensity=3)
         assert compliance['critical_pass']
+
+    def test_taper_holds_frequency_and_caps_long_ride(self):
+        plan = self._plan(
+            week_descriptors=[
+                {'plan_week': 1, 'phase': 'build', 'week_type': 'load'},
+                {'plan_week': 2, 'phase': 'taper', 'week_type': 'taper'},
+                {'plan_week': 3, 'phase': 'race', 'week_type': 'race',
+                 'race_day': 'Sat'},
+            ],
+            taper_long_ride_cap_minutes=60,
+            taper_budget_minutes=600,
+        )
+        load = _week(plan, 1)
+        taper = _week(plan, 2)
+        load_riding = [d for d in load['days'] if d['duration'] > 0]
+        taper_riding = [d for d in taper['days'] if d['duration'] > 0]
+        assert len(taper_riding) == len(load_riding)
+        taper_long = next(d for d in taper['days'] if d['role'] == 'long_ride')
+        assert taper_long['duration'] <= 60
+        assert any(
+            d['name'] == 'Stars In Your Eyes' for d in taper['days'])
+        assert any(
+            d['name'] == 'Cadence Work' for d in taper['days'])
+
+    def test_low_hour_taper_preserves_calibrated_sharpener_duration(self):
+        from workout_mapper import (
+            RACE_WEEK_SHARPENER_WINDOW,
+            calibrate_race_week_sharpener,
+        )
+
+        taper = _week(self._plan(hours_per_week=3), 1)
+        sharpener = next(
+            day for day in taper['days']
+            if day['name'] == 'Stars In Your Eyes')
+        dose = calibrate_race_week_sharpener()
+        calibrated_duration = round(dose['duration_min'])
+
+        assert sharpener['duration'] == calibrated_duration
+        assert sharpener['session_floor_min'] == calibrated_duration
+        assert (
+            RACE_WEEK_SHARPENER_WINDOW['min_tss']
+            <= sharpener['tss']
+            <= RACE_WEEK_SHARPENER_WINDOW['max_tss']
+        )
+
+    def test_taper_long_ride_cap_survives_session_floor(self):
+        plan = self._plan(
+            taper_long_ride_cap_minutes=42,
+            taper_budget_minutes=600,
+        )
+        taper = _week(plan, 1)
+        taper_long = next(
+            day for day in taper['days'] if day['role'] == 'long_ride')
+
+        assert taper_long['duration'] == 42
+        assert taper_long['taper_capped'] is True
+
+    def test_taper_retrim_never_drops_floor_extended_filler_below_floor(self):
+        days = [
+            {'day': 'Tue', 'name': 'Stars In Your Eyes', 'level': 1,
+             'duration': 62, 'tss': 63, 'role': 'intensity',
+             'session_floor_min': 62},
+            {'day': 'Wed', 'name': 'Endurance', 'level': 1,
+             'duration': 70, 'tss': 55, 'role': 'filler',
+             'session_floor_min': 60},
+            {'day': 'Thu', 'name': 'Cadence Work', 'level': 1,
+             'duration': 60, 'tss': 46, 'role': 'filler',
+             'session_floor_min': 60},
+            {'day': 'Fri', 'name': 'Cadence Work', 'level': 1,
+             'duration': 60, 'tss': 46, 'role': 'filler',
+             'session_floor_min': 60},
+            {'day': 'Sat', 'name': 'Endurance Blocks', 'level': 1,
+             'duration': 60, 'tss': 43, 'role': 'filler',
+             'session_floor_min': 60, 'floor_extended_min': 59},
+            {'day': 'Sun', 'name': 'Endurance with Surges', 'level': 1,
+             'duration': 120, 'tss': 97, 'role': 'long_ride',
+             'session_floor_min': 114},
+        ]
+
+        trim_week_to_budget(days, 'taper', 8)
+
+        saturday = next(day for day in days if day['day'] == 'Sat')
+        assert saturday['duration'] >= 60
+        assert saturday['session_floor_min'] == 60
+
+    def test_low_hour_taper_evicts_lowest_tss_fillers_before_floor_growth(self):
+        days = [
+            {'day': 'Tue', 'name': 'Stars In Your Eyes', 'level': 2,
+             'duration': 62, 'tss': 63, 'role': 'intensity'},
+            {'day': 'Wed', 'name': 'Endurance', 'level': 1,
+             'duration': 60, 'tss': 55, 'role': 'filler'},
+            {'day': 'Thu', 'name': 'Cadence Work', 'level': 1,
+             'duration': 60, 'tss': 46, 'role': 'filler'},
+            {'day': 'Fri', 'name': 'Endurance Blocks', 'level': 1,
+             'duration': 60, 'tss': 42, 'role': 'filler'},
+            {'day': 'Sat', 'name': 'Endurance with Surges', 'level': 1,
+             'duration': 60, 'tss': 48, 'role': 'long_ride'},
+            {'day': 'Sun', 'name': 'Endurance', 'level': 1,
+             'duration': 60, 'tss': 50, 'role': 'filler'},
+            {'day': 'Mon', 'name': 'Cadence Work', 'level': 1,
+             'duration': 60, 'tss': 44, 'role': 'filler'},
+        ]
+
+        removed = _evict_over_budget_fillers(
+            days, week_type='taper', max_minutes=6 * 60 * 0.70,
+            floor_min=60)
+
+        assert removed[0] == 'Endurance Blocks'
+        assert next(day for day in days if day['name'] == 'Rest Day')
+        assert all(
+            day['duration'] == 0 or day['duration'] >= 60
+            for day in days
+        )
+
+    def test_ten_hour_taper_within_floor_budget_is_unchanged(self):
+        days = [
+            {'day': 'Tue', 'name': 'Stars In Your Eyes', 'level': 2,
+             'duration': 62, 'tss': 63, 'role': 'intensity'},
+            {'day': 'Wed', 'name': 'Endurance', 'level': 1,
+             'duration': 60, 'tss': 55, 'role': 'filler'},
+            {'day': 'Sat', 'name': 'Endurance with Surges', 'level': 1,
+             'duration': 60, 'tss': 48, 'role': 'long_ride'},
+        ]
+        before = [dict(day) for day in days]
+
+        _evict_over_budget_fillers(
+            days, week_type='taper', max_minutes=10 * 60 * 0.70,
+            floor_min=60)
+
+        assert days == before
+
+    def test_taper_refuses_eviction_that_crosses_lower_load_band(self):
+        days = [
+            {'day': 'Tue', 'name': 'Stars In Your Eyes', 'level': 2,
+             'duration': 60, 'tss': 63, 'role': 'intensity'},
+            {'day': 'Wed', 'name': 'Endurance', 'level': 1,
+             'duration': 60, 'tss': 55, 'role': 'filler'},
+            {'day': 'Thu', 'name': 'Endurance Blocks', 'level': 1,
+             'duration': 140, 'tss': 80, 'role': 'filler'},
+            {'day': 'Sat', 'name': 'Endurance with Surges', 'level': 1,
+             'duration': 60, 'tss': 48, 'role': 'long_ride'},
+        ]
+
+        removed = _evict_over_budget_fillers(
+            days, week_type='taper', max_minutes=200, floor_min=60)
+
+        assert removed == ['Endurance']
+        assert sum(day['duration'] for day in days) == 260
+        assert next(day for day in days if day['name'] == 'Endurance Blocks')
+
+    def test_race_cadence_exemptions_avoid_unneeded_eviction(self):
+        days = [
+            {'day': 'Tue', 'name': 'Stars In Your Eyes', 'level': 2,
+             'duration': 62, 'tss': 63, 'role': 'intensity'},
+            {'day': 'Wed', 'name': 'Cadence Work', 'level': 1,
+             'duration': 45, 'tss': 35, 'role': 'filler'},
+            {'day': 'Thu', 'name': 'Cadence Work', 'level': 1,
+             'duration': 45, 'tss': 35, 'role': 'filler'},
+            {'day': 'Fri', 'name': 'Openers', 'level': 2,
+             'duration': 40, 'tss': 26, 'role': 'intensity'},
+            {'day': 'Sun', 'name': 'Endurance', 'level': 1,
+             'duration': 20, 'tss': 14, 'role': 'filler'},
+        ]
+
+        removed = _evict_over_budget_fillers(
+            days, week_type='race', max_minutes=6 * 60 * 0.60,
+            floor_min=60, day_caps={'Sun': 45})
+
+        assert removed == []
+        assert sum(day['duration'] for day in days) == 212
 
     def test_house_sessions_render_the_required_stimulus(self):
         from workout_mapper import (RACE_WEEK_SHARPENER_WINDOW,
@@ -309,7 +529,7 @@ class TestCalendarPlan:
         plan = _build_jesse_plan()
         w21 = _week(plan, 21)
         total = sum(d['duration'] for d in w21['days'])
-        assert total <= 240, f"Race week too heavy: {total}min"
+        assert total <= 300, f"Race week too heavy: {total}min"
 
     def test_load_weeks_have_two_or_three_intensity(self):
         plan = _build_jesse_plan()

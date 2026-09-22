@@ -338,11 +338,14 @@ def test_validate_plan_trajectory_is_opt_in_and_severity_split_is_explicit():
     assert {
         key for key, result in with_warning["rules"].items()
         if key.startswith("AE-") and result["severity"] == "CRITICAL"
-    } == {"AE-1.14", "AE-1.19", "AE-1.4", "AE-1.4b"}
+    } == {
+        "AE-1.14", "AE-1.16", "AE-1.18", "AE-1.19",
+        "AE-1.4", "AE-1.4b",
+    }
     assert {
         key for key, result in with_warning["rules"].items()
         if key.startswith("AE-") and result["severity"] == "WARNING"
-    } == {"AE-1.16", "AE-1.18", "AE-1.19b", "AE-1.4c", "AE-1.22"}
+    } == {"AE-1.19b", "AE-1.4c", "AE-1.22"}
 
 
 def test_trajectory_failures_report_critical_and_advisory_rules():
@@ -418,6 +421,8 @@ def test_short_runway_ae_1_14_is_advisory():
             trajectory=_trajectory(
                 race_ctl=89,
                 build_ctl=100,
+                taper_ctl=95,
+                race_tsb=10,
                 weekly_deltas=(1,) * 7,
                 week_types=("load",) * 6 + ("race",),
             ),
@@ -427,6 +432,8 @@ def test_short_runway_ae_1_14_is_advisory():
             trajectory=_trajectory(
                 race_ctl=89,
                 build_ctl=100,
+                taper_ctl=95,
+                race_tsb=10,
                 weekly_deltas=(1,) * 8,
                 week_types=("load",) * 6 + ("race", "recovery"),
             ),
@@ -436,6 +443,8 @@ def test_short_runway_ae_1_14_is_advisory():
             trajectory=_trajectory(
                 race_ctl=89,
                 build_ctl=100,
+                taper_ctl=95,
+                race_tsb=10,
                 weekly_deltas=(1,) * 8,
                 week_types=("load",) * 7 + ("race",),
             ),

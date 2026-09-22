@@ -332,14 +332,16 @@ ARTIFACT_DERIVED_SCHEMAS = {
         "required": (
             "race_date", "race_weekday", "plan_weeks", "plan_start",
             "plan_start_short", "plan_end", "week1_monday",
-            "race_week_monday", "weeks", "workout_naming_convention",
+            "race_week_monday", "weeks",
+            "workout_naming_convention",
             "workout_example", "day_abbreviations", "month_abbreviations",
         ),
-        "optional": (), "optional_non_null": False,
+        "optional": ("taper_weeks", "taper_days"), "optional_non_null": False,
         "output_shape": {
             "race_date": DERIVED, "race_weekday": DERIVED, "plan_weeks": DERIVED,
             "plan_start": DERIVED, "plan_start_short": DERIVED, "plan_end": DERIVED,
             "week1_monday": DERIVED, "race_week_monday": DERIVED,
+            "taper_weeks": _optional(DERIVED), "taper_days": _optional(DERIVED),
             "weeks": _list(_CALENDAR_WEEK), "workout_naming_convention": DERIVED,
             "workout_example": DERIVED,
             "day_abbreviations": _map(_DAY_NAMES, DERIVED),

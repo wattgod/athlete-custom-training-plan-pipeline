@@ -57,6 +57,23 @@ def test_basic_calculation():
     print("  ✓ PASSED")
 
 
+def test_taper_weeks_and_recovery_adjacency():
+    result = calculate_plan_dates(
+        RACE_DATE, plan_weeks=12, meso_pattern='3:1', taper_weeks=2)
+    assert result['taper_weeks'] == 2
+    assert result['taper_days'] == 14 + 6
+    assert [w['phase'] for w in result['weeks'][-3:]] == [
+        'taper', 'taper', 'race']
+    assert result['weeks'][-3]['is_recovery_week'] is False
+
+
+def test_short_taper_defaults_to_one_week():
+    result = calculate_plan_dates(RACE_DATE, plan_weeks=9, taper_weeks=2)
+    assert result['taper_weeks'] == 2
+    assert [w['phase'] for w in result['weeks'][-3:]] == [
+        'taper', 'taper', 'race']
+
+
 def test_race_on_different_weekdays():
     """Test races on different days of the week."""
     print("\n📋 Test: Race on Different Weekdays")

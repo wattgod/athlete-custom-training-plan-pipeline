@@ -311,6 +311,7 @@ def select_workouts_for_week(
     avoid_series: Optional[set] = None,
     methodology_profile: Optional[Dict[str, Any]] = None,
     event_format: Optional[str] = None,
+    level_offset: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Select workouts for a single week.
 
@@ -347,6 +348,8 @@ def select_workouts_for_week(
             constrained coach-library pools in road_racing.yaml. Race demands
             choose within those pools; the protected VO2 anchor is never
             replaced.
+        level_offset: Optional explicit load-week level offset. ``None``
+            preserves the historical ``week_in_block - 1`` ladder.
 
     Returns:
         List of workout dicts: [{'slot': str, 'name': str, 'level': int, 'role': str}]
@@ -385,7 +388,12 @@ def select_workouts_for_week(
         'max_intensity_duration_min')
 
     slots = phase_config.get('slots', {})
-    level = min(base_level + (week_in_block - 1), max_level)
+    level = min(
+        base_level + (
+            level_offset if level_offset is not None else week_in_block - 1
+        ),
+        max_level,
+    )
 
     workouts = []
     intensity_count = 0

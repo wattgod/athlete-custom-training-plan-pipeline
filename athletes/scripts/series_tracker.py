@@ -3,7 +3,9 @@
 Series Tracker — enforces workout series coherence across blocks.
 
 Block-builder rule: same workout TYPE (exact name) across load weeks in a block,
-level progresses +1 per week. Recovery weeks have NO series progression.
+progresses according to AE-4.1's one-lever rule: the level either repeats when
+volume is the progression lever or advances by one when intensity is the lever.
+Recovery weeks have NO series progression.
 
 "Same type" means the EXACT same workout name (minus level number).
 - VO2max 30/30 and VO2max 40/20 are DIFFERENT types
@@ -61,15 +63,18 @@ class SeriesTracker:
         self._block_history: List[Dict[str, Any]] = []
         self._current_block: List[Dict[str, Any]] = []
         self._week_in_block: int = 0
+        self._expected_delta: int = 1
 
     def start_block(self):
         """Begin a new 3-week block."""
         self._current_block = []
         self._week_in_block = 0
+        self._expected_delta = 1
 
-    def advance_week(self):
-        """Move to next week within the block."""
+    def advance_week(self, level_delta: int = 1):
+        """Move to next week and record the AE-4.1 level delta."""
         self._week_in_block += 1
+        self._expected_delta = level_delta
 
     def end_block(self):
         """Complete the current block and save history."""
@@ -109,13 +114,16 @@ class SeriesTracker:
                     f"now '{name}'. Should be same type across load weeks."
                 )
 
-            # Check level progression (+1 expected within block)
-            expected_level = prev['last_level'] + 1
+            # Check level progression according to the active one-lever
+            # delta.  A level ceiling at 6 remains a valid plateau.
+            expected_level = prev['last_level'] + self._expected_delta
             if level != expected_level and self._week_in_block > 0:
                 if level < prev['last_level']:
                     result['note'] += f" Level decreased ({prev['last_level']}→{level})."
-                elif level > expected_level:
-                    result['note'] += f" Level jumped +{level - prev['last_level']} (expected +1)."
+                else:
+                    result['note'] += (
+                        f" Level delta +{level - prev['last_level']} "
+                        f"(expected +{self._expected_delta}).")
                 # Auto-correct to expected if within range
                 if 1 <= expected_level <= 6:
                     result['level'] = expected_level
@@ -130,6 +138,7 @@ class SeriesTracker:
             'name': name,
             'level': result['level'],
             'week': self._week_in_block,
+            'expected_delta': self._expected_delta,
         })
 
         return result
@@ -144,7 +153,10 @@ class SeriesTracker:
             return 1  # New series starts at L1
 
         last = self._active_series[slot]['last_level']
-        next_level = last + 1 if self._week_in_block > 0 else last
+        next_level = (
+            last + self._expected_delta
+            if self._week_in_block > 0 else last
+        )
         return min(next_level, max_level)
 
     def get_series_name(self, slot: str) -> Optional[str]:
@@ -175,13 +187,17 @@ class SeriesTracker:
                     f"Series break in {slot}: {[a['name'] for a in assignments]}"
                 )
 
-            # Check level progression (level ceiling at 6 is not a violation)
+            # Check level progression (level ceiling at 6 is not a violation).
             levels = [a['level'] for a in assignments]
             for i in range(1, len(levels)):
-                if levels[i] != levels[i-1] + 1 and levels[i-1] < 6:
+                delta = levels[i] - levels[i - 1]
+                expected_delta = assignments[i].get('expected_delta', 1)
+                if levels[i - 1] >= 6 and levels[i] == 6:
+                    continue
+                if delta != expected_delta:
                     violations.append(
                         f"Level progression in {slot}: {levels} "
-                        f"(expected +1 per week)"
+                        f"(expected +{expected_delta})"
                     )
                     break
 

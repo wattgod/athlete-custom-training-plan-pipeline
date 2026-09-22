@@ -19,7 +19,7 @@ Source: block-builder SKILL.md, adapted for continuous plan generation
 
 from typing import Dict, List, Any, Optional
 from archetype import determine_phase
-from block_builder import build_block, build_calendar_week, trim_week_to_budget
+from block_builder import DAY_ORDER, build_block, build_calendar_week, trim_week_to_budget
 from series_tracker import SeriesTracker
 
 # plan_dates phase → block-builder phase
@@ -378,6 +378,10 @@ def build_plan_from_calendar(
     grow_to_weekday_target: bool = True,
     preferred_intensity_days: Optional[List[str]] = None,
     hours_schedule: Optional[Dict[int, float]] = None,
+    taper_budget_minutes: Optional[float] = None,
+    taper_long_ride_cap_minutes: Optional[float] = None,
+    race_week_target_tss: Optional[float] = None,
+    race_week_tss_per_hour: float = 55.0,
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -450,6 +454,8 @@ def build_plan_from_calendar(
     phase_block_index = max(1, phase_block_start)
     prev_phase = None
     cadence_skill_level = 0
+    block_level_offset = 0
+    prev_load_week_hours = None
 
     for desc in week_descriptors:
         plan_week = desc['plan_week']
@@ -461,6 +467,82 @@ def build_plan_from_calendar(
             and bb_phase == 'base' and week_type == 'load'
             else None
         )
+        _taper_budget_minutes = taper_budget_minutes
+        _taper_long_ride_cap_minutes = taper_long_ride_cap_minutes
+        _race_week_target_tss = None
+        _race_week_tss_per_hour = race_week_tss_per_hour
+        if week_type == 'taper':
+            from taper_prescription import (
+                TAPER_DAILY_LOAD_FRACTION,
+                pre_taper_daily_average_tss,
+            )
+            from pmc_model import ESTIMATED_TSS_PER_HOUR
+            taper_start = min(
+                d['plan_week'] for d in week_descriptors
+                if d.get('week_type') == 'taper')
+            pre_taper_avg = pre_taper_daily_average_tss(
+                all_weeks, taper_start)
+            load_weeks = [
+                previous for previous in all_weeks
+                if previous.get('week_type') in ('load', 'testing')
+            ]
+            total_tss = sum(w.get('total_tss', 0) for w in load_weeks)
+            total_hours = sum(w.get('total_duration', 0) for w in load_weeks) / 60
+            density = total_tss / total_hours if total_hours > 0 else ESTIMATED_TSS_PER_HOUR
+            if _taper_budget_minutes is None and pre_taper_avg > 0 and density > 0:
+                _taper_budget_minutes = (
+                    pre_taper_avg * 7 * TAPER_DAILY_LOAD_FRACTION
+                    / density * 60)
+            latest_load = load_weeks[-1:]
+            if latest_load:
+                long_durations = [
+                    day.get('duration', 0)
+                    for day in latest_load[0].get('days', [])
+                    if day.get('role') == 'long_ride'
+                ]
+                if long_durations:
+                    if _taper_long_ride_cap_minutes is None:
+                        _taper_long_ride_cap_minutes = max(long_durations) * 0.60
+        elif week_type == 'race':
+            from taper_prescription import (
+                RACE_WEEK_DAILY_LOAD_FRACTION,
+                pre_taper_daily_average_tss,
+            )
+            taper_weeks = [
+                d for d in week_descriptors if d.get('week_type') == 'taper'
+            ]
+            if taper_weeks:
+                taper_start = min(d['plan_week'] for d in taper_weeks)
+                pre_taper_avg = pre_taper_daily_average_tss(
+                    all_weeks, taper_start)
+            else:
+                load_weeks = [
+                    previous for previous in all_weeks
+                    if previous.get('week_type') in ('load', 'testing')
+                ]
+                pre_taper_avg = (
+                    sum(w.get('total_tss', 0) for w in load_weeks[-2:]) / 14
+                    if load_weeks else 0.0
+                )
+            load_weeks = [
+                previous for previous in all_weeks
+                if previous.get('week_type') in ('load', 'testing')
+            ]
+            total_tss = sum(w.get('total_tss', 0) for w in load_weeks)
+            total_hours = sum(w.get('total_duration', 0) for w in load_weeks) / 60
+            if race_week_tss_per_hour == 55.0 and total_hours > 0:
+                _race_week_tss_per_hour = total_tss / total_hours
+            race_day = desc.get('race_day')
+            race_index = DAY_ORDER.index(race_day) if race_day in DAY_ORDER else 6
+            # The target is a weekly-load fraction expressed across the
+            # available pre-race window.  ``pre_taper_avg`` is daily TSS, so
+            # convert it back to the seven-day equivalent before holding the
+            # 50% race-week load target.  race_index still gates races with
+            # no pre-race days and identifies the Mon..race-eve window.
+            _race_week_target_tss = race_week_target_tss or (
+                RACE_WEEK_DAILY_LOAD_FRACTION * pre_taper_avg * 7
+                if pre_taper_avg > 0 and race_index > 0 else None
+            )
 
         if prev_phase is not None and bb_phase != prev_phase:
             # Phase transition closes the running block: workouts change
@@ -472,7 +554,24 @@ def build_plan_from_calendar(
             block_number += 1
             phase_block_index = 1
             week_in_block = 1
+            block_level_offset = 0
+            prev_load_week_hours = None
         prev_phase = bb_phase
+
+        progression_lever = None
+        if week_type == 'load':
+            if prev_load_week_hours is None:
+                level_delta = None
+            else:
+                ramp = (
+                    hours_schedule is not None
+                    and week_hours > prev_load_week_hours + 0.05
+                )
+                level_delta = 0 if ramp else 1
+                tracker.advance_week(level_delta=level_delta)
+                block_level_offset += level_delta
+                progression_lever = 'volume' if ramp else 'intensity'
+            prev_load_week_hours = week_hours
 
         if week_type == 'load':
             wk_intensity = max_intensity
@@ -520,10 +619,20 @@ def build_plan_from_calendar(
             session_floor_min=session_floor_min,
             grow_to_weekday_target=grow_to_weekday_target,
             floor_pct_override=floor_pct_override,
+            taper_budget_minutes=_taper_budget_minutes,
+            taper_long_ride_cap_minutes=_taper_long_ride_cap_minutes,
+            race_week_target_tss=(
+                _race_week_target_tss
+                if week_type == 'race' else race_week_target_tss),
+            race_week_tss_per_hour=_race_week_tss_per_hour,
+            level_offset=(
+                block_level_offset if week_type == 'load' else None
+            ),
         )
         week['plan_week'] = plan_week
         week['block_number'] = block_number
         week['target_hours'] = week_hours
+        week['progression_lever'] = progression_lever
 
         # Cadence Work is a learned skill, unlike a phase-specific interval
         # series.  A new phase must not reissue its Level-1 introductory
@@ -576,19 +685,28 @@ def build_plan_from_calendar(
             budget += sum(int(d.get('floor_extended_min') or 0) for d in week.get('days', []))
             overflow = sum(d.get('duration', 0) for d in week.get('days', [])) - budget
             if overflow > 0:
-                candidates = [d for d in week.get('days', [])
-                              if d.get('duration', 0) > 0 and d.get('name') != 'Rest Day']
-                if candidates:
+                while overflow > 0:
+                    candidates = [
+                        d for d in week.get('days', [])
+                        if d.get('duration', 0) > int(
+                            d.get('session_floor_min') or 0)
+                        and d.get('name') != 'Rest Day'
+                    ]
+                    if not candidates:
+                        break
                     longest = max(candidates, key=lambda d: d['duration'])
                     old_duration = longest['duration']
-                    longest['duration'] = max(1, old_duration - overflow)
-                    longest['tss'] = round(longest['tss'] * longest['duration'] / old_duration)
+                    floor = int(longest.get('session_floor_min') or 0)
+                    reduction = min(overflow, old_duration - floor)
+                    longest['duration'] = old_duration - reduction
+                    longest['tss'] = round(
+                        longest['tss'] * longest['duration'] / old_duration)
+                    overflow -= reduction
         _sync_week_totals(week)
         all_weeks.append(week)
 
         # Block bookkeeping: a recovery/taper/race week closes the block.
-        # Level progression within a block comes from week_in_block
-        # (workout selection adds week_in_block - 1 to base_level).
+        # Load-week progression uses the block-local one-lever offset above.
         if week_type == 'testing':
             # Standalone assessment block: the battery is one-off tests, not
             # a training series — close it so the series tracker never pairs
@@ -600,8 +718,9 @@ def build_plan_from_calendar(
             block_number += 1
             phase_block_index += 1
             week_in_block = 1
+            block_level_offset = 0
+            prev_load_week_hours = None
         elif week_type == 'load':
-            tracker.advance_week()
             week_in_block += 1
         else:
             violations.extend(tracker.validate_block())
@@ -612,6 +731,8 @@ def build_plan_from_calendar(
             week_in_block = 1
             # Next block starts one level up, capped by training age.
             block_base_level = min(block_base_level + 1, max_level)
+            block_level_offset = 0
+            prev_load_week_hours = None
 
     return {
         'total_weeks': len(week_descriptors),

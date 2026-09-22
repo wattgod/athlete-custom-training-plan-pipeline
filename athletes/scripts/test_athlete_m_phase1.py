@@ -83,8 +83,9 @@ def test_athlete_m_phase3_golden(monkeypatch, tmp_path):
         ))
     from derived_registry import ARTIFACT_DERIVED_SCHEMAS
     calendar_registry = plan_dates.get('_derived') or []
-    assert {record['field'] for record in calendar_registry} == set(
-        ARTIFACT_DERIVED_SCHEMAS['calendar']['required'])
+    expected_fields = set(ARTIFACT_DERIVED_SCHEMAS['calendar']['required'])
+    expected_fields.update(ARTIFACT_DERIVED_SCHEMAS['calendar']['optional'])
+    assert {record['field'] for record in calendar_registry} == expected_fields
     assert {record['revision'] for record in calendar_registry} == {1}
     assert {key: value for key, value in plan_dates.items() if key != '_derived'} == (
         yaml.safe_load(golden_path.read_text()))

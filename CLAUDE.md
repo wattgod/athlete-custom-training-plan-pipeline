@@ -35,7 +35,7 @@ Questionnaire → Block-Builder Engine → ZWO Workouts → HTML Guide → PDF �
 - Block-builder coaching engine integrated (April 2026)
 - 100 archetypes × 6 levels = 600 workout variations
 - 31 canonical workout types from TP library
-- 11 CRITICAL block-builder rules + 4 CRITICAL / 5 advisory PMC trajectory rules validated before delivery
+- 11 CRITICAL block-builder rules + 6 CRITICAL / 3 advisory PMC trajectory rules validated before delivery
 - Full delivery: ZWO files + 144KB HTML guide + PDF + dashboard + coaching brief
 
 ## End-to-End Flow
