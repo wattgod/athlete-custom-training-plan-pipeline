@@ -127,11 +127,32 @@ def estimate_start_ctl(profile: dict, plan: Optional[dict] = None) -> dict:
 
 
 def _day_tss(day: dict) -> float:
-    return float(day.get("tss") or 0)
+    prescribed_tss = float(day.get("tss") or 0)
+    if any(day.get(flag) for flag in (
+        "sessions_included",
+        "nested_sessions_included",
+        "sessions_tss_included",
+        "nested_load_included",
+        "fixed_tss_included",
+    )):
+        return prescribed_tss
+    return prescribed_tss + sum(
+        float(session.get("tss") or 0)
+        for session in day.get("sessions", [])
+    )
 
 
-def plan_daily_tss(plan: dict, plan_dates: dict) -> List[dict]:
+def plan_daily_tss(
+    plan: dict,
+    plan_dates: dict,
+    daily_override: Optional[List[dict]] = None,
+) -> List[dict]:
     """Join block-builder day load to the authoritative calendar dates."""
+    override_by_date = {
+        entry.get("date"): float(entry.get("tss") or 0)
+        for entry in (daily_override or [])
+        if entry.get("date")
+    }
     plan_by_week = {
         week.get("plan_week", week.get("week")): week
         for week in (plan or {}).get("weeks", [])
@@ -159,7 +180,11 @@ def plan_daily_tss(plan: dict, plan_dates: dict) -> List[dict]:
                 "date": calendar_day.get("date"),
                 "plan_week": plan_week,
                 "week_type": week_type,
-                "tss": _day_tss(block_day),
+                "tss": (
+                    override_by_date[calendar_day.get("date")]
+                    if calendar_day.get("date") in override_by_date
+                    else _day_tss(block_day)
+                ),
             })
     return entries
 
@@ -181,9 +206,10 @@ def build_trajectory(
     tau_atl: float = TAU_ATL_DEFAULT,
     b_race_dates: Sequence[str] = (),
     build_ctl: Optional[float] = None,
+    daily_override: Optional[List[dict]] = None,
 ) -> dict:
     """Build a JSON-serialisable daily and weekly PMC trajectory."""
-    daily = plan_daily_tss(plan, plan_dates)
+    daily = plan_daily_tss(plan, plan_dates, daily_override=daily_override)
     states = simulate(
         [entry["tss"] for entry in daily],
         start_ctl=start_ctl,
