@@ -2426,6 +2426,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     if _use_block_builder:
         from block_compliance import validate_plan as _bb_validate, \
             format_compliance_report as _bb_report
+        from pmc_model import build_trajectory, estimate_start_ctl
         # GG_DUMP_BB_PLAN=<path>: write the block plan exactly as the gate
         # sees it (diagnostic; sibling of GG_LIBRARY_TRACE).
         if os.environ.get('GG_DUMP_BB_PLAN'):
@@ -2440,12 +2441,35 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                     json.dumps(_jsonable(_bb_plan), indent=1) + '\n')
             except (OSError, TypeError, ValueError):
                 pass
+        _start_ctl = estimate_start_ctl(profile)
+        _b_race_dates = [
+            event.get('date')
+            for event in (profile.get('b_events', []) or [])
+            if event.get('date')
+        ]
+        _trajectory = build_trajectory(
+            _bb_plan,
+            plan_dates,
+            _start_ctl['ctl'],
+            b_race_dates=_b_race_dates,
+        )
+        _trajectory['start_ctl_provenance'] = _start_ctl
+        try:
+            (athlete_dir / 'pmc_trajectory.json').write_text(
+                json.dumps(_trajectory, indent=2) + '\n')
+        except OSError:
+            pass
         _compliance = _bb_validate(
             _bb_plan,
             target_hours=cycling_hours_target,
             off_days=_bb_off_days,
             max_intensity=max_intensity_per_week,
+            trajectory=_trajectory,
+            short_format=_bb_discipline in ('cx', 'cyclocross'),
         )
+        for rule_id, rule in _compliance['rules'].items():
+            if rule.get('severity') == 'WARNING' and not rule.get('passed'):
+                log.warning(f"Compliance warning {rule_id}: {rule.get('message')}")
         if not _compliance['critical_pass']:
             report = _bb_report(_compliance)
             log.error("COMPLIANCE GATE FLAGGED (delivering for coach review)\n" + report)
@@ -5718,6 +5742,10 @@ def generate_athlete_package(athlete_id: str) -> dict:
         if _private_variety.is_file():
             (athlete_dir / 'library_variety.json').write_text(
                 _private_variety.read_text(encoding='utf-8'), encoding='utf-8')
+        _private_pmc = _authored_dir / 'pmc_trajectory.json'
+        if _private_pmc.is_file():
+            (athlete_dir / 'pmc_trajectory.json').write_text(
+                _private_pmc.read_text(encoding='utf-8'), encoding='utf-8')
     detail(f"Authored {len(zwo_files)} canonical workout sessions")
     control = canonical_model['athlete']
     detail(f"Canonical control: {control['control_metric']} ({control['control_basis']})")
