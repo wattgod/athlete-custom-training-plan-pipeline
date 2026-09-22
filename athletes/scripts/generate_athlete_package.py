@@ -1641,8 +1641,6 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
             if (week_type == 'race'
                     and bd.get('name') == 'Stars In Your Eyes'):
                 continue
-            if bd.get('race_week_extended'):
-                continue
             if not _library_selection_in_scope(bd):
                 continue
             _slot_filler_ordinal = None
@@ -5520,6 +5518,8 @@ GO GET IT, {athlete_name.upper()}!
         )
         from zwo_parser import parse_zwo_text
 
+        # GG_DUMP_BB_PLAN=<path>: write the final block plan and emitted-load
+        # projection seen by the compliance gate (diagnostic).
         date_by_day = {
             (calendar_week.get('week', calendar_week.get('plan_week')),
              calendar_day.get('day')): calendar_day.get('date')
@@ -5527,12 +5527,14 @@ GO GET IT, {athlete_name.upper()}!
             for calendar_day in calendar_week.get('days', [])
         }
         block_day_by_date = {}
+        block_tss_by_date = {}
         for block_week in _bb_plan.get('weeks', []):
             plan_week = block_week.get('plan_week', block_week.get('week'))
             for block_day in block_week.get('days', []):
                 date = date_by_day.get((plan_week, block_day.get('day')))
                 if date:
                     block_day_by_date[date] = block_day
+                    block_tss_by_date[date] = day_total_tss(block_day)
         overlay_dates = {
             calendar_day.get('date')
             for calendar_week in plan_dates.get('weeks', [])
@@ -5569,7 +5571,8 @@ GO GET IT, {athlete_name.upper()}!
             if replaced:
                 changed_records.setdefault(date, []).append(record)
 
-        daily_override = []
+        projected_tss_by_date = dict(block_tss_by_date)
+        overridden_dates = set()
         if projection_ftp is not None:
             for date, records in changed_records.items():
                 emitted_tss = 0.0
@@ -5586,7 +5589,12 @@ GO GET IT, {athlete_name.upper()}!
                     emitted_tss += float(metrics.get('tss') or 0)
                     parsed = True
                 if parsed:
-                    daily_override.append({'date': date, 'tss': emitted_tss})
+                    projected_tss_by_date[date] = emitted_tss
+                    overridden_dates.add(date)
+        daily_override = [
+            {'date': date, 'tss': projected_tss_by_date[date]}
+            for date in overridden_dates
+        ]
         if os.environ.get('GG_DUMP_BB_PLAN'):
             def _jsonable(o):
                 if isinstance(o, dict):
