@@ -870,6 +870,11 @@ def main():
             meso_pattern = meth_data.get('configuration', {}).get('meso_pattern')
             if not meso_pattern:
                 meso_pattern = meth_data.get('meso_pattern')
+    if not meso_pattern:
+        from plan_load_schedule import default_meso_pattern
+        age = ((profile.get('health_factors') or {}).get('age')
+               or profile.get('age'))
+        meso_pattern = default_meso_pattern(age)
 
     # Get B-events and travel dates from profile
     b_events = profile.get('b_events', [])

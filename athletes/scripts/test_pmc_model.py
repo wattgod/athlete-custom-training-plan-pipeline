@@ -40,7 +40,10 @@ def _trajectory(
     weekly_deltas=(1,),
     monthly_ramps=(),
     b_races=(),
+    week_types=None,
 ):
+    if week_types is None:
+        week_types = ("load",) * len(weekly_deltas)
     return {
         "start_ctl": 100,
         "build_ctl": build_ctl,
@@ -58,7 +61,7 @@ def _trajectory(
         "weeks": [
             {
                 "plan_week": i + 1,
-                "week_type": "load",
+                "week_type": week_types[i],
                 "start_ctl": 100,
                 "end_ctl": 100 + delta,
                 "ctl_delta": delta,
@@ -97,10 +100,22 @@ def test_estimate_start_ctl_measured_inferred_and_missing():
     inferred = estimate_start_ctl(
         {"training_history": {"current_weekly_hours": 7}}
     )
-    assert inferred["ctl"] == 55
+    assert inferred["ctl"] == 55 * ((3 + 0.65) / 4)
     assert inferred["value_class"] == "inferred"
-    assert estimate_start_ctl({"weekly_hours": 7})["ctl"] == 55
+    assert estimate_start_ctl({"weekly_hours": 7})["ctl"] == 55 * ((3 + 0.65) / 4)
     assert estimate_start_ctl({})["ctl"] == 0
+
+
+def test_estimate_start_ctl_uses_weekly_availability_fallback():
+    result = estimate_start_ctl(
+        {"weekly_availability": {"cycling_hours_target": 7}}
+    )
+    cycle_factor = (3 + 0.65) / 4
+    assert result["ctl"] == 55 * cycle_factor
+    assert result["inputs"]["hours_source"] == (
+        "weekly_availability.cycling_hours_target"
+    )
+    assert "current hours not reported; assumed at plan target" in result["basis"]
 
 
 def test_estimate_start_ctl_uses_plan_load_week_density():
@@ -123,10 +138,26 @@ def test_estimate_start_ctl_uses_plan_load_week_density():
         {"training_history": {"current_weekly_hours": 7}},
         plan=plan,
     )
-    assert result["ctl"] == 40
+    cycle_factor = (3 + 0.65) / 4
+    assert result["ctl"] == 40 * cycle_factor
     assert result["inputs"]["tss_per_hour"] == 40
     assert result["inputs"]["source"] == "plan_load_weeks"
+    assert result["inputs"]["hours_source"] == (
+        "training_history.current_weekly_hours"
+    )
+    assert result["inputs"]["cycle_factor"] == cycle_factor
+    assert result["inputs"]["meso_pattern"] == "3:1"
     assert "40.0 TSS/h" in result["basis"]
+
+
+def test_estimate_start_ctl_uses_explicit_meso_pattern():
+    result = estimate_start_ctl(
+        {"training_history": {"current_weekly_hours": 7}},
+        plan={"weeks": []},
+        meso_pattern="2:1",
+    )
+    assert result["ctl"] == 55 * 7 / 7 * ((2 + 0.65) / 3)
+    assert result["inputs"]["meso_pattern"] == "2:1"
 
 
 def _synthetic_plan():
@@ -278,11 +309,12 @@ def test_short_format_and_no_race_messages():
     assert ae_1_14_ctl_retention_build(no_race) == (True, "no race day in calendar")
 
 
-def test_validate_plan_trajectory_is_opt_in_and_warnings_are_noncritical():
+def test_validate_plan_trajectory_is_opt_in_and_severity_split_is_explicit():
     plan = {"weeks": []}
     without = validate_plan(plan)
     assert not any(key.startswith("AE-") for key in without["rules"])
     trajectory = _trajectory(
+        weekly_deltas=(1,) * 12,
         b_races=({"date": "2027-01-10", "tsb": 5},)
     )
     with_warning = validate_plan(plan, trajectory=trajectory)
@@ -291,7 +323,10 @@ def test_validate_plan_trajectory_is_opt_in_and_warnings_are_noncritical():
         "AE-1.4", "AE-1.4b", "AE-1.4c", "AE-1.22",
     }
     assert with_warning["rules"]["AE-1.22"]["passed"] is False
-    without_warning = validate_plan(plan, trajectory=_trajectory())
+    without_warning = validate_plan(
+        plan,
+        trajectory=_trajectory(weekly_deltas=(1,) * 12),
+    )
     assert with_warning["critical_pass"] == without_warning["critical_pass"]
     report = format_compliance_report(with_warning)
     assert "AE-1.22 [WARNING]" in report
@@ -299,10 +334,18 @@ def test_validate_plan_trajectory_is_opt_in_and_warnings_are_noncritical():
         result["severity"]
         for key, result in with_warning["rules"].items()
         if key.startswith("AE-")
-    } == {"WARNING"}
+    } == {"CRITICAL", "WARNING"}
+    assert {
+        key for key, result in with_warning["rules"].items()
+        if key.startswith("AE-") and result["severity"] == "CRITICAL"
+    } == {"AE-1.14", "AE-1.19", "AE-1.4", "AE-1.4b"}
+    assert {
+        key for key, result in with_warning["rules"].items()
+        if key.startswith("AE-") and result["severity"] == "WARNING"
+    } == {"AE-1.16", "AE-1.18", "AE-1.19b", "AE-1.4c", "AE-1.22"}
 
 
-def test_trajectory_failures_are_all_advisory():
+def test_trajectory_failures_report_critical_and_advisory_rules():
     trajectory = _trajectory(
         race_tsb=0,
         race_ctl=0,
@@ -344,4 +387,62 @@ def test_trajectory_failures_are_all_advisory():
         for key, rule in result["rules"].items()
         if key.startswith("AE-")
     )
-    assert result["critical_pass"] is True
+    assert result["critical_pass"] is False
+
+
+def test_short_runway_ae_1_14_is_advisory():
+    rule_functions = (
+        "r01_no_back_to_back_intensity",
+        "r02_vo2max_frequency",
+        "r03_recovery_tss_ceiling",
+        "r04_recovery_intensity_ceiling",
+        "r05_intensity_count",
+        "r06_long_ride_present",
+        "r08_fuel_tags",
+        "r11_strength_present",
+        "r14_series_coherence",
+        "r19_hours_fit",
+        "r20_off_days_respected",
+    )
+    with ExitStack() as stack:
+        for function_name in rule_functions:
+            stack.enter_context(
+                patch.object(
+                    block_compliance,
+                    function_name,
+                    return_value=(True, "pass"),
+                )
+            )
+        short = validate_plan(
+            {"weeks": []},
+            trajectory=_trajectory(
+                race_ctl=89,
+                build_ctl=100,
+                weekly_deltas=(1,) * 7,
+                week_types=("load",) * 6 + ("race",),
+            ),
+        )
+        short_with_recovery = validate_plan(
+            {"weeks": []},
+            trajectory=_trajectory(
+                race_ctl=89,
+                build_ctl=100,
+                weekly_deltas=(1,) * 8,
+                week_types=("load",) * 6 + ("race", "recovery"),
+            ),
+        )
+        long = validate_plan(
+            {"weeks": []},
+            trajectory=_trajectory(
+                race_ctl=89,
+                build_ctl=100,
+                weekly_deltas=(1,) * 8,
+                week_types=("load",) * 7 + ("race",),
+            ),
+        )
+    assert short["rules"]["AE-1.14"]["severity"] == "WARNING"
+    assert short["critical_pass"] is True
+    assert short_with_recovery["rules"]["AE-1.14"]["severity"] == "WARNING"
+    assert short_with_recovery["critical_pass"] is True
+    assert long["rules"]["AE-1.14"]["severity"] == "CRITICAL"
+    assert long["critical_pass"] is False

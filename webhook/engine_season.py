@@ -72,10 +72,7 @@ Mapping notes:
 import functools
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-
-import yaml
 
 # Shared enums/helpers — single source with /engine/block (engine_adapter
 # also puts athletes/scripts on sys.path, which calculate_plan_dates needs).
@@ -84,7 +81,6 @@ from engine_adapter import (  # noqa: F401
     ENGINE_VERSION,
     METHODOLOGIES,
     MIN_HOURS,
-    _SCRIPTS_DIR,
     _is_num,
 )
 
@@ -92,6 +88,7 @@ from calculate_plan_dates import (  # noqa: E402
     calculate_plan_dates,
     validate_plan_dates,
 )
+from plan_load_schedule import default_meso_pattern  # noqa: E402
 
 PRIORITIES = {'A', 'B', 'C'}
 MIN_SEASON_WEEKS = 4
@@ -110,22 +107,6 @@ class SeasonBuildError(Exception):
     def __init__(self, fields: Dict[str, str]):
         super().__init__('season_build_failed')
         self.fields = fields
-
-
-@functools.lru_cache(maxsize=1)
-def _methodology_meso_patterns() -> Dict[str, Optional[str]]:
-    """methodology id → meso_pattern from the pipeline's methodologies.yaml
-    (currently 3:1 across the board; read from config so the season endpoint
-    tracks any future change). Missing file/keys fall back to
-    calculate_plan_dates' own DEFAULT_MESO_PATTERN via None."""
-    path = Path(_SCRIPTS_DIR) / 'config' / 'methodologies.yaml'
-    try:
-        with open(path) as f:
-            data = yaml.safe_load(f) or {}
-    except OSError:  # pragma: no cover — config ships with the repo
-        return {}
-    return {k: v.get('meso_pattern')
-            for k, v in data.items() if isinstance(v, dict)}
 
 
 def _parse_date(value: Any) -> Optional[datetime]:
@@ -270,6 +251,7 @@ def validate_request(payload: Any) -> Tuple[Dict[str, Any], Dict[str, str]]:
         'start_date': start_raw if isinstance(start_raw, str) else '',
         'races': sorted(clean_races, key=lambda r: (r['date'], r['name'])),
         'methodology': methodology,
+        'age': athlete.get('age'),
     })
     return params, errors
 
@@ -394,12 +376,13 @@ def generate_season(params: Dict[str, Any]) -> Dict[str, Any]:
     b_events = [{'name': r['name'], 'date': r['date']}
                 for r in params['races'] if r['priority'] in ('B', 'C')]
 
+    meso_pattern = default_meso_pattern(params.get('age'))
     plan = calculate_plan_dates(
         anchor['date'],
         plan_weeks=params['plan_weeks'],
         preferred_start=params['start_monday'],
         b_events=b_events,
-        meso_pattern=_methodology_meso_patterns().get(params['methodology']),
+        meso_pattern=meso_pattern,
         clamp_past_start=False,
     )
 

@@ -172,7 +172,7 @@ weeks:
     date_short: Aug30
     workout_prefix: W03_Sun_Aug30
     is_race_day: false
-  is_recovery_week: false
+  is_recovery_week: true
   _recovery_opener_added: false
 - week: 4
   monday: '2026-08-31'
@@ -217,7 +217,7 @@ weeks:
     date_short: Sep6
     workout_prefix: W04_Sun_Sep6
     is_race_day: false
-  is_recovery_week: true
+  is_recovery_week: false
   _recovery_opener_added: false
 - week: 5
   monday: '2026-09-07'
