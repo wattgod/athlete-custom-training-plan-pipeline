@@ -436,6 +436,61 @@ def apply_session_floor(days: List[Dict[str, Any]], *, hours_per_week: float,
     return grown
 
 
+def _evict_over_budget_fillers(
+    days: List[Dict[str, Any]],
+    *,
+    week_type: str,
+    max_minutes: Optional[float],
+    floor_min: int,
+    day_caps: Optional[Dict[str, int]] = None,
+) -> List[str]:
+    """Drop the lowest-load disposable fillers before applying session floors."""
+    if week_type not in ('taper', 'race') or max_minutes is None:
+        return []
+
+    def _floor_duration(day: Dict[str, Any]) -> int:
+        duration = int(day.get('duration', 0) or 0)
+        if duration <= 0 or day.get('name') == 'Rest Day':
+            return 0
+        if day.get('taper_capped'):
+            return duration
+        if week_type == 'race' and day.get('name') == 'Openers':
+            return duration
+        cap = (day_caps or {}).get(day.get('day'), 0) or 0
+        if cap and cap < floor_min:
+            return duration
+        floor = max(floor_min, int(day.get('session_floor_min') or 0))
+        return max(duration, floor)
+
+    floored_total = sum(_floor_duration(day) for day in days)
+    removed: List[str] = []
+    candidates = sorted(
+        (
+            day for day in days
+            if day.get('role') == 'filler'
+            and day.get('duration', 0) > 0
+            and day.get('name') not in {'Rest Day', 'Stars In Your Eyes', 'Openers'}
+            and not day.get('race_week_extended')
+        ),
+        key=lambda day: (day.get('tss', 0), day.get('day', '')),
+    )
+    for day in candidates:
+        if floored_total <= max_minutes:
+            break
+        floored_total -= _floor_duration(day)
+        removed.append(day.get('name', ''))
+        day.update({
+            'name': 'Rest Day',
+            'level': 1,
+            'tss': 0,
+            'duration': 0,
+            'role': 'filler',
+        })
+        day.pop('floor_extended_min', None)
+        day.pop('session_floor_min', None)
+    return removed
+
+
 def _fit_workout_to_cap(workout: Dict[str, Any], cap: int) -> Dict[str, Any]:
     """Fit a workout to a per-day duration cap.
 
@@ -541,7 +596,12 @@ def trim_week_to_budget(
             if total_duration <= max_minutes:
                 break
             ext = int(d.get('floor_extended_min') or 0)
-            give = min(ext, int(total_duration - max_minutes) + 1)
+            floor = int(d.get('session_floor_min') or 0)
+            give = min(
+                ext,
+                max(0, int(d.get('duration', 0)) - floor),
+                int(total_duration - max_minutes) + 1,
+            )
             if give <= 0:
                 continue
             d['duration'] = d['duration'] - give
@@ -663,6 +723,7 @@ def _build_week(
             off_days=[d for d, role in day_roles.items() if role == 'off'],
             race_day=race_day,
             day_caps=day_caps,
+            hours_per_week=hours_per_week,
             athlete_age=athlete_age,
             stress_level=stress_level,
             session_floor_min=session_floor_min,
@@ -939,6 +1000,17 @@ def _build_week(
                 longest['duration'] = new_duration
                 longest['tss'] = round(longest['tss'] * new_duration / old_duration)
 
+    _evict_over_budget_fillers(
+        days,
+        week_type=week_type,
+        max_minutes=(
+            taper_budget_minutes
+            if taper_budget_minutes is not None else max_minutes
+        ),
+        floor_min=session_floor_min,
+        day_caps=day_caps,
+    )
+
     # AE-2.7 (amended 2026-09-17): the session floor is applied LAST and may
     # overshoot the weekly budget -- see apply_session_floor. Growth to the
     # weekday TARGET is a load-week behaviour; recovery and taper weeks, and
@@ -963,7 +1035,7 @@ def _build_week(
     if max_minutes is not None:
         _total = sum(d.get('duration', 0) for d in days)
         # smallest filler first: a 3% overage must not cost the Sunday ride
-        if week_type != 'taper':
+        if week_type not in ('taper', 'race'):
             for d in sorted((x for x in days if x.get('role') == 'filler'
                              and x.get('name') != 'Rest Day' and x.get('duration', 0) > 0),
                             key=lambda x: x.get('duration', 0)):
@@ -990,6 +1062,7 @@ def _build_race_week(
     off_days: List[str],
     race_day: Optional[str],
     day_caps: Optional[Dict[str, int]],
+    hours_per_week: float = 10,
     athlete_age: Optional[int] = None,
     stress_level: Optional[str] = None,
     session_floor_min: int = SESSION_FLOOR_MIN,
@@ -1074,7 +1147,14 @@ def _build_race_week(
             workout = _fit_workout_to_cap(workout, day_caps.get(day, 0))
         days.append({'day': day, **workout})
 
-    apply_session_floor(days, hours_per_week=0, day_caps=day_caps, week_type='race',
+    _evict_over_budget_fillers(
+        days,
+        week_type='race',
+        max_minutes=hours_per_week * 60 * 0.60,
+        floor_min=session_floor_min,
+        day_caps=day_caps,
+    )
+    apply_session_floor(days, hours_per_week=hours_per_week, day_caps=day_caps, week_type='race',
                         floor_min=session_floor_min, grow_to_weekday_target=False)
 
     load_shortfall_tss = None

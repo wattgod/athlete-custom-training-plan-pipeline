@@ -21,7 +21,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent))
 
 from block_chain import build_plan_from_calendar, CALENDAR_PHASE_MAP
-from block_builder import build_calendar_week
+from block_builder import (
+    _evict_over_budget_fillers,
+    build_calendar_week,
+    trim_week_to_budget,
+)
 from block_compliance import validate_plan
 from workout_selector import (
     select_workouts_for_week,
@@ -304,6 +308,80 @@ class TestRaceAndTaperHouseTemplates:
 
         assert taper_long['duration'] == 42
         assert taper_long['taper_capped'] is True
+
+    def test_taper_retrim_never_drops_floor_extended_filler_below_floor(self):
+        days = [
+            {'day': 'Tue', 'name': 'Stars In Your Eyes', 'level': 1,
+             'duration': 62, 'tss': 63, 'role': 'intensity',
+             'session_floor_min': 62},
+            {'day': 'Wed', 'name': 'Endurance', 'level': 1,
+             'duration': 70, 'tss': 55, 'role': 'filler',
+             'session_floor_min': 60},
+            {'day': 'Thu', 'name': 'Cadence Work', 'level': 1,
+             'duration': 60, 'tss': 46, 'role': 'filler',
+             'session_floor_min': 60},
+            {'day': 'Fri', 'name': 'Cadence Work', 'level': 1,
+             'duration': 60, 'tss': 46, 'role': 'filler',
+             'session_floor_min': 60},
+            {'day': 'Sat', 'name': 'Endurance Blocks', 'level': 1,
+             'duration': 60, 'tss': 43, 'role': 'filler',
+             'session_floor_min': 60, 'floor_extended_min': 59},
+            {'day': 'Sun', 'name': 'Endurance with Surges', 'level': 1,
+             'duration': 120, 'tss': 97, 'role': 'long_ride',
+             'session_floor_min': 114},
+        ]
+
+        trim_week_to_budget(days, 'taper', 8)
+
+        saturday = next(day for day in days if day['day'] == 'Sat')
+        assert saturday['duration'] >= 60
+        assert saturday['session_floor_min'] == 60
+
+    def test_low_hour_taper_evicts_lowest_tss_fillers_before_floor_growth(self):
+        days = [
+            {'day': 'Tue', 'name': 'Stars In Your Eyes', 'level': 2,
+             'duration': 62, 'tss': 63, 'role': 'intensity'},
+            {'day': 'Wed', 'name': 'Endurance', 'level': 1,
+             'duration': 60, 'tss': 55, 'role': 'filler'},
+            {'day': 'Thu', 'name': 'Cadence Work', 'level': 1,
+             'duration': 60, 'tss': 46, 'role': 'filler'},
+            {'day': 'Fri', 'name': 'Endurance Blocks', 'level': 1,
+             'duration': 60, 'tss': 42, 'role': 'filler'},
+            {'day': 'Sat', 'name': 'Endurance with Surges', 'level': 1,
+             'duration': 60, 'tss': 48, 'role': 'long_ride'},
+            {'day': 'Sun', 'name': 'Endurance', 'level': 1,
+             'duration': 60, 'tss': 50, 'role': 'filler'},
+            {'day': 'Mon', 'name': 'Cadence Work', 'level': 1,
+             'duration': 60, 'tss': 44, 'role': 'filler'},
+        ]
+
+        removed = _evict_over_budget_fillers(
+            days, week_type='taper', max_minutes=6 * 60 * 0.70,
+            floor_min=60)
+
+        assert removed[0] == 'Endurance Blocks'
+        assert next(day for day in days if day['name'] == 'Rest Day')
+        assert all(
+            day['duration'] == 0 or day['duration'] >= 60
+            for day in days
+        )
+
+    def test_ten_hour_taper_within_floor_budget_is_unchanged(self):
+        days = [
+            {'day': 'Tue', 'name': 'Stars In Your Eyes', 'level': 2,
+             'duration': 62, 'tss': 63, 'role': 'intensity'},
+            {'day': 'Wed', 'name': 'Endurance', 'level': 1,
+             'duration': 60, 'tss': 55, 'role': 'filler'},
+            {'day': 'Sat', 'name': 'Endurance with Surges', 'level': 1,
+             'duration': 60, 'tss': 48, 'role': 'long_ride'},
+        ]
+        before = [dict(day) for day in days]
+
+        _evict_over_budget_fillers(
+            days, week_type='taper', max_minutes=10 * 60 * 0.70,
+            floor_min=60)
+
+        assert days == before
 
     def test_house_sessions_render_the_required_stimulus(self):
         from workout_mapper import (RACE_WEEK_SHARPENER_WINDOW,
