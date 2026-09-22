@@ -145,7 +145,11 @@ def retrim_plan_to_budget(
     """
     weeks = plan.get('weeks', [])
     for week in weeks:
-        trim_week_to_budget(week.get('days', []), week.get('week_type'), hours_per_week)
+        week_hours = week.get('target_hours')
+        if week_hours is None:
+            week_hours = hours_per_week
+        trim_week_to_budget(
+            week.get('days', []), week.get('week_type'), week_hours)
         _sync_week_totals(week)
 
     # A recovery week's TSS is tuned in build_plan_from_calendar against the
