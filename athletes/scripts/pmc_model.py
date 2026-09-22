@@ -126,20 +126,20 @@ def estimate_start_ctl(profile: dict, plan: Optional[dict] = None) -> dict:
     }
 
 
-def _day_tss(day: dict) -> float:
-    prescribed_tss = float(day.get("tss") or 0)
-    if any(day.get(flag) for flag in (
-        "sessions_included",
-        "nested_sessions_included",
-        "sessions_tss_included",
-        "nested_load_included",
-        "fixed_tss_included",
-    )):
-        return prescribed_tss
-    return prescribed_tss + sum(
+def day_total_tss(day: dict) -> float:
+    """Return prescribed TSS plus additive nested locked-session TSS.
+
+    ``materialize_fixed_sessions`` never folds nested sessions into
+    ``day['tss']``.
+    """
+    return float(day.get("tss") or 0) + sum(
         float(session.get("tss") or 0)
         for session in day.get("sessions", [])
     )
+
+
+def _day_tss(day: dict) -> float:
+    return day_total_tss(day)
 
 
 def plan_daily_tss(
