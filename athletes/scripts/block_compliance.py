@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Compliance Validator — 11 block-builder R-rules plus opt-in trajectory AE-rules.
+Compliance Validator — 12 block-builder R-rules (11 CRITICAL, 1 WARNING)
+plus opt-in trajectory AE-rules.
 
 Validates a training plan against block-builder compliance rules. Trajectory
 rules run only when a trajectory is supplied to ``validate_plan``. CRITICAL
@@ -420,6 +421,39 @@ def r14_series_coherence(plan: dict) -> Tuple[bool, str]:
     return True, "Series coherent"
 
 
+def r15_level_progression(plan: dict) -> Tuple[bool, str]:
+    """R15 [WARNING]: Level deltas follow the one-lever progression rule."""
+    load_weeks = [
+        week for week in plan.get('weeks', [])
+        if week.get('week_type') == 'load'
+    ]
+    violations = []
+    for previous, current in zip(load_weeks, load_weeks[1:]):
+        same_block = previous.get('block_number') == current.get('block_number')
+        allowed = {0, 1} if same_block else {0, 1, 2}
+        previous_intensity = [
+            day for day in previous.get('days', [])
+            if day.get('role') == 'intensity'
+        ]
+        current_intensity = [
+            day for day in current.get('days', [])
+            if day.get('role') == 'intensity'
+        ]
+        for slot, (old_day, new_day) in enumerate(
+                zip(previous_intensity, current_intensity), start=1):
+            delta = int(new_day.get('level', 0)) - int(
+                old_day.get('level', 0))
+            if delta not in allowed:
+                boundary = 'within block' if same_block else 'block boundary'
+                violations.append(
+                    f"W{current.get('plan_week')} intensity {slot}: "
+                    f"level delta {delta} ({boundary}, allowed {sorted(allowed)})"
+                )
+    if violations:
+        return False, f"Level progression: {'; '.join(violations[:3])}"
+    return True, "Level progression follows AE-4.1"
+
+
 def r19_hours_fit(weeks: List[dict], target_hours: float) -> Tuple[bool, str]:
     """R19 [CRITICAL]: Weekly hours within ±10% of available.
     Very low-hour athletes (<6h) get 15% tolerance due to minimum workout durations.
@@ -664,6 +698,7 @@ def validate_plan(
     rules['R08'] = {'severity': 'CRITICAL', **_rule_result(*r08_fuel_tags(weeks))}
     rules['R11'] = {'severity': 'CRITICAL', **_rule_result(*r11_strength_present(weeks))}
     rules['R14'] = {'severity': 'CRITICAL', **_rule_result(*r14_series_coherence(plan))}
+    rules['R15'] = {'severity': 'WARNING', **_rule_result(*r15_level_progression(plan))}
     rules['R19'] = {'severity': 'CRITICAL', **_rule_result(*r19_hours_fit(weeks, target_hours))}
     rules['R20'] = {'severity': 'CRITICAL', **_rule_result(*r20_off_days_respected(weeks, off_days))}
 
