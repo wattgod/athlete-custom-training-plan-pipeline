@@ -8539,20 +8539,55 @@ def _send_followup_email(email: str, subject: str, body: str,
     return _send_email(email, subject, body, reply_to=reply_to, brand=brand)
 
 
+# Order-scoped fulfilment state shipped 2026-08-06 (3ac37563). Orders paid
+# before then have none and went out through the old coach-attach flow, so
+# their emails stay anchored on payment as before.
+ORDER_STATE_CUTOVER = datetime(2026, 8, 6, tzinfo=timezone.utc)
+
+
+def _plan_delivered_at(order: dict) -> datetime | None:
+    """When the coach confirmed this order's plan was delivered, else None.
+
+    The follow-ups and touchpoints tell the athlete the plan is already on
+    their TrainingPeaks calendar. That is only true once fulfilment state
+    reaches CONFIRMED. A paid order logs success=True while it sits in
+    BLOCKED_REVIEW, and can stay there for days or be fulfilled by hand
+    outside the pipeline. Anything short of CONFIRMED, including a missing
+    or unreadable state file, gets no email.
+    """
+    try:
+        path = _fulfillment_status_path(order.get('order_id', ''))
+        if not path.exists():
+            # Checked before load(): locking would create the order dir.
+            paid_at = _parse_utc(order.get('timestamp') or order.get('processed_at'))
+            return paid_at if paid_at and paid_at < ORDER_STATE_CUTOVER else None
+        state = load_fulfillment_state(path)
+    except (FulfillmentStateError, OSError, ValueError):
+        # One bad order must not 500 the cron and take the touchpoint and
+        # consult sends in the same request down with it.
+        return None
+    if state.get('status') != CONFIRMED:
+        return None
+    return _parse_utc((state.get('confirmation') or {}).get('at'))
+
+
 def process_followup_emails():
     """Check order logs and send due follow-up emails. Returns stats dict.
 
     Reads from YYYY-MM.jsonl files (written by log_order and _log_product_event).
-    Only processes training_plan orders that succeeded.
+    Only processes training_plan orders whose plan delivery is CONFIRMED, and
+    counts the day-1/3/7 offsets from that confirmation, not from payment.
     """
     log_dir = Path(DATA_DIR) / '.logs'
 
     if not log_dir.exists():
-        return {'checked': 0, 'sent': 0, 'skipped': 0, 'errors': 0}
+        return {'checked': 0, 'sent': 0, 'skipped': 0, 'errors': 0,
+                'undelivered': 0}
 
     sent_followups = _get_sent_followups()
     now = datetime.now(timezone.utc)
-    stats = {'checked': 0, 'sent': 0, 'skipped': 0, 'errors': 0}
+    stats = {'checked': 0, 'sent': 0, 'skipped': 0, 'errors': 0,
+             'undelivered': 0}
 
     # Read from all YYYY-MM.jsonl files (the format log_order actually writes to)
     for log_file in sorted(log_dir.glob('20*.jsonl')):
@@ -8586,21 +8621,16 @@ def process_followup_emails():
             email = order.get('email', '')
             name = order.get('name', order.get('customer_name', ''))
             brand = normalize_brand(order.get('brand'))
-            order_time = order.get('timestamp', order.get('processed_at', ''))
 
-            if not email or not order_time or not order_id:
+            if not email or not order_id:
                 continue
 
-            try:
-                order_dt = datetime.fromisoformat(order_time.replace('Z', '+00:00'))
-                if order_dt.tzinfo is None:
-                    order_dt = order_dt.replace(tzinfo=timezone.utc)
-                else:
-                    order_dt = order_dt.astimezone(timezone.utc)
-            except (ValueError, AttributeError):
+            delivered_dt = _plan_delivered_at(order)
+            if delivered_dt is None:
+                stats['undelivered'] += 1
                 continue
 
-            days_since = (now - order_dt).days
+            days_since = (now - delivered_dt).days
 
             for followup in FOLLOWUP_SEQUENCE:
                 day = followup['day']
@@ -9659,12 +9689,12 @@ def process_touchpoint_emails():
     """
     log_dir = Path(DATA_DIR) / '.logs'
     if not log_dir.exists():
-        return {'checked': 0, 'sent': 0, 'errors': 0}
+        return {'checked': 0, 'sent': 0, 'errors': 0, 'undelivered': 0}
 
     sent = _get_sent_followups()
     today = datetime.utcnow().strftime('%Y-%m-%d')
     yesterday = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
-    stats = {'checked': 0, 'sent': 0, 'errors': 0}
+    stats = {'checked': 0, 'sent': 0, 'errors': 0, 'undelivered': 0}
 
     for log_file in sorted(log_dir.glob('20*.jsonl')):
         for line in log_file.read_text().strip().split('\n'):
@@ -9688,6 +9718,12 @@ def process_touchpoint_emails():
             name = order.get('name', '')
             order_id = order.get('order_id', '')
             if not athlete_id or not email or not order_id:
+                continue
+
+            # Same rule as the day-1/3/7 sequence: these touches assume the
+            # workouts are on the athlete's calendar.
+            if _plan_delivered_at(order) is None:
+                stats['undelivered'] += 1
                 continue
 
             plan_dates_path = (Path(ATHLETES_DIR)
