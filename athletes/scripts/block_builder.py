@@ -9,6 +9,7 @@ from the phase × archetype matrix. Recovery week is sacred (Endurance L1-L2 + O
 Source: block-builder SKILL.md Steps 3-6
 """
 
+from itertools import combinations
 from typing import Dict, List, Any, Optional
 from workout_selector import (
     select_workouts_for_week,
@@ -314,18 +315,24 @@ def _build_day_template(
             intensity_days.append(d)
             hard_days.append(d)
             roles[d] = 'intensity'
-        for d in available:
-            if len(intensity_days) >= max_intensity:
+        # Search the tiny seven-day calendar for the largest safe set, then
+        # use the established preference order to break ties. Greedy Tue-first
+        # placement can strand a Friday-long-ride schedule at one quality day
+        # even though Mon/Wed are both safely spaced.
+        candidates = [d for d in available if d not in roles and not any(
+            abs(DAY_ORDER.index(existing) - DAY_ORDER.index(d)) <= 1
+            for existing in hard_days)]
+        remaining = max(0, max_intensity - len(intensity_days))
+        for count in range(min(remaining, len(candidates)), 0, -1):
+            safe = next((combo for combo in combinations(candidates, count)
+                         if all(min(abs(DAY_ORDER.index(a) - DAY_ORDER.index(b)),
+                                    7 - abs(DAY_ORDER.index(a) - DAY_ORDER.index(b))) > 1
+                                for a, b in combinations(combo, 2))), None)
+            if safe:
+                for d in safe:
+                    intensity_days.append(d)
+                    roles[d] = 'intensity'
                 break
-            d_idx = DAY_ORDER.index(d)
-            adjacent_to_hard = any(
-                abs(DAY_ORDER.index(existing) - d_idx) <= 1
-                for existing in hard_days
-            )
-            if not adjacent_to_hard:
-                intensity_days.append(d)
-                hard_days.append(d)
-                roles[d] = 'intensity'
 
     # Step 4: Fill remaining with filler
     for day in DAY_ORDER:

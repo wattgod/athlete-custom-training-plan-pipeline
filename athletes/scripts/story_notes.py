@@ -472,8 +472,20 @@ def _race_week_lines(plan_ir: Any, week: Any, sessions: List[Any]) -> List[str]:
     uses the plan's race fuel range."""
     events = list(_get(plan_ir, "events") or [])
     snapshot = _get(plan_ir, "race_snapshot") or {}
-    a_event = next((e for e in events if str(_get(e, "priority") or "").upper() == "A"), {})
-    b_event = next((e for e in events if str(_get(e, "priority") or "").upper() == "B"), {})
+    a_events = [e for e in events if str(_get(e, "priority") or "").upper() == "A"]
+    race_dates = {_as_date(_get(s, "date")) for s in sessions
+                  if str(_get(s, "tp_kind") or "") == "race"}
+    a_event = next((e for e in a_events
+                    if _as_date(_get(e, "date")) in race_dates),
+                   a_events[0] if a_events else {})
+    multi_a = len(a_events) > 1
+    session_dates = [_as_date(_get(s, "date")) for s in sessions
+                     if _as_date(_get(s, "date"))]
+    b_event = next((e for e in events
+                    if str(_get(e, "priority") or "").upper() == "B"
+                    and (not multi_a or
+                         (session_dates and _as_date(_get(e, "date"))
+                          and min(session_dates) <= _as_date(_get(e, "date")) <= max(session_dates)))), {})
     a_name = str(_get(a_event, "name") or _get(snapshot, "name") or "the A race")
     a_date = _as_date(_get(a_event, "date") or _get(snapshot, "date"))
     a_day = _WEEKDAY[a_date.weekday()] if a_date else "Race day"
@@ -503,12 +515,28 @@ def _race_week_lines(plan_ir: Any, week: Any, sessions: List[Any]) -> List[str]:
     else:
         lines.append(f"Race week. {off_text} off. Openers before {a_name}. {a_day} is the assignment.")
         event_fuel = a_name
-    fuel = (f" Fuel {event_fuel} with familiar products at {fuel_range[0]}-{fuel_range[-1]} g/hr."
-            if len(fuel_range) >= 2 else "")
-    lines.append("No bonus miles or make-up work. Keep the openers controlled." + fuel)
-    lines.append(re.sub(r"\s+", " ", "Inside or out—keep the written RPE smooth." + choice_tail
-                        + " Pain, illness, or changed function: stop and tell me.").strip())
-    lines.append(_NOTICE["race"][0])
+    if multi_a:
+        # A weekly note follows this week's race card, not the season's final
+        # target fuel snapshot. Event names make the two race weeks distinct
+        # without waiving the voice contract's no-duplicate-sentence rule.
+        fuel = (f" Fuel {event_fuel} with familiar products at {fuel_range[0]}-{fuel_range[-1]} g/hr."
+                if len(fuel_range) >= 2 and a_date == _as_date(_get(snapshot, "date"))
+                else f" Fuel {event_fuel} at the practiced rate on the race card.")
+        lines.append(f"No bonus miles or make-up work before {a_name}. "
+                     f"Keep the openers controlled for {a_name}." + fuel)
+        lines.append(re.sub(r"\s+", " ",
+                            f"Inside or out—keep the written RPE smooth for {a_name}."
+                            + choice_tail +
+                            f" Pain, illness, or changed function: stop and tell me before {a_name}.").strip())
+        lines.append(f"Nothing new for {a_name}: no new food, no new position, no new kit. "
+                     f"Sleep well before {a_name}; the night before a race rarely cooperates.")
+    else:
+        fuel = (f" Fuel {event_fuel} with familiar products at {fuel_range[0]}-{fuel_range[-1]} g/hr."
+                if len(fuel_range) >= 2 else "")
+        lines.append("No bonus miles or make-up work. Keep the openers controlled." + fuel)
+        lines.append(re.sub(r"\s+", " ", "Inside or out—keep the written RPE smooth." + choice_tail
+                            + " Pain, illness, or changed function: stop and tell me.").strip())
+        lines.append(_NOTICE["race"][0])
     return lines
 
 

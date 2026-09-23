@@ -106,6 +106,29 @@ def test_story_notes_never_repeat_a_sentence_across_weeks():
     assert not [s for s, c in sentences.items() if c > 1]
 
 
+def test_two_race_week_notes_name_the_race_in_that_week_and_pass_voice_lint():
+    plan = _plan()
+    first = plan['weeks'][3]
+    first['week_type'] = first['phase'] = 'race'
+    first_date = first['sessions'][-1]['date']
+    final = plan['weeks'][-1]
+    final_date = final['sessions'][-1]['date']
+    first['sessions'][-1].update(tp_kind='race', title='Race Day — Spring Race')
+    final['sessions'][-1].update(tp_kind='race', title='Race Day — Fall Race')
+    plan['events'] = [
+        {'name': 'Spring Race', 'date': first_date, 'priority': 'A'},
+        {'name': 'Fall Race', 'date': final_date, 'priority': 'A'},
+    ]
+    plan['race_snapshot'] = {'name': 'Fall Race', 'date': final_date}
+    notes = render_story_notes(plan)
+    race_notes = [note for note in notes if note['title'].endswith('Race Week')]
+    assert len(race_notes) == 2
+    assert 'Openers before Spring Race' in race_notes[0]['body']
+    assert 'Fall Race' not in race_notes[0]['body']
+    assert 'Openers before Fall Race' in race_notes[1]['body']
+    assert lint_notes(notes, rules=RULES) == []
+
+
 def test_story_notes_are_deterministic():
     assert render_story_notes(_plan()) == render_story_notes(_plan())
 
