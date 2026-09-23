@@ -234,10 +234,19 @@ def r04_recovery_intensity_ceiling(weeks: List[dict]) -> Tuple[bool, str]:
     return True, "Recovery weeks clean"
 
 
-def r05_intensity_count(weeks: List[dict], max_per_week: int = 3) -> Tuple[bool, str]:
+# SPEC_EARNED_SELECTION rule registry, R05 row (the R05 that
+# ALGORITHM_EVIDENCE AE-2.1 cites): "training age <1 or <=3 available cycling
+# days allows 1-3". With three riding days and one of them the long ride,
+# two non-adjacent quality days would make every ride hard.
+R05_LOW_AVAILABILITY_MAX_DAYS = 3
+
+
+def r05_intensity_count(weeks: List[dict], max_per_week: int = 3,
+                        available_days: int = 7) -> Tuple[bool, str]:
     """R05 [CRITICAL]: 2-3 intensity sessions per load week.
     Exception: racing/taper phase load weeks can have 0-1 intensity.
     Exception: beginner (max_intensity=1) can have 1.
+    Exception: <=3 available cycling days can have 1 (registry R05 row).
     """
     violations = []
     for week_index, week in enumerate(weeks):
@@ -256,6 +265,8 @@ def r05_intensity_count(weeks: List[dict], max_per_week: int = 3) -> Tuple[bool,
         count = sum(1 for d in week.get('days', [])
                     if _day_is_intensity(d) and not _day_is_long_simulation(d))
         min_intensity = min(2, max_per_week)  # Beginners: min=1 if max=1
+        if available_days <= R05_LOW_AVAILABILITY_MAX_DAYS:
+            min_intensity = min(1, max_per_week)
         # A long/dress simulation is still a hard day for R01, but occupies
         # the long-ride slot rather than a normal interval allocation.  One
         # conventional interval is sufficient alongside it; requiring two
@@ -458,7 +469,9 @@ def validate_plan(
     rules['R02'] = {'severity': 'CRITICAL', **_rule_result(*r02_vo2max_frequency(weeks))}
     rules['R03'] = {'severity': 'CRITICAL', **_rule_result(*r03_recovery_tss_ceiling(weeks))}
     rules['R04'] = {'severity': 'CRITICAL', **_rule_result(*r04_recovery_intensity_ceiling(weeks))}
-    rules['R05'] = {'severity': 'CRITICAL', **_rule_result(*r05_intensity_count(weeks, max_intensity))}
+    available_days = 7 - len(set(off_days))
+    rules['R05'] = {'severity': 'CRITICAL', **_rule_result(*r05_intensity_count(
+        weeks, max_intensity, available_days))}
     rules['R06'] = {'severity': 'CRITICAL', **_rule_result(*r06_long_ride_present(weeks, target_hours))}
     rules['R08'] = {'severity': 'CRITICAL', **_rule_result(*r08_fuel_tags(weeks))}
     rules['R11'] = {'severity': 'CRITICAL', **_rule_result(*r11_strength_present(weeks))}
