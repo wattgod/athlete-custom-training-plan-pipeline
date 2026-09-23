@@ -76,6 +76,21 @@ from brand_config import (brand_for_discipline, email_signature,
                           get_brand_config, load_brands, normalize_brand)
 from derived_registry import assert_registry_covers, entry as derived_entry
 
+
+def _route_post_render_findings(issues: List[Dict[str, Any]]) -> Tuple[
+    List[Dict[str, Any]], List[Dict[str, Any]],
+]:
+    """Route the known AE-2.1 advisory into the review catalog."""
+    blockers, soft = [], []
+    for issue in issues:
+        if (issue.get('severity') == 'WARNING'
+                and re.fullmatch(r'HARD_MINUTES_BELOW_FLOOR_W\d+',
+                                 str(issue.get('id') or ''))):
+            soft.append(issue)
+        else:
+            blockers.append(issue)
+    return blockers, soft
+
 # ---------------------------------------------------------------------------
 # ANSI colors for terminal output
 # ---------------------------------------------------------------------------
@@ -4179,9 +4194,12 @@ def main():
             state = load_fulfillment_state(state_path)
             validator_input = build_validator_input(athlete_dir)
             validator_issues, confirmations = validate_transitional_input(validator_input)
+            validator_blockers, validator_soft = _route_post_render_findings(
+                validator_issues)
             merge_generation_blockers(
                 state_path, state['generation_revision'], 'post_render',
-                validator_issues, required_confirmations=confirmations,
+                validator_blockers, required_confirmations=confirmations,
+                soft_confirmations=validator_soft,
             )
             # The projections include fulfillment status, so refresh both named
             # transitional validator artifacts after the merge and before seal.
@@ -4200,7 +4218,8 @@ def main():
                 raise RuntimeError(
                     'post-render findings changed after final projection rewrite')
             print(f"  {GREEN}Post-render validation complete{RESET} "
-                  f"({len(validator_issues)} blocker(s), "
+                  f"({len(validator_blockers)} blocker(s), "
+                  f"{len(validator_soft)} advisory item(s), "
                   f"{len(confirmations)} confirmation(s))")
         except Exception as exc:
             try:

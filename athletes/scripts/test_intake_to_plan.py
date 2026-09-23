@@ -110,6 +110,86 @@ def test_targetless_coached_block_rejects_missing_pattern():
         validate_parsed_intake(parsed)
 
 
+def test_post_render_hard_minute_warnings_allow_normal_sealed_approval(tmp_path):
+    from fulfillment_state import (APPROVED, GENERATED,
+                                   finalize_transitional_release,
+                                   merge_generation_blockers, transition,
+                                   write_generation)
+
+    findings = [{
+        'id': f'HARD_MINUTES_BELOW_FLOOR_W{week:02d}',
+        'source': 'post_render', 'severity': 'WARNING',
+        'message': f'Week {week} has too few hard minutes.',
+        'review_value': {'week': week, 'hard_minutes': 25.0, 'floor': 45},
+        'basis': 'post-render PlanIR and TP manifest validation',
+        'sensitivity': 'internal',
+    } for week in range(1, 22)]
+    blockers, soft = intake_to_plan._route_post_render_findings(findings)
+    path = tmp_path / 'fulfillment_status.json'
+    state = write_generation(path, 'athlete-m', order_id='cs_warning_only')
+    state = merge_generation_blockers(
+        path, state['generation_revision'], 'post_render', blockers,
+        soft_confirmations=soft)
+    assert state['status'] == GENERATED
+    assert state['blocking_issues'] == []
+    assert len(state['soft_confirmations']) == 21
+    assert state['soft_confirmations'][0]['review_value'] == findings[0]['review_value']
+    assert state['soft_confirmations'][0]['basis'] == findings[0]['basis']
+
+    artifacts = tmp_path / 'artifacts'
+    artifacts.mkdir()
+    (artifacts / 'guide.html').write_text('sealed guide')
+    state = finalize_transitional_release(
+        path, artifacts, expected_revision=state['generation_revision'])
+    approved = transition(
+        path, APPROVED, 'coach',
+        expected_revision=state['generation_revision'],
+        expected_catalog_digest=state['review_catalog_digest'],
+        review_decisions=[], credential='test-credential')
+    assert approved['status'] == APPROVED
+    assert approved['waiver'] is None
+    assert sum(item['type'] == 'soft_confirmation'
+               for item in approved['review_items']) == 21
+
+
+def test_post_render_critical_and_other_warning_findings_still_block(tmp_path):
+    from fulfillment_state import (BLOCKED_REVIEW, APPROVED,
+                                   FulfillmentStateError,
+                                   finalize_transitional_release,
+                                   merge_generation_blockers, transition,
+                                   write_generation)
+
+    findings = [
+        {'id': 'POST_RENDER_VALIDATOR_CRASH', 'severity': 'CRITICAL',
+         'message': 'Validator failed.', 'source': 'post_render'},
+        {'id': 'OTHER_WARNING', 'severity': 'WARNING',
+         'message': 'Unknown warning.', 'source': 'post_render'},
+    ]
+    blockers, soft = intake_to_plan._route_post_render_findings(findings)
+    assert blockers == findings
+    assert soft == []
+    path = tmp_path / 'fulfillment_status.json'
+    state = write_generation(path, 'athlete-m', order_id='cs_critical')
+    state = merge_generation_blockers(
+        path, state['generation_revision'], 'post_render', blockers,
+        soft_confirmations=soft)
+    assert state['status'] == BLOCKED_REVIEW
+    assert [item['id'] for item in state['blocking_issues']] == [
+        'OTHER_WARNING', 'POST_RENDER_VALIDATOR_CRASH']
+
+    artifacts = tmp_path / 'artifacts'
+    artifacts.mkdir()
+    (artifacts / 'guide.html').write_text('sealed guide')
+    state = finalize_transitional_release(
+        path, artifacts, expected_revision=state['generation_revision'])
+    with pytest.raises(FulfillmentStateError, match='complete waiver'):
+        transition(
+            path, APPROVED, 'coach',
+            expected_revision=state['generation_revision'],
+            expected_catalog_digest=state['review_catalog_digest'],
+            review_decisions=[], credential='test-credential')
+
+
 def test_device_parser_preserves_multiword_tokens_and_canonicalizes():
     assert parse_device_list('power meter, hr strap') == [
         'power_meter', 'hr_strap']

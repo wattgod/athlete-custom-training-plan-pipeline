@@ -19,6 +19,7 @@ import sys
 import html
 from pathlib import Path
 import re
+import xml.etree.ElementTree as ET
 from typing import Any, Dict, Optional, Tuple
 
 # Ensure script dir on path (flat layout — all files in athletes/scripts/)
@@ -521,11 +522,26 @@ def _pad_vo2_to_library_duration(name: str, level: int, zwo: str) -> str:
         target_sec = int(get_workout_duration(name, level)) * 60
     except Exception:
         return zwo
-    durations = [int(float(v)) for v in re.findall(r'Duration="(\d+)"', zwo)]
-    actual_sec = sum(durations)
+    try:
+        workout = ET.fromstring(zwo).find('workout')
+        if workout is None:
+            return zwo
+        actual_sec = sum(
+            int(float(node.get('Repeat', 1))) * (
+                int(float(node.get('OnDuration', 0)))
+                + int(float(node.get('OffDuration', 0)))
+            ) if node.tag == 'IntervalsT' else
+            int(float(node.get('Duration', 0)))
+            for node in workout
+        )
+    except (ET.ParseError, TypeError, ValueError):
+        return zwo
     pad = target_sec - actual_sec
     if pad < 120:  # under two minutes is not worth a block
         return zwo
+    # Long aerobic blocks are athlete-facing whole-minute prescriptions.
+    # The total stays within 30 seconds of the library target.
+    pad = round(pad / 60) * 60
     block = f'    <SteadyState Duration="{pad}" Power="0.68"/>\n'
     cooldown_at = zwo.rfind('    <Cooldown')
     if cooldown_at == -1:

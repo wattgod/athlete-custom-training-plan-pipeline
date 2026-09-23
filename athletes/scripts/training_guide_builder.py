@@ -13,6 +13,7 @@ import json
 import math
 import os
 from datetime import date, datetime, timedelta
+from html import escape
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -40,6 +41,23 @@ def _race_display(race_name, race_distance) -> str:
     if str(race_distance) in name:
         return name
     return f"{name} {race_distance}mi"
+
+
+def _joint_a_races(profile: Dict, store_mode: bool = False) -> List[Dict]:
+    """Return dated A events for a personal guide, in race order."""
+    if store_mode:
+        return []
+    events = []
+    for event in profile.get("a_events", []) or []:
+        if not isinstance(event, dict) or event.get("priority") != "A" or not event.get("name"):
+            continue
+        race_date = str(event.get("date") or "")
+        try:
+            date.fromisoformat(race_date)
+        except ValueError:
+            continue
+        events.append(event)
+    return sorted(events, key=lambda event: str(event["date"])) if len(events) >= 2 else []
 
 def _get_phase_boundaries(plan_duration: int) -> Dict:
     """Return phase boundaries for any plan duration.
@@ -556,12 +574,15 @@ def _build_full_guide(
     # store_mode: the <title> and <h1> must never present the fake base-
     # intake "name" as if it belonged to the buyer. Title by tier/persona
     # instead of by (fake) athlete name.
+    joint_races = _joint_a_races(profile, store_mode)
+    race_title = (" and ".join(escape(str(event["name"])) for event in joint_races)
+                  if joint_races else _race_display(race_name, race_distance))
     page_title = (f"The {persona_label} Plan - {_race_display(race_name, race_distance)} Training Guide"
                   if store_mode else
-                  f"{athlete_name} - {_race_display(race_name, race_distance)} Training Guide")
+                  f"{athlete_name} - {race_title} Training Guide")
     page_h1 = (f"{_race_display(race_name, race_distance)} &ndash; The {persona_label} Plan ({plan_duration} weeks)"
                if store_mode else
-               f"{_race_display(race_name, race_distance)} &ndash; Custom Plan for {athlete_name} ({plan_duration} weeks)")
+               f"{race_title} &ndash; Custom Plan for {athlete_name} ({plan_duration} weeks)")
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -774,6 +795,25 @@ def _section_training_plan_brief(
         store_mode=store_mode,
     )
 
+    joint_races = _joint_a_races(profile, store_mode)
+    joint_race_html = ""
+    race_intro = _race_display(race_name, race_distance)
+    if joint_races:
+        race_intro = " and ".join(escape(str(event["name"])) for event in joint_races)
+        race_items = "".join(
+            f'<li><strong>{escape(str(event["name"]))}</strong> '
+            f'({escape(str(event["date"]))}) &mdash; '
+            f'goal: {escape(str(event.get("goal") or "not specified"))}</li>'
+            for event in joint_races
+        )
+        first_race = escape(str(joint_races[0]["name"]))
+        last_race = escape(str(joint_races[-1]["name"]))
+        joint_race_html = (
+            '<h3>Your A Races</h3>'
+            f'<ul>{race_items}</ul>'
+            f'<p>After {first_race}, recover before rebuilding toward {last_race}.</p>'
+        )
+
     if store_mode:
         # No real athlete behind these numbers — a store buyer never filled
         # a questionnaire, so nothing here may claim personalization. The
@@ -809,7 +849,7 @@ def _section_training_plan_brief(
   {persona_label} tier using the {meth['name']} approach. Execute consistently, fuel properly,
   and trust the process.</p>"""
     else:
-        intro_html = f"""<p>Welcome to your <strong>{_race_display(race_name, race_distance)}</strong> training plan. This guide is built
+        intro_html = f"""<p>Welcome to your <strong>{race_intro}</strong> training plan. This guide is built
   entirely from your questionnaire responses. Every number, every schedule, every recommendation
   is calibrated to your specific situation.</p>
 
@@ -862,6 +902,8 @@ def _section_training_plan_brief(
   <h2>1 &middot; Training Plan Brief</h2>
 
   {intro_html}
+
+  {joint_race_html}
 
 {date_card}
 
