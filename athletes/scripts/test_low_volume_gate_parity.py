@@ -31,6 +31,99 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 from block_compliance import r05_intensity_count, validate_plan  # noqa: E402
 
+FIXED_CLASSES = (
+    "HARD_MINUTES_BELOW_FLOOR",
+    "R05",
+    "SHORT_SESSION_BELOW_FLOOR",
+    "VO2_DOSE_OUT_OF_RANGE",
+    "VOICE_CONTRACT",
+)
+
+# Webhook-shaped questionnaire (webhook/app.py::_questionnaire_to_markdown).
+# Thu/Sat/Sun are the only riding days: one quality day fits, the long ride
+# is Saturday, and Thursday is two days before the B-race.
+LOW_VOLUME_INTAKE = """# Athlete Intake: Synthetic Lowvol
+Email: lowvol.synthetic@example.com
+Submitted: 2026-09-22
+
+## Basic Info
+- Sex: Male
+- Age: 38
+- Weight: 185 lbs
+- Height: 5'11"
+
+## Goals
+- Primary Goal: specific_race
+- Brand: gravelgod
+- Race Slug:
+- Course Facts Mode:
+- Discipline: gravel
+- Race Format:
+- Race Demands:
+- Road Category:
+- Races:
+  Unbound 100 (2027-05-29, 100 mi, priority A)
+  Mid South (2027-03-13, 100 mi, priority B)
+- Success: Finish Strong
+
+## Current Fitness
+- FTP: 240
+- Training Metric: power
+- HR Max:
+- HR Threshold:
+- W/kg:
+- Years Cycling: 6
+- Years Structured: 1
+- Longest Recent Ride: 3-4 hrs
+
+## Recovery & Baselines
+- Resting HR:
+- Typical Sleep: 6-7 hours
+- Sleep Quality: fair
+
+## Equipment
+- Indoor Trainer: smart trainer
+- Devices: power meter, head unit
+
+## Schedule
+- Weekly Hours Available: 5
+- Current Volume: 5
+- Long Ride Days: Saturday
+- Interval Days: Thursday
+- Off Days: Monday, Tuesday, Wednesday, Friday
+- Programmed Midweek Max Minutes:
+- Travel Dates: None
+
+## Strength
+- Current: kettlebell 3 days per week
+- Include: yes
+- Equipment: kettlebells
+
+## Health
+- Current Injuries: Mountain bike crash last year with a concussion; still easing back in
+
+## Work & Life
+- Life Stress: high
+
+## Nutrition
+- Training Fuel:
+
+## Additional
+- Notes: Time-crunched father of three. Ride 2-3 days a week, about 75 miles. I want a structured plan that will not leave me over trained and blasted all the time.
+
+## Fulfillment
+- Order ID: synthetic-lowvol-parity
+- Delivery Platform: manual
+- Order Created At: 2026-09-22T15:00:00
+- Generation At: 2026-09-22T15:05:00
+- Effective Date:
+- Planning Horizon End:
+- Publication Horizon Weeks:
+- Weeks Purchased:
+- Athlete Timezone: America/Chicago
+"""
+
+
 # ---------------------------------------------------------------------------
 # R05 -- the rule
 # ---------------------------------------------------------------------------
@@ -131,3 +224,61 @@ def test_b_race_easy_spin_is_published_as_recovery():
     from generate_athlete_package import _b_race_overlay_role
     assert _b_race_overlay_role(True) == {'role': 'recovery'}
     assert _b_race_overlay_role(False) == {}
+
+
+# ---------------------------------------------------------------------------
+# End to end: the synthetic order through the real intake path
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope='module')
+def low_volume_order(tmp_path_factory):
+    root = tmp_path_factory.mktemp('low-volume-order')
+    intake = root / 'intake.md'
+    intake.write_text(LOW_VOLUME_INTAKE)
+    env = {key: value for key, value in os.environ.items()
+           if key not in ('GG_AUTO_EMAIL', 'GG_STRICT_COMPLIANCE', 'GG_STRICT_QUALITY')}
+    env.update({
+        'GG_FIXED_NOW': '2026-09-22T15:05:00',
+        'GG_ATHLETES_BASE_DIR': str(root / 'athletes'),
+        'GG_DELIVERY_DIR': str(root / 'review'),
+        'PYTHONPATH': str(SCRIPTS_DIR.parent.parent),
+    })
+    result = subprocess.run(
+        [sys.executable, 'intake_to_plan.py', '--file', str(intake)],
+        cwd=str(SCRIPTS_DIR), capture_output=True, text=True, timeout=600, env=env)
+    assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-3000:]
+    athlete_dir = root / 'athletes' / 'synthetic-lowvol'
+    return {
+        'state': json.loads((athlete_dir / 'fulfillment_status.json').read_text()),
+        'plan_ir': json.loads((athlete_dir / 'plan_ir.json').read_text()),
+    }
+
+
+def test_low_volume_plan_has_none_of_the_fixed_finding_classes(low_volume_order):
+    ids = [item['id'] for item in low_volume_order['state']['blocking_issues']]
+    assert not [i for i in ids if i.startswith(FIXED_CLASSES)], ids
+
+
+def test_low_volume_plan_really_is_one_quality_day_per_load_week(low_volume_order):
+    """Guards the fixture: if the generator ever finds room for two quality
+    days here, the R05 assertion above stops proving anything."""
+    counts = {sum(1 for s in week['sessions'] if s.get('role') == 'intensity')
+              for week in low_volume_order['plan_ir']['weeks']
+              if week.get('week_type') == 'load' and week.get('phase') == 'base'}
+    assert counts == {1}
+
+
+def test_low_volume_plan_schedules_no_field_test(low_volume_order):
+    sessions = [s for week in low_volume_order['plan_ir']['weeks'] for s in week['sessions']]
+    assert not [s['title'] for s in sessions if s.get('is_field_test')
+                or 'test' in str(s.get('title') or '').lower()]
+    for item in low_volume_order['state']['blocking_issues']:
+        if item['id'] == 'UNRESOLVED_PAIN_MAX_PRESCRIPTION':
+            assert not [s for s in item['review_value']['blocked_sessions']
+                        if s['field_test']]
+
+
+def test_b_race_easy_spin_carries_its_recovery_role(low_volume_order):
+    easy = [s for week in low_volume_order['plan_ir']['weeks'] for s in week['sessions']
+            if s.get('date') == '2027-03-11' and s.get('tp_kind') == 'bike']
+    assert easy and all(s.get('role') == 'recovery' for s in easy)
