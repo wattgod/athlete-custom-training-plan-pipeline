@@ -122,6 +122,7 @@ _NOTICE: Dict[str, List[str]] = {
     ],
     "taper": [
         "Feeling sluggish in a taper is normal. Feeling sharp by the weekend is the goal. Do not add work to fix a bad day.",
+        "The second taper is not a fitness test. Keep the written openers brief and let the freshness arrive. Extra miles would only spend it.",
     ],
     "race": [
         "Nothing new this week: no new food, no new position, no new kit. Sleep well Thursday; Friday night rarely cooperates.",
@@ -450,6 +451,9 @@ def _position_line(number: int, total: int, phase: str, week_type: str,
     if week_type == "race":
         return f"Race week. {race_name} is {_race_day_phrase(weeks_to_race)}. The work is done; this week is about arriving fresh."
     if week_type == "taper":
+        if phase_use:
+            return (f"Week {number} of {total}. Second taper. The volume is down again; "
+                    "keep the short sharp efforts short and arrive ready to race.")
         return f"Week {number} of {total}. Taper. I have dropped the volume and kept a little sharpness; fatigue leaves faster than fitness does."
     if week_type == "recovery":
         return f"Week {number} of {total}. Recovery week, and I mean it: the last block gets absorbed now, not later."
@@ -472,8 +476,20 @@ def _race_week_lines(plan_ir: Any, week: Any, sessions: List[Any]) -> List[str]:
     uses the plan's race fuel range."""
     events = list(_get(plan_ir, "events") or [])
     snapshot = _get(plan_ir, "race_snapshot") or {}
-    a_event = next((e for e in events if str(_get(e, "priority") or "").upper() == "A"), {})
-    b_event = next((e for e in events if str(_get(e, "priority") or "").upper() == "B"), {})
+    a_events = [e for e in events if str(_get(e, "priority") or "").upper() == "A"]
+    race_dates = {_as_date(_get(s, "date")) for s in sessions
+                  if str(_get(s, "tp_kind") or "") == "race"}
+    a_event = next((e for e in a_events
+                    if _as_date(_get(e, "date")) in race_dates),
+                   a_events[0] if a_events else {})
+    multi_a = len(a_events) > 1
+    session_dates = [_as_date(_get(s, "date")) for s in sessions
+                     if _as_date(_get(s, "date"))]
+    b_event = next((e for e in events
+                    if str(_get(e, "priority") or "").upper() == "B"
+                    and (not multi_a or
+                         (session_dates and _as_date(_get(e, "date"))
+                          and min(session_dates) <= _as_date(_get(e, "date")) <= max(session_dates)))), {})
     a_name = str(_get(a_event, "name") or _get(snapshot, "name") or "the A race")
     a_date = _as_date(_get(a_event, "date") or _get(snapshot, "date"))
     a_day = _WEEKDAY[a_date.weekday()] if a_date else "Race day"
@@ -503,12 +519,28 @@ def _race_week_lines(plan_ir: Any, week: Any, sessions: List[Any]) -> List[str]:
     else:
         lines.append(f"Race week. {off_text} off. Openers before {a_name}. {a_day} is the assignment.")
         event_fuel = a_name
-    fuel = (f" Fuel {event_fuel} with familiar products at {fuel_range[0]}-{fuel_range[-1]} g/hr."
-            if len(fuel_range) >= 2 else "")
-    lines.append("No bonus miles or make-up work. Keep the openers controlled." + fuel)
-    lines.append(re.sub(r"\s+", " ", "Inside or out—keep the written RPE smooth." + choice_tail
-                        + " Pain, illness, or changed function: stop and tell me.").strip())
-    lines.append(_NOTICE["race"][0])
+    if multi_a:
+        # A weekly note follows this week's race card, not the season's final
+        # target fuel snapshot. Event names make the two race weeks distinct
+        # without waiving the voice contract's no-duplicate-sentence rule.
+        fuel = (f" Fuel {event_fuel} with familiar products at {fuel_range[0]}-{fuel_range[-1]} g/hr."
+                if len(fuel_range) >= 2 and a_date == _as_date(_get(snapshot, "date"))
+                else f" Fuel {event_fuel} at the practiced rate on the race card.")
+        lines.append(f"No bonus miles or make-up work before {a_name}. "
+                     f"Keep the openers controlled for {a_name}." + fuel)
+        lines.append(re.sub(r"\s+", " ",
+                            f"Inside or out—keep the written RPE smooth for {a_name}."
+                            + choice_tail +
+                            f" Pain, illness, or changed function: stop and tell me before {a_name}.").strip())
+        lines.append(f"Nothing new for {a_name}: no new food, no new position, no new kit. "
+                     f"Sleep well before {a_name}; the night before a race rarely cooperates.")
+    else:
+        fuel = (f" Fuel {event_fuel} with familiar products at {fuel_range[0]}-{fuel_range[-1]} g/hr."
+                if len(fuel_range) >= 2 else "")
+        lines.append("No bonus miles or make-up work. Keep the openers controlled." + fuel)
+        lines.append(re.sub(r"\s+", " ", "Inside or out—keep the written RPE smooth." + choice_tail
+                            + " Pain, illness, or changed function: stop and tell me.").strip())
+        lines.append(_NOTICE["race"][0])
     return lines
 
 
@@ -518,6 +550,12 @@ def _race_day_phrase(weeks_to_race: Optional[int]) -> str:
 
 def _word_count(text: str) -> int:
     return len(re.findall(r"\S+", text))
+
+
+def _one_week_specific_sentence(text: str, number: int, *, position: bool) -> str:
+    """Keep long two-peak calendars from cycling identical stock sentences."""
+    single = re.sub(r"[.!?]\s+", "; ", text.strip())
+    return single if position else f"Week {number} check: {single}"
 
 
 def _self_review_note(dated: List[Any]) -> Dict[str, str]:
@@ -545,6 +583,8 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
     snapshot = _get(plan_ir, "race_snapshot") or {}
     a_event = next((e for e in (_get(plan_ir, "events") or [])
                     if str(_get(e, "priority") or "").upper() == "A"), {})
+    multi_a = sum(1 for e in (_get(plan_ir, "events") or [])
+                  if str(_get(e, "priority") or "").upper() == "A") > 1
     race_name = str(_get(a_event, "name") or _get(snapshot, "name") or "race day")
     race_date = _as_date(_get(a_event, "date") or _get(snapshot, "date"))
     total = max(int(_get(w, "number") or 0) for w in weeks)
@@ -620,11 +660,13 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
         )
         lines: List[str] = [_position_line(number, total, phase, week_type, prev_type, next_type,
                                            race_name, weeks_to_race,
-                                           phase_use=phase_use.get(phase, 0) if plain else 0,
+                                           phase_use=phase_use.get(phase, 0) if plain or week_type == "taper" else 0,
                                            legs_heavy_callback=legs_heavy_callback)]
+        if multi_a:
+            lines[0] = _one_week_specific_sentence(lines[0], number, position=True)
         if legs_heavy_callback:
             thread["legs_heavy_payoff_used"] = True
-        if plain:
+        if plain or week_type == "taper":
             phase_use[phase] = phase_use.get(phase, 0) + 1
         focus = str(_get(_get(plan_ir, "coached_block") or {}, "focus") or "").strip().rstrip(".")
         if focus and not focus_said:
@@ -660,7 +702,9 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
         pool = _NOTICE.get(week_type) or _NOTICE["load"]
         n_use = notice_use.get(week_type, 0)
         notice_use[week_type] = n_use + 1
-        lines.append(pool[n_use % len(pool)])
+        notice = pool[n_use % len(pool)]
+        lines.append(_one_week_specific_sentence(notice, number, position=False)
+                     if multi_a else notice)
 
         body = "\n\n".join(lines)
         while _word_count(body) > max_words and len(lines) > 2:

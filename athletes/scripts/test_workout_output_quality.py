@@ -52,6 +52,7 @@ from plan_ir import _round_time_planned_hours, build_plan_ir, build_tp_manifest
 import plan_ir as plan_ir_module
 from workout_spec import normalize_zwo_blocks, render_main_set
 from workout_templates import scale_zwo_to_target_duration
+from workout_mapper import _pad_vo2_to_library_duration
 
 from test_naming_and_rounding import full_plan, w00_plan  # noqa: F401 (fixtures)
 
@@ -306,6 +307,27 @@ def test_no_long_segment_renders_with_ragged_seconds(golden_files):
                 offenders.append((f.name, m.group(0)))
     assert offenders == [], (
         f"description(s) with a ragged (non-whole-minute) >=5min segment: {offenders}")
+
+
+def test_vo2_padding_counts_all_repeats_and_uses_whole_minute_z2():
+    zwo = ("<workout_file><workout>"
+           '<Warmup Duration="1200"/>'
+           '<IntervalsT Repeat="10" OnDuration="30" OffDuration="25"/>'
+           '\n    <Cooldown Duration="900"/>'
+           "</workout></workout_file>")
+    padded = _pad_vo2_to_library_duration('VO2max 30/30', 2, zwo)
+    # The repeated block is 550s, not the 55s a regex would count. Actual
+    # duration is 44m10s, so the ~5m50s pad should be six whole minutes.
+    assert '<SteadyState Duration="360" Power="0.68"' in padded
+
+
+def test_vo2_padding_never_extends_already_longer_session():
+    zwo = ("<workout_file><workout>"
+           '<Warmup Duration="1680"/>'
+           '<IntervalsT Repeat="10" OnDuration="30" OffDuration="25"/>'
+           '\n    <Cooldown Duration="1380"/>'
+           "</workout></workout_file>")
+    assert _pad_vo2_to_library_duration('VO2max 30/30', 2, zwo) == zwo
 
 
 @pytest.fixture(scope='module')

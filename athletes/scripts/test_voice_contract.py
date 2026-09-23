@@ -106,6 +106,51 @@ def test_story_notes_never_repeat_a_sentence_across_weeks():
     assert not [s for s, c in sentences.items() if c > 1]
 
 
+def test_two_race_week_notes_name_the_race_in_that_week_and_pass_voice_lint():
+    plan = _plan()
+    first = plan['weeks'][3]
+    first['week_type'] = first['phase'] = 'race'
+    first_date = first['sessions'][-1]['date']
+    final = plan['weeks'][-1]
+    final_date = final['sessions'][-1]['date']
+    first['sessions'][-1].update(tp_kind='race', title='Race Day — Spring Race')
+    final['sessions'][-1].update(tp_kind='race', title='Race Day — Fall Race')
+    plan['events'] = [
+        {'name': 'Spring Race', 'date': first_date, 'priority': 'A'},
+        {'name': 'Fall Race', 'date': final_date, 'priority': 'A'},
+    ]
+    plan['race_snapshot'] = {'name': 'Fall Race', 'date': final_date}
+    notes = render_story_notes(plan)
+    race_notes = [note for note in notes if note['title'].endswith('Race Week')]
+    assert len(race_notes) == 2
+    assert 'Openers before Spring Race' in race_notes[0]['body']
+    assert 'Fall Race' not in race_notes[0]['body']
+    assert 'Openers before Fall Race' in race_notes[1]['body']
+    assert lint_notes(notes, rules=RULES) == []
+
+
+def test_two_tapers_do_not_repeat_the_closing_rule():
+    plan = _plan()
+    plan['weeks'][2]['week_type'] = plan['weeks'][2]['phase'] = 'taper'
+    notes = render_story_notes(plan)
+    assert lint_notes(notes, rules=RULES) == []
+
+
+def test_repeated_peak_reentries_have_distinct_copy():
+    plan = _plan()
+    plan['events'] = [
+        {'name': 'Spring Race', 'date': '2026-09-20', 'priority': 'A'},
+        {'name': 'Fall Race', 'date': '2026-10-17', 'priority': 'A'},
+    ]
+    for index in (1, 3, 5):
+        plan['weeks'][index]['week_type'] = 'recovery'
+    for index in (2, 4, 6):
+        plan['weeks'][index]['week_type'] = 'load'
+        plan['weeks'][index]['phase'] = 'peak'
+    notes = render_story_notes(plan)
+    assert lint_notes(notes, rules=RULES) == []
+
+
 def test_story_notes_are_deterministic():
     assert render_story_notes(_plan()) == render_story_notes(_plan())
 

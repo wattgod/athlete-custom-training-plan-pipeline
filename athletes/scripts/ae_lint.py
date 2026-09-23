@@ -543,14 +543,14 @@ def lint_taper_shape(workouts: list[dict], race: date | None,
     file's existing fixed-constant style, see TAPER_WINDOW_DAYS for
     AE-1.12). Three checks, all silent unless `race` is supplied; the third
     additionally needs `current_ctl`:
-      (a) volume decay -- weekly TSS inside the window (via _weekly_totals)
+      (a) volume decay -- seven-day TSS inside the window (race-anchored)
           must not increase week over week, except a single final-week
           increase that's explained entirely by an AE-1.17 opener in the
           window's last 3 days (<=TAPER_OPENER_BUMP_MAX over the
           immediately-prior 3-day load). WARN, rule AE-1.17.
-      (b) intensity retention -- weekly hard-seconds (AE-1.12 >=92%FTP
-          seconds, via _weekly_hard_seconds) inside the window must stay
-          >= TAPER_INTENSITY_RETENTION of the last pre-taper week's
+      (b) intensity retention -- seven-day hard-seconds (AE-1.12 >=92%FTP
+          seconds) inside the window must stay
+          >= TAPER_INTENSITY_RETENTION of the preceding seven days'
           hard-seconds (Matti ruling 2026-08-26). Silently skipped if that
           pre-taper week had < TAPER_INTENSITY_FLOOR_SECONDS hard-seconds
           (nothing to retain). FAIL, rule AE-1.17.
@@ -565,13 +565,19 @@ def lint_taper_shape(workouts: list[dict], race: date | None,
     window_end = race - timedelta(days=1)
     daily = _daily_tss(workouts)
 
+    # Anchor complete seven-day bins to the race, not calendar Mondays.
+    # Otherwise a Saturday race makes the first bin include pre-taper load
+    # and the final bin include race-day TSS, falsely failing both gates.
+    window_weeks = [window_start + timedelta(days=7 * i)
+                    for i in range(TAPER_SHAPE_WINDOW_DAYS // 7)]
+
+    def _bin_total(values: dict[date, float], start: date) -> float:
+        return sum(values.get(start + timedelta(days=i), 0.0) for i in range(7))
+
     # (a) volume decay --------------------------------------------------
-    totals = _weekly_totals(workouts)
-    window_weeks = sorted(wk for wk in totals
-                           if wk <= window_end and wk + timedelta(days=6) >= window_start)
     for i in range(1, len(window_weeks)):
         prev_wk, wk = window_weeks[i - 1], window_weeks[i]
-        prev_total, total = totals[prev_wk], totals[wk]
+        prev_total, total = _bin_total(daily, prev_wk), _bin_total(daily, wk)
         if total <= prev_total:
             continue
         bump_ok = False
@@ -588,15 +594,24 @@ def lint_taper_shape(workouts: list[dict], race: date | None,
                                     f"opener bump (cap +{TAPER_OPENER_BUMP_MAX:.0%})"})
 
     # (b) intensity retention ---------------------------------------------
-    weekly_hard = _weekly_hard_seconds(workouts)
-    race_wks = _race_weeks(workouts)
-    pre_taper_week = _week_start(window_start) - timedelta(weeks=1)
-    pre_taper_hard = weekly_hard.get(pre_taper_week, 0.0)
+    daily_hard: dict[date, float] = {}
+    for w in workouts:
+        day = _workout_day(w)
+        structure = w.get('structure') if isinstance(w.get('structure'), Mapping) else None
+        if day is None or not structure:
+            continue
+        hard, _ = _hard_seconds(structure)
+        daily_hard[day] = daily_hard.get(day, 0.0) + hard
+    pre_taper_week = window_start - timedelta(days=7)
+    pre_taper_hard = _bin_total(daily_hard, pre_taper_week)
+    race_days = {day for w in workouts if (day := _workout_day(w)) is not None
+                 and ((not w.get('structure') and (w.get('tssPlanned') or 0) >= 100)
+                      or re.match(r'\s*(RACE|EVENT)\b', str(w.get('title') or '')))}
     if pre_taper_hard >= TAPER_INTENSITY_FLOOR_SECONDS:
         for wk in window_weeks:
-            if wk in race_wks:
+            if any(wk <= day < wk + timedelta(days=7) for day in race_days):
                 continue  # race cards carry intensity without structure
-            taper_hard = weekly_hard.get(wk, 0.0)
+            taper_hard = _bin_total(daily_hard, wk)
             if taper_hard < TAPER_INTENSITY_RETENTION * pre_taper_hard:
                 findings.append({"day": wk.isoformat(), "title": "(taper intensity)",
                                  "severity": "FAIL", "rule": "AE-1.17",
@@ -742,23 +757,6 @@ def main(argv: list[str] | None = None) -> int:
         for finding in lint_voice(workouts, notes):  # AE-9.11 -- always on, no flag
             finding["file"] = str(path)
             all_findings.append(finding)
-
-    # Plan-level gates (span the whole payload, not a single workout) —
-    # both silent unless their inputs are supplied.
-    plan_file = str(args.files[0]) if len(args.files) == 1 else "(plan)"
-    for finding in lint_ctl_trajectory(all_workouts, race, args.current_ctl):
-        finding["file"] = plan_file
-        all_findings.append(finding)
-    for finding in lint_race_day_tsb(all_workouts, race, args.current_ctl,
-                                      args.current_atl, args.coach_override):
-        finding["file"] = plan_file
-        all_findings.append(finding)
-    for finding in lint_taper_shape(all_workouts, race, args.current_ctl):
-        finding["file"] = plan_file
-        all_findings.append(finding)
-    for finding in lint_demonstrated_dose(all_workouts, args.demonstrated_load):
-        finding["file"] = plan_file
-        all_findings.append(finding)
 
     # Plan-level gates (span the whole payload, not a single workout) —
     # both silent unless their inputs are supplied.

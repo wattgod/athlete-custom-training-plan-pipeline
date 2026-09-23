@@ -57,6 +57,33 @@ def test_basic_calculation():
     print("  ✓ PASSED")
 
 
+def test_two_a_events_get_distinct_race_weeks_and_post_event_recovery(monkeypatch):
+    """AE-1.9/1.23: an earlier A race cannot disappear into a rest day."""
+    monkeypatch.setenv('GG_FIXED_NOW', '2026-09-23T17:49:02Z')
+    result = calculate_plan_dates(
+        '2027-06-05', 36, preferred_start='2026-09-28',
+        meso_pattern='2:1',
+        a_events=[
+            {'name': 'Mid South', 'date': '2027-03-13', 'priority': 'A'},
+            {'name': 'Unbound Gravel 100', 'date': '2027-06-05', 'priority': 'A'},
+        ],
+    )
+
+    weeks = {week['week']: week for week in result['weeks']}
+    assert weeks[24]['phase'] == 'race'
+    assert weeks[24]['is_race_week'] is True
+    assert weeks[24]['a_race']['name'] == 'Mid South'
+    assert next(day for day in weeks[24]['days']
+                if day['date'] == '2027-03-13')['is_race_day'] is True
+    assert weeks[25]['is_post_event_recovery'] is True
+    assert weeks[25]['is_recovery_week'] is True
+    assert weeks[36]['phase'] == 'race'
+    assert next(day for day in weeks[36]['days']
+                if day['date'] == '2027-06-05')['is_race_day'] is True
+    assert not [error for error in validate_plan_dates(result, '2027-06-05')
+                if error.startswith('CRITICAL')]
+
+
 def test_race_on_different_weekdays():
     """Test races on different days of the week."""
     print("\n📋 Test: Race on Different Weekdays")

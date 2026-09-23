@@ -30,7 +30,28 @@ import calculate_plan_dates as cpd
 import library_selector
 from generate_athlete_package import (_library_selection_in_scope,
                                       generate_zwo_files,
-                                      resolve_library_selections)
+                                      resolve_library_selections,
+                                      _rebalance_recovery_weeks_post_resolution)
+
+
+def test_recovery_rebalance_can_shorten_unresolved_easy_rides_to_band():
+    load = lambda week: {'plan_week': week, 'week_type': 'load',
+                         'total_tss': 380, 'days': []}
+    recovery = {'plan_week': 3, 'week_type': 'recovery', 'phase': 'base',
+                'total_tss': 254, 'days': [
+                    {'day': 'Mon', 'name': 'Endurance', 'role': 'filler',
+                     'duration': 70, 'tss': 55},
+                    {'day': 'Tue', 'name': 'Endurance', 'role': 'filler',
+                     'duration': 70, 'tss': 55},
+                    {'day': 'Fri', 'name': 'Endurance', 'role': 'long_ride',
+                     'duration': 180, 'tss': 144},
+                ]}
+    plan = {'weeks': [load(1), load(2), recovery]}
+    _rebalance_recovery_weeks_post_resolution(
+        plan, day_caps={}, athlete_seed='synthetic', session_floor_min=60,
+        series_state={}, used_items={}, index=None)
+    assert 0.50 <= recovery['total_tss'] / 380 <= 0.65
+    assert all(day['duration'] >= 60 for day in recovery['days'])
 
 
 # =============================================================================
@@ -192,6 +213,17 @@ class TestScopePredicate:
 
 
 class TestResolveLibrarySelections:
+    def test_underdosed_blended_vo2_synthetic_fallback_uses_compliant_family(self):
+        from generate_athlete_package import (_ae31_safe_synthetic_name,
+                                              _ae31_safe_variation_offset)
+
+        assert _ae31_safe_synthetic_name('Mixed Intervals', None) == 'VO2max 30/30'
+        assert _ae31_safe_synthetic_name('Blended 30/30 and SFR', None) == 'VO2max 30/30'
+        assert _ae31_safe_synthetic_name('Mixed Intervals', {'item_id': 42}) == 'Mixed Intervals'
+        assert _ae31_safe_synthetic_name('Tempo', None) == 'Tempo'
+        assert _ae31_safe_variation_offset('Mixed Intervals', 'VO2max 30/30', 19) == 0
+        assert _ae31_safe_variation_offset('Tempo', 'Tempo', 19) == 19
+
     def test_race_week_sharpener_stays_on_the_calibrated_synthetic_path(
         self, monkeypatch,
     ):

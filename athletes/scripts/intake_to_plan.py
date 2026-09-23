@@ -76,6 +76,21 @@ from brand_config import (brand_for_discipline, email_signature,
                           get_brand_config, load_brands, normalize_brand)
 from derived_registry import assert_registry_covers, entry as derived_entry
 
+
+def _route_post_render_findings(issues: List[Dict[str, Any]]) -> Tuple[
+    List[Dict[str, Any]], List[Dict[str, Any]],
+]:
+    """Route the known AE-2.1 advisory into the review catalog."""
+    blockers, soft = [], []
+    for issue in issues:
+        if (issue.get('severity') == 'WARNING'
+                and re.fullmatch(r'HARD_MINUTES_BELOW_FLOOR_W\d+',
+                                 str(issue.get('id') or ''))):
+            soft.append(issue)
+        else:
+            blockers.append(issue)
+    return blockers, soft
+
 # ---------------------------------------------------------------------------
 # ANSI colors for terminal output
 # ---------------------------------------------------------------------------
@@ -946,6 +961,7 @@ def parse_race_line(line: str) -> Dict[str, Any]:
     date = ''
     distance = 0
     priority = None
+    goal = None
 
     if meta:
         date_match = _RACE_DATE_RE.search(meta)
@@ -956,6 +972,13 @@ def parse_race_line(line: str) -> Dict[str, Any]:
         if priority_match:
             priority = priority_match.group(1).upper()
 
+        goal_match = re.search(
+            r'\bgoal\s+(survive|survival|finish|compete|podium)\b',
+            meta, re.IGNORECASE)
+        if goal_match:
+            goal = {'survive': 'survival'}.get(
+                goal_match.group(1).lower(), goal_match.group(1).lower())
+
         # Numeric distance: accept the production questionnaire's ``75 miles``
         # as well as the historical bare ``75`` form (never inspect the date).
         for part in [p.strip() for p in meta.split(',')]:
@@ -965,13 +988,16 @@ def parse_race_line(line: str) -> Dict[str, Any]:
                 distance = int(distance_match.group(1))
                 break
 
-    return {
+    result = {
         'name': name,
         'date': date,
         'distance_miles': distance,
         'priority': priority,
         'mandatory': bool(re.search(r'\bmandatory\b', meta, re.I)),
     }
+    if goal:
+        result['goal'] = goal
+    return result
 
 
 # ===========================================================================
@@ -1173,7 +1199,8 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     b_events = []
     target_race_info = {}
 
-    goal_type = derive_goal_type(success_text)
+    goal_type = (parsed_races[target_idx].get('goal')
+                 if target_idx >= 0 else None) or derive_goal_type(success_text)
 
     # The customer picked a specific race on the site, so the questionnaire
     # carries its SLUG. For the target race we resolve by slug (exact) — this
@@ -1222,7 +1249,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'name': race_name_clean,
             'date': parsed['date'],
             'distance_miles': parsed['distance_miles'],
-            'goal': goal_type if is_target else 'compete',
+            'goal': parsed.get('goal') or (goal_type if is_target else 'compete'),
             'priority': priority,
         }
         if parsed['mandatory']:
@@ -4167,9 +4194,12 @@ def main():
             state = load_fulfillment_state(state_path)
             validator_input = build_validator_input(athlete_dir)
             validator_issues, confirmations = validate_transitional_input(validator_input)
+            validator_blockers, validator_soft = _route_post_render_findings(
+                validator_issues)
             merge_generation_blockers(
                 state_path, state['generation_revision'], 'post_render',
-                validator_issues, required_confirmations=confirmations,
+                validator_blockers, required_confirmations=confirmations,
+                soft_confirmations=validator_soft,
             )
             # The projections include fulfillment status, so refresh both named
             # transitional validator artifacts after the merge and before seal.
@@ -4188,7 +4218,8 @@ def main():
                 raise RuntimeError(
                     'post-render findings changed after final projection rewrite')
             print(f"  {GREEN}Post-render validation complete{RESET} "
-                  f"({len(validator_issues)} blocker(s), "
+                  f"({len(validator_blockers)} blocker(s), "
+                  f"{len(validator_soft)} advisory item(s), "
                   f"{len(confirmations)} confirmation(s))")
         except Exception as exc:
             try:

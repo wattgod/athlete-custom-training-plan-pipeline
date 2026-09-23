@@ -211,6 +211,7 @@ _METHODOLOGY_CONFIGURATION = {
     },
     "strength_approach": DERIVED, "key_workouts": _list(DERIVED),
     "progression_style": DERIVED, "testing_frequency": DERIVED,
+    "meso_pattern": _optional(DERIVED),
 }
 
 _CALENDAR_DAY = {
@@ -228,6 +229,13 @@ _CALENDAR_WEEK = {
     "is_recovery_week": DERIVED,
     "week_type": _optional(DERIVED),
     "is_post_event_recovery": _optional(DERIVED),
+    "a_race": _optional({
+        "date": DERIVED, "priority": DERIVED,
+        "name": _optional(DERIVED),
+        "distance_miles": _optional(DERIVED),
+        "goal": _optional(DERIVED),
+        "mandatory": _optional(DERIVED),
+    }),
     "b_race": _optional({"name": DERIVED, "date": DERIVED, "phase": DERIVED}),
 }
 

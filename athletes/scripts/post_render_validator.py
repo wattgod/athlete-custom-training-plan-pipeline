@@ -266,6 +266,49 @@ def _unresolved_pain_load_findings(
     )]
 
 
+def _a_event_race_day_findings(
+    plan_ir: Dict[str, Any], manifest: Dict[str, Any], profile: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """AE-1.9/1.23: every dated A event must survive into the TP race calendar."""
+    expected = {
+        str(event.get("date")) for event in profile.get("a_events") or []
+        if isinstance(event, dict) and event.get("date")
+        and str(event.get("priority") or "A").upper() == "A"
+    }
+    if not expected:
+        return []
+
+    ledger = {
+        str(event.get("date")) for event in plan_ir.get("events") or []
+        if isinstance(event, dict)
+        and str(event.get("priority") or "").upper() == "A"
+    }
+
+    def rendered_a_dates(sessions: Iterable[Dict[str, Any]]) -> set[str]:
+        return {
+            str(session.get("date")) for session in sessions
+            if isinstance(session, dict) and session.get("tp_kind") == "race"
+            and str((session.get("race") or {}).get("priority") or "").upper() == "A"
+        }
+
+    plan_dates = rendered_a_dates(session for _, session in _sessions(plan_ir))
+    manifest_dates = rendered_a_dates(manifest.get("sessions") or [])
+    missing = sorted(expected - (ledger & plan_dates & manifest_dates))
+    if not missing:
+        return []
+    return [_issue(
+        "A_EVENT_RACE_DAY_MISSING",
+        "A-priority event is absent or downgraded in the generated race calendar.",
+        review_value={
+            "missing_dates": missing,
+            "planir_event_dates": sorted(ledger),
+            "planir_race_dates": sorted(plan_dates),
+            "manifest_race_dates": sorted(manifest_dates),
+        },
+        basis="profile A-event dates compared with PlanIR ledger and both race-session projections",
+    )]
+
+
 def _athlete_visible_copy_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
     violations = []
     has_b_event = any(
@@ -443,6 +486,13 @@ RECOVERY_TITLE = re.compile(r"\brecovery\b", re.I)
 def _is_intensity(session: Dict[str, Any]) -> bool:
     if session.get("tp_kind") != "bike" or _field_test_metric(session):
         return False
+    # Generated PlanIR assigns purpose before the workout is titled/rendered.
+    # A cadence skill or race-specific long ride may contain a short hot step
+    # without becoming an extra interval day (AE-2.1/R01 role accounting).
+    # Older/transitional inputs without roles still use the identity fallback.
+    role = str(session.get("role") or "").strip().lower()
+    if role:
+        return role == "intensity"
     title = str(session.get("title") or session.get("display_name") or "")
     # Openers are explicitly NOT intensity (constants.INTENSITY_WORKOUT_TYPES
     # note) — a taper opener with 30s @ 110% must not generate a
@@ -473,7 +523,12 @@ def _is_intensity(session: Dict[str, Any]) -> bool:
 
 
 def _is_long_ride(session: Dict[str, Any]) -> bool:
-    if session.get("tp_kind") != "bike" or _is_intensity(session):
+    if session.get("tp_kind") != "bike":
+        return False
+    role = str(session.get("role") or "").strip().lower()
+    if role:
+        return role == "long_ride"
+    if _is_intensity(session):
         return False
     title = str(session.get("title") or session.get("display_name") or "")
     seconds = int(session.get("duration_s") or 0)
@@ -488,6 +543,9 @@ def _is_endurance(session: Dict[str, Any]) -> bool:
     their own rule, matching library_selector._BASE_LONG_RIDE_IF_CEILING),
     NOT a field test, and NOT an opener."""
     if session.get("tp_kind") != "bike":
+        return False
+    role = str(session.get("role") or "").strip().lower()
+    if role and role not in {"filler", "recovery"}:
         return False
     if _field_test_metric(session) or _is_intensity(session) or _is_long_ride(session):
         return False
@@ -546,6 +604,48 @@ def _endurance_tss_rate_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, str]
             severity="WARNING",
         ))
     return findings
+
+
+def _a_race_taper_findings(manifest: Dict[str, Any], profile: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """AE-1.17/1.18: put every A-race taper FAIL in canonical readiness."""
+    from ae_lint import lint_taper_shape
+
+    events = [event for event in (profile.get("a_events") or [])
+              if isinstance(event, dict) and str(event.get("priority") or "").upper() == "A"]
+    if not events and (profile.get("target_race") or {}).get("date"):
+        events = [profile["target_race"]]
+    workouts = [{
+        "workoutDay": session.get("date"),
+        "title": session.get("title"),
+        "structure": session.get("structure"),
+        "tssPlanned": session.get("tss_planned"),
+        "totalTimePlanned": session.get("total_time_planned"),
+        "workoutTypeValueId": session.get("workout_type_value_id"),
+    } for session in (manifest.get("sessions") or [])
+        if session.get("tp_kind") in {"bike", "race"}]
+    issues = []
+    seen_dates = set()
+    for event in events:
+        race_date = str(event.get("date") or "")
+        if race_date in seen_dates:
+            continue
+        try:
+            race_day = date.fromisoformat(race_date)
+        except ValueError:
+            continue  # the event/date gate owns malformed or missing dates
+        seen_dates.add(race_date)
+        failures = [finding for finding in lint_taper_shape(workouts, race_day)
+                    if finding["severity"] == "FAIL"]
+        if failures:
+            issues.append(_issue(
+                "AE_TAPER_LINT_FAIL_" + race_day.strftime("%Y%m%d"),
+                f"{event.get('name') or 'A race'} ({race_date}) has "
+                f"{len(failures)} ratified taper FAIL(s): "
+                + "; ".join(finding["msg"] for finding in failures),
+                review_value={"race_name": event.get("name"), "race_date": race_date,
+                              "findings": failures},
+            ))
+    return issues
 
 
 _HARD_FTP_THRESHOLD = 92.0
@@ -1106,6 +1206,8 @@ def validate_transitional_input(
         ))
 
     profile = context.get("profile") or {}
+    issues.extend(_a_event_race_day_findings(plan_ir, manifest, profile))
+    issues.extend(_a_race_taper_findings(manifest, profile))
     issues.extend(_rpe_semantic_findings(plan_ir))
     issues.extend(_field_test_suppression_findings(plan_ir, profile))
     issues.extend(_unresolved_pain_load_findings(plan_ir, profile))

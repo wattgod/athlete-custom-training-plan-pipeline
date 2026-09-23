@@ -80,6 +80,44 @@ class TestNoScheduleDuplication:
         assert "plan opens with an FTP test" not in html
 
 
+def test_joint_a_race_guide_names_both_goals_and_transition():
+    from training_guide_builder import _build_full_guide
+
+    profile = {
+        "name": "Example Rider",
+        "fitness": {},
+        "schedule": {},
+        "target_race": {"name": "Unbound Gravel 100", "date": "2027-06-05", "goal_type": "finish"},
+        "a_events": [
+            {"name": "Unbound Gravel 100", "date": "2027-06-05", "goal": "finish", "priority": "A"},
+            {"name": "Mid South", "date": "2027-03-13", "goal": "survival", "priority": "A"},
+        ],
+    }
+    html = _build_full_guide(
+        athlete_name="Example Rider", race_name="Unbound Gravel 100", race_distance=100,
+        tier="finisher", level="intermediate", plan_duration=20,
+        profile=profile, derived={"race_date": "2027-06-05", "race_distance_miles": 100},
+        schedule={}, plan_config={}, race_data={},
+    )
+
+    assert "Mid South and Unbound Gravel 100" in html.split("</h1>", 1)[0]
+    assert "Welcome to your <strong>Mid South and Unbound Gravel 100</strong> training plan" in html
+    assert "<strong>Mid South</strong> (2027-03-13) &mdash; goal: survival" in html
+    assert "<strong>Unbound Gravel 100</strong> (2027-06-05) &mdash; goal: finish" in html
+    assert "After Mid South, recover before rebuilding toward Unbound Gravel 100." in html
+
+
+def test_single_and_store_guides_have_no_joint_race_brief():
+    from training_guide_builder import _joint_a_races
+
+    events = [
+        {"name": "Mid South", "date": "2027-03-13", "goal": "survival", "priority": "A"},
+        {"name": "Unbound Gravel 100", "date": "2027-06-05", "goal": "finish", "priority": "A"},
+    ]
+    assert _joint_a_races({"a_events": events[:1]}) == []
+    assert _joint_a_races({"a_events": events}, store_mode=True) == []
+
+
 class TestEquipmentSanity:
     def test_no_helmet_on_trainer(self):
         html = _section_equipment_checklist({}, {})

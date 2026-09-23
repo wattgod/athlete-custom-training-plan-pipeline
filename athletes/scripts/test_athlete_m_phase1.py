@@ -119,6 +119,7 @@ def test_athlete_m_phase3_golden(monkeypatch, tmp_path):
         for _, session in sessions
     )
     assert [i["id"] for i in issues] == [i["id"] for i in expected["blockers"]]
+    assert [item["id"] for item in state["soft_confirmations"]] == expected["advisories"]
     assert [c["id"] for c in confirmations] == expected["required_confirmations"]
     assert not set(expected["absent_blockers"]) & {i["id"] for i in issues}
     labels = [item["week_label"] for item in fueling["gut_training"]["weekly_progression"]]
@@ -293,6 +294,7 @@ def test_athlete_m_phase4_golden(monkeypatch, tmp_path):
     }
     assert [item["id"] for item in state["blocking_issues"]] == [
         item["id"] for item in expected["blockers"]]
+    assert [item["id"] for item in state["soft_confirmations"]] == expected["advisories"]
     assert [item["id"] for item in state["required_confirmations"]] == (
         expected["required_confirmations"])
     threshold = next(item for item in state["required_confirmations"]

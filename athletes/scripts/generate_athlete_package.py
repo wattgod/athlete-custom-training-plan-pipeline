@@ -1535,6 +1535,27 @@ _SEATED_ONLY_SYNTHETIC_REMAP_NAMES = frozenset({
 _SEATED_ONLY_SYNTHETIC_REMAP_TARGET = 'VO2max 30/30'
 
 
+def _ae31_safe_synthetic_name(canonical_name: str, library_resolution) -> str:
+    """Keep a VO2-labelled fallback out of the underdosed blended archetype.
+
+    The blended 30/30 + SFR synthetic L1-L3 supplies only 2-3 minutes at
+    >=106% FTP, below AE-3.1's 5-minute hard floor. A curated resolution
+    retains its authored identity; only an unresolved synthetic slot moves
+    to the established VO2 30/30 family. The block-builder slot stays intact
+    for progression/compliance bookkeeping.
+    """
+    if library_resolution is None and canonical_name in {
+            'Mixed Intervals', 'Blended 30/30 and SFR'}:
+        return 'VO2max 30/30'
+    return canonical_name
+
+
+def _ae31_safe_variation_offset(canonical_name: str, render_name: str,
+                                 offset: int) -> int:
+    """Pin a remapped fallback to the verified VO2 30/30 archetype."""
+    return 0 if canonical_name != render_name else offset
+
+
 def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None,
                                athlete_seed=None, session_floor_min: int = 0,
                                excluded_calendar_slots: Optional[set] = None,
@@ -1835,6 +1856,45 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
             day['tss'] = replacement['tss']
             day['library_resolution'] = replacement
             _recompute_library_week_totals(bw)
+
+        if bw.get('total_tss', 0) > ceiling:
+            # Some weeks have no lower-TSS curated substitute. Shorten only
+            # synthetic, easy Endurance filler before touching the long ride;
+            # curated items keep their authored duration and TSS intact.
+            from math import ceil
+            easy_days = sorted(
+                (day for day in bw.get('days', [])
+                 if day.get('name') == 'Endurance'
+                 and day.get('role') in ('filler', 'long_ride')
+                 and not day.get('library_resolution')
+                 and not (day.get('post_sim_recovery') or day.get('pre_sim_recovery'))),
+                key=lambda day: (day.get('role') == 'long_ride',
+                                 -(day.get('duration') or 0)),
+            )
+            for day in easy_days:
+                duration = int(day.get('duration') or 0)
+                tss = float(day.get('tss') or 0)
+                minimum = max(45, int(session_floor_min or 0))
+                if duration <= minimum or tss <= 0:
+                    continue
+                excess = float(bw['total_tss']) - ceiling
+                if excess <= 0:
+                    break
+                cut = min(duration - minimum, ceil(excess * duration / tss))
+                new_duration = duration - cut
+                new_tss = round(tss * new_duration / duration, 1)
+                if float(bw['total_tss']) - (tss - new_tss) < preceding * 0.52:
+                    continue
+                day['duration'] = new_duration
+                day['tss'] = new_tss
+                bw['prescribed_duration'] = sum(
+                    int(item.get('duration') or 0) for item in bw.get('days', []))
+                bw['prescribed_tss'] = sum(
+                    float(item.get('tss') or 0) for item in bw.get('days', []))
+                bw['total_duration'] = (bw['prescribed_duration']
+                                        + int(bw.get('fixed_duration') or 0))
+                bw['total_tss'] = (bw['prescribed_tss']
+                                   + float(bw.get('fixed_tss') or 0))
 
 
 # Filesystem-reserved characters. A race name is authored copy, not a
@@ -4085,6 +4145,7 @@ TIPS:
                 # C4/D3: the resolution pass (before the compliance gate,
                 # above) stashed a curated TP library item on this day.
                 _library_resolution = bb_day.get('library_resolution')
+                bb_name = _ae31_safe_synthetic_name(bb_name, _library_resolution)
 
                 # Self-heal (coach ruling 2026-08-24): a pinned test slot
                 # can reach this point with no library_resolution attached
@@ -4211,6 +4272,10 @@ TIPS:
                     var_key = f"{bb_name}_{bb_role}"
                     var_offset = _bb_variation_counters.get(var_key, 0)
                     _bb_variation_counters[var_key] = var_offset + 1
+                # The safe family is selected for its measured dose; rotating
+                # its variation can choose a 24-min Norwegian 4x8 archetype.
+                var_offset = _ae31_safe_variation_offset(
+                    bb_day['name'], bb_name, var_offset)
 
                 # Workout personality: intensity days carry the archetype's
                 # name and a series number ("Thunder_Quads_2") instead of the
@@ -4823,9 +4888,14 @@ TIPS:
             if is_race_day:
                 # Create RACE DAY PLAN - not a workout, but a race execution guide
                 # Pull from fueling.yaml, race data, and training guide
-                race_plan_name = f"{workout_prefix}_RACE_DAY_{safe_filename_component(race_name)}"
+                event_race = (week.get('a_race') or {})
+                if event_race.get('date') != day_info['date']:
+                    event_race = target_race
+                event_name = event_race.get('name') or race_name
+                is_earlier_a_race = day_info['date'] != race_date
+                race_plan_name = f"{workout_prefix}_RACE_DAY_{safe_filename_component(event_name)}"
                 race_filename = f"{race_plan_name}.zwo"
-                race_display_name = f"Race Day — {race_name}"
+                race_display_name = f"Race Day — {event_name}"
 
                 # The private compiler directory deliberately carries no
                 # athlete artifacts. Use the already-loaded canonical fueling
@@ -4840,17 +4910,48 @@ TIPS:
                 from fueling_policy import prescription_from_fueling
                 prescription = prescription_from_fueling(fueling_data)
 
-                duration_hours = race_info.get('duration_hours', 5)
-                distance_miles = race_info.get('distance_miles', profile.get('target_race', {}).get('distance_miles', 75))
+                if is_earlier_a_race:
+                    # A second peak is its own event. Never reuse the final
+                    # target's distance, duration, course intel, or carb total.
+                    from calculate_fueling import estimate_race_duration
+                    from fueling_policy import (build_fueling_prescription,
+                                                tolerated_intake_from_profile)
+                    distance_miles = event_race.get('distance_miles')
+                    if not distance_miles:
+                        raise ValueError(
+                            f"A event {event_name} needs an explicit distance for its race card")
+                    event_goal = str(event_race.get('goal') or 'finish').lower()
+                    event_goal = {'survive': 'survival'}.get(event_goal, event_goal)
+                    if event_goal not in ('survival', 'finish', 'compete', 'podium'):
+                        event_goal = 'finish'
+                    duration_hours = estimate_race_duration(
+                        distance_miles, event_goal,
+                        event_race.get('elevation_ft') or 0,
+                        target_race.get('discipline') or 'gravel')
+                    fitness = (profile or {}).get('fitness') or (profile or {}).get('fitness_markers') or {}
+                    prescription = build_fueling_prescription(
+                        duration_hours=duration_hours,
+                        weight_kg=float(fitness.get('weight_kg') or 0),
+                        ftp_watts=fitness.get('ftp_watts'),
+                        goal_type=event_goal,
+                        tolerated_g_per_hour=tolerated_intake_from_profile(profile or {}),
+                    ).to_dict()
+                    pacing_goal = event_goal
+                    course_race_id = event_race.get('race_id', '')
+                else:
+                    duration_hours = race_info.get('duration_hours', 5)
+                    distance_miles = race_info.get('distance_miles', profile.get('target_race', {}).get('distance_miles', 75))
+                    pacing_goal = target_race.get('goal_type', target_race.get('goal', ''))
+                    course_race_id = target_race.get('race_id', '')
                 hourly_carbs = prescription.get('race_target_g_per_hour')
                 total_carbs = prescription.get('total_g')
                 hourly_range = prescription.get('race_range_g_per_hour', [])
                 hydration = prescription.get('hydration', {})
                 pacing_strategy = _race_day_pacing_strategy(
-                    target_race.get('goal_type', target_race.get('goal', '')),
+                    pacing_goal,
                     float(duration_hours or 0),
                 )
-                course_intel = _course_intel_section(target_race.get('race_id', ''))
+                course_intel = _course_intel_section(course_race_id)
 
                 # Estimate TSS consistently with how zwo_parser scores this
                 # race-day FreeRide (no power target) — otherwise the header
@@ -4877,7 +4978,7 @@ TIPS:
                 # something an athlete can act on from their race-day card.
 
                 # Build race day plan description
-                race_description = f"""RACE DAY: {race_name}
+                race_description = f"""RACE DAY: {event_name}
 Date: {day_info['date']}
 
 TARGET METRICS:

@@ -4,6 +4,14 @@ even next to the long ride; strength_on_interval_days -> place_strength_days
 stacks strength onto the intensity days instead of avoiding them (AE-8.4).
 Both default OFF: with no switch the defaults are byte-identical."""
 from block_builder import _build_day_template
+
+
+def test_friday_long_ride_keeps_two_spaced_quality_days():
+    # Greedily taking Tuesday stranded the schedule at one intensity day:
+    # Wednesday touches Tuesday and Thursday touches the Friday long ride.
+    roles = _build_day_template(['Sun'], 'Fri', 2)
+    assert [day for day in ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
+            if roles[day] == 'intensity'] == ['Mon', 'Wed']
 from generate_athlete_package import place_strength_days
 
 

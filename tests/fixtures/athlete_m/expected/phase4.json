@@ -2,12 +2,11 @@
   "status": "BLOCKED_REVIEW",
   "blockers": [
     {"id": "COURSE_UNRESOLVED", "waivable": false},
-    {"id": "HARD_MINUTES_BELOW_FLOOR_W02", "waivable": true},
-    {"id": "HARD_MINUTES_BELOW_FLOOR_W03", "waivable": true},
     {"id": "RACE_STALE", "waivable": true},
     {"id": "SESSION_PREDATES_GENERATION", "waivable": true},
     {"id": "SHORT_SESSION_BELOW_FLOOR", "waivable": true}
   ],
+  "advisories": ["D2_ACCOUNT_DORMANCY", "HARD_MINUTES_BELOW_FLOOR_W02", "HARD_MINUTES_BELOW_FLOOR_W03"],
   "required_confirmations": [
     "D2_DEMOGRAPHIC_AGE_MISMATCH",
     "D2_THRESHOLD_LTHR_STALE_MISMATCH",

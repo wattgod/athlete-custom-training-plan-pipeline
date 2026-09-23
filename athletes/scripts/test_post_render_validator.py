@@ -84,6 +84,30 @@ def test_valid_fixture_discriminates_generation_from_order_date():
     assert [item['id'] for item in confirmations] == ['SCHEDULE_MISMATCH_CONFIRM']
 
 
+def test_every_dated_a_event_must_render_as_an_a_race_day():
+    document = _document()
+    early_event = {'name': 'Early Gravel 100', 'date': '2026-08-29',
+                   'priority': 'A'}
+    final_event = {'name': 'Three Course Race', 'date': '2026-09-19',
+                   'priority': 'A'}
+    document['context']['profile']['a_events'] = [early_event, final_event]
+    document['plan_ir']['events'] = [early_event, final_event]
+    document['plan_ir']['weeks'][-1]['sessions'][-1]['race'] = {'priority': 'A'}
+    document['tp_manifest']['sessions'][-1]['race'] = {'priority': 'A'}
+    rest = _session('2026-08-29', 'Rest Day', 'day_off', 'rest', 0)
+    document['plan_ir']['weeks'].insert(2, {
+        'number': 3, 'phase': 'race', 'sessions': [rest]})
+    document['tp_manifest']['sessions'].insert(3, copy.deepcopy(rest))
+    document['tp_manifest']['expected']['day_off'] += 1
+    document['tp_manifest']['expected']['total'] += 1
+
+    issues, _ = validate_transitional_input(document)
+
+    assert any(item['id'] == 'A_EVENT_RACE_DAY_MISSING'
+               and item['review_value']['missing_dates'] == ['2026-08-29']
+               for item in issues)
+
+
 def test_targetless_coached_block_needs_no_fake_race_day():
     document = _document()
     sessions = [
@@ -256,6 +280,92 @@ def test_intensity_outside_stated_interval_days_is_disclosed():
     assert any(
         'tuesday' in entry and 'outside stated interval days' in entry
         for entry in item['review_value']['generated_mismatches'])
+
+
+def test_assigned_filler_skill_and_long_ride_roles_do_not_invent_interval_conflicts():
+    # A generated calendar may contain cadence bursts and race-specific
+    # surges without assigning another interval day. The schedule check must
+    # use the generator's assigned role when one is present.
+    document = _document()
+    document['context']['profile']['availability_roles'] = {
+        'long_ride_days': ['friday'],
+        'interval_days': ['monday', 'wednesday'],
+        'off_days': ['saturday'],
+    }
+    document['plan_ir']['weeks'][1]['sessions'].extend([
+        {**_session('2026-08-11', 'High Cadence Intervals'), 'role': 'skill'},
+        {**_session('2026-08-13', 'Cadence Work'), 'role': 'filler'},
+        {**_session('2026-08-14', 'Race Simulation — Act 1'), 'role': 'long_ride'},
+    ])
+    _mirror_to_manifest(document)
+
+    _, confirmations = validate_transitional_input(document)
+
+    entries = [entry for item in confirmations
+               if item['id'] == 'SCHEDULE_MISMATCH_CONFIRM'
+               for entry in item['review_value']['generated_mismatches']]
+    assert not any('2026-08-11' in entry or '2026-08-13' in entry
+                   or '2026-08-14' in entry for entry in entries)
+
+
+def test_assigned_intensity_role_outside_interval_days_still_requires_confirmation():
+    document = _document()
+    document['plan_ir']['weeks'][1]['sessions'].append(
+        {**_session('2026-08-11', 'Custom Hard Set'), 'role': 'intensity'})
+    _mirror_to_manifest(document)
+
+    _, confirmations = validate_transitional_input(document)
+
+    item = next(c for c in confirmations if c['id'] == 'SCHEDULE_MISMATCH_CONFIRM')
+    assert any('2026-08-11' in entry for entry in
+               item['review_value']['generated_mismatches'])
+
+
+def test_race_activation_is_not_endurance_for_tss_rate_gate():
+    document = _document()
+    session = {**_session('2026-09-15', 'Stars In Your Eyes'),
+               'role': 'activation', 'tss_planned': 63.0,
+               'total_time_planned': 1.0333}
+    document['plan_ir']['weeks'][-1]['sessions'].append(session)
+    _mirror_to_manifest(document)
+
+    issues, _ = validate_transitional_input(document)
+
+    assert 'ENDURANCE_TSS_RATE_HIGH' not in {item['id'] for item in issues}
+
+
+def test_each_a_race_taper_fail_reaches_canonical_readiness():
+    # The ordinary generated status once said zero CRITICAL while an
+    # independent ae-lint pass found two MidSouth taper FAILs.
+    document = _document()
+    document['context']['profile']['a_events'] = [
+        {'name': 'Early Gravel', 'date': '2026-08-29', 'priority': 'A'},
+        {'name': 'Three Course Race', 'date': '2026-09-19', 'priority': 'A'},
+    ]
+
+    def hard_session(day, seconds):
+        return {**_session(day, 'Controlled Hard Touch'), 'role': 'intensity',
+                'tss_planned': 60.0,
+                'structure': {'primaryIntensityMetric': 'percentOfFtp',
+                              'structure': [{'type': 'step',
+                                             'length': {'value': 1, 'unit': 'repetition'},
+                                             'steps': [{'length': {'value': seconds, 'unit': 'second'},
+                                                        'targets': [{'minValue': 93, 'maxValue': 93}]}]}]}}
+
+    # Early race window: Aug 15-28; Aug 8-14 is the 1000s baseline.
+    document['plan_ir']['weeks'][1]['sessions'].extend([
+        hard_session('2026-08-08', 1000),
+        hard_session('2026-08-15', 100),
+        hard_session('2026-08-22', 80),
+    ])
+    _mirror_to_manifest(document)
+
+    issues, _ = validate_transitional_input(document)
+
+    taper = [issue for issue in issues if issue['id'] == 'AE_TAPER_LINT_FAIL_20260829']
+    assert len(taper) == 1
+    assert {item['rule'] for item in taper[0]['review_value']['findings']} == {'AE-1.17'}
+    assert not any(issue['id'] == 'AE_TAPER_LINT_FAIL_20260919' for issue in issues)
 
 
 def test_no_interval_days_stated_means_no_outside_disclosure():
