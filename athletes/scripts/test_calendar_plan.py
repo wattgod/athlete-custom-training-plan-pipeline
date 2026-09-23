@@ -132,9 +132,15 @@ class TestTaperWeekSelection:
         assert roles.count('intensity') == 2
         assert 'long_ride' in roles
         names = [w['name'] for w in menu if w['role'] == 'intensity']
-        assert set(names) == {'Thirty-Fifteens', 'Cadence Work'}
+        assert set(names) == {'Thirty-Fifteens', 'VO2max 40/20'}
         assert next(w['name'] for w in menu if w['role'] == 'long_ride') == \
             'Taper Burst Endurance'
+
+    def test_gravel_seven_hour_taper_uses_cap_legal_short_touch_doses(self):
+        quality = [w for w in _select_taper_week(hours_per_week=7)
+                   if w['role'] == 'intensity']
+        assert [(w['name'], w['level']) for w in quality] == [
+            ('Thirty-Fifteens', 6), ('VO2max 40/20', 6)]
 
     def test_select_workouts_for_week_accepts_taper(self):
         menu = select_workouts_for_week(
@@ -193,6 +199,15 @@ class TestRaceAndTaperHouseTemplates:
         assert by_day['Fri']['role'] == 'off'
         assert by_day['Tue']['name'] == 'Stars In Your Eyes'
         assert by_day['Wed']['name'] == 'Endurance'
+
+    def test_scheduled_mon_wed_quality_keeps_three_short_race_week_touches(self):
+        plan = self._plan(off_days=['Sun'], long_ride_day='Fri',
+                          preferred_intensity_days=['Mon', 'Wed'], hours_per_week=7)
+        by_day = {d['day']: d for d in _week(plan, 2)['days']}
+        assert by_day['Mon']['name'] == 'Thirty-Fifteens'
+        assert by_day['Wed']['name'] == 'VO2max 40/20'
+        assert by_day['Fri']['name'] == 'Openers'
+        assert by_day['Sat']['role'] == 'race'
 
     def test_taper_has_short_short_cadence_and_burst_endurance(self):
         plan = self._plan()

@@ -467,7 +467,9 @@ def build_plan_from_calendar(
             wk_intensity = 2  # assessment battery (e.g. FTP + a second test)
         elif week_type == 'taper':
             wk_intensity = 2  # Thirty-Fifteens + cadence; taper is not recovery
-        else:  # recovery, race
+        elif week_type == 'race':
+            wk_intensity = 2  # AE-1.17: use both scheduled quality days when spaced before openers
+        else:  # recovery
             wk_intensity = 1
 
         # build_calendar_week owns the multipliers below.  Reverse that

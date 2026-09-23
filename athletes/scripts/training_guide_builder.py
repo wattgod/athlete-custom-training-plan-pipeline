@@ -2183,6 +2183,7 @@ def _section_race_week(race_data: Dict, tier: str, race_name: str,
 
   <h3>Race Week Principles</h3>
   <ul>
+  <li><strong>Keep the short hard efforts.</strong> Overall riding drops, but those touches stay in. If you are not recovering, back off and tell me. Do not make them up later.</li>
   <li><strong>No fitness tests.</strong> The urge to "check the legs" with one more hard effort spends race-day matches. Heavy legs mid-week are the taper working, not fitness leaving.</li>
   <li><strong>Nothing new.</strong> No new equipment, food, or routines. Race week is execution, not experimentation.</li>
   <li><strong>Front-load the logistics.</strong> Bike serviced, gear laid out, and bags packed early in the week &mdash; the night before is for sleeping, not wrenching.</li>

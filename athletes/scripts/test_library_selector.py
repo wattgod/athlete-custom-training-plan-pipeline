@@ -592,6 +592,22 @@ class TestUsedItemMemory:
         # item 2 is the only remaining candidate.
         assert result["item_id"] == 2
 
+    def test_taper_retention_can_reuse_prior_week_item_but_not_same_week(self):
+        def hard(reps):
+            return {"structure": [{"length": {"value": reps}, "steps": [{
+                "length": {"value": 30}, "targets": [{"minValue": 120}]}]}]}
+        items = [make_item(1, duration_min=60, structure=hard(30)),
+                 make_item(2, duration_min=60, structure=hard(12))]
+        index = make_index(items)
+        slot = base_slot(role="intensity", week_type="race", discipline="gravel",
+                         series_key=None, plan_week=24, day="Mon", block_id=("meso", 7),
+                         budget_min=60)
+        used = {1: {"count": 2, "weeks": {10, 23}, "blocks": {("meso", 7)}}}
+        assert select(slot, series_state=None, index=index, used_items=used)["item_id"] == 1
+        used[1]["weeks"].add(24)
+        assert select({**slot, "day": "Wed"}, series_state=None,
+                      index=index, used_items=used)["item_id"] == 2
+
     def test_plan_wide_reuse_cap_is_absolute_when_no_alternative_exists(self):
         """A tiny single-item pool must fall back to D9's loud None, not
         silently exceed the cap -- a real regression once let a scarce
@@ -1423,7 +1439,7 @@ def test_road_taper_intensity_prefers_top_eligible_library_dose():
     road_taper = {"discipline": "road", "week_type": "taper", "role": "intensity"}
     assert [x["item_id"] for x in _road_taper_intensity_subset(pool, road_taper)] == [3]
     assert _road_taper_intensity_subset(
-        pool, {**road_taper, "discipline": "gravel"}) == pool
+        pool, {**road_taper, "discipline": "gravel"}) == [pool[2]]
 
 
 def test_purged_concepts_never_selectable_from_curated_library():

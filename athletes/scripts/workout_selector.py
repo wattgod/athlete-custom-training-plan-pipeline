@@ -704,7 +704,7 @@ def _select_taper_week(
     """Taper week: retain sharpness without recovery-week restrictions.
 
     Taper is intentionally distinct from recovery: Thirty-Fifteens and high
-    cadence work keep the neuromuscular system awake, while the long ride is
+    a second short VO2 touch keep the neuromuscular system awake, while the long ride is
     Z2 with 6-second alactic bursts roughly every 14 minutes.  The builder's
     0.70 taper budget trims easy fillers first if availability is tight.
     """
@@ -729,9 +729,10 @@ def _select_taper_week(
              'pool': ['Endurance', 'Cadence Work', 'Endurance Blocks']},
         ]
 
+    touch_level = 6 if hours_per_week >= 6 else 4
     return [
-        {'slot': 'thirty_fifteens', 'name': 'Thirty-Fifteens', 'level': 4, 'role': 'intensity'},
-        {'slot': 'cadence', 'name': 'Cadence Work', 'level': 1, 'role': 'intensity'},
+        {'slot': 'thirty_fifteens', 'name': 'Thirty-Fifteens', 'level': touch_level, 'role': 'intensity'},
+        {'slot': 'vo2_touch', 'name': 'VO2max 40/20', 'level': touch_level, 'role': 'intensity'},
         {'slot': 'long_ride', 'name': 'Taper Burst Endurance', 'level': long_level, 'role': 'long_ride'},
         {'slot': 'filler', 'name': 'Endurance', 'level': 1, 'role': 'filler',
          'pool': ['Endurance', 'Cadence Work', 'Endurance Blocks', 'Taper Burst Endurance']},

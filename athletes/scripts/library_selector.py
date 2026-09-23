@@ -796,19 +796,20 @@ def _max_hard_rep_seconds(structure: Any) -> float:
 def _road_taper_intensity_subset(
     pool: Sequence[Mapping[str, Any]], slot: Mapping[str, Any],
 ) -> list[Mapping[str, Any]]:
-    """Prefer the highest-dose *eligible* library touches for Road v1 taper.
+    """Prefer the highest-dose *eligible* library touches in taper.
 
     AE-1.17 retains weekly intensity while volume falls.  The general level
     rotation can otherwise choose two very light items from a pool even after
-    AE-1.12 has correctly capped every candidate.  For road taper intensity
-    slots only, keep candidates within 90% of the eligible pool's largest
-    hard-work dose, then let the existing dimension rank and deterministic
-    rotation choose among them.  This never authors or modifies a workout;
+    AE-1.12 has correctly capped every candidate. For gravel, retain the
+    maximum legal short-touch dose so two scheduled quality days can meet
+    AE-1.17's hard-time retention without lengthening the taper. Road keeps
+    its existing 90% band. This never authors or modifies a workout;
     it only selects an actual coach-library item that already passed the
     120-second-rep and 900-second-session taper ceilings.
     """
-    if not (str(slot.get("discipline") or "").lower() == "road"
-            and str(slot.get("week_type") or "").lower() == "taper"
+    discipline = str(slot.get("discipline") or "").lower()
+    if not (discipline in {"road", "gravel"}
+            and str(slot.get("week_type") or "").lower() in {"taper", "race"}
             and str(slot.get("role") or "").lower() == "intensity"):
         return list(pool)
     if not pool:
@@ -817,7 +818,7 @@ def _road_taper_intensity_subset(
     maximum = max(doses, default=0.0)
     if maximum <= 0:
         return list(pool)
-    floor = 0.90 * maximum
+    floor = (0.90 if discipline == "road" else 1.0) * maximum
     return [item for item, dose in zip(pool, doses) if dose >= floor]
 
 
@@ -1488,11 +1489,23 @@ def select(
         return None
 
     candidate_pool = pool
+    # AE-1.17 takes precedence over plan-wide variety at an A-race taper:
+    # an already-practiced short touch is safer than a novel, under-dosed
+    # workout selected solely to avoid repeating an item. Keep the same-week
+    # duplicate ban; every candidate still passed AE-1.12 and role ceilings.
+    retention_slot = (str(slot.get("discipline") or "").lower() == "gravel"
+                      and str(slot.get("week_type") or "").lower() in {"taper", "race"}
+                      and str(slot.get("role") or "").lower() == "intensity")
     if used_items is not None:
-        candidate_pool = _filter_used_items(pool, slot, used_items)
+        if retention_slot:
+            plan_week = slot.get("plan_week")
+            candidate_pool = [item for item in pool
+                              if plan_week not in used_items.get(item["item_id"], {}).get("weeks", ())]
+        else:
+            candidate_pool = _filter_used_items(pool, slot, used_items)
         if not candidate_pool:
             return None
-        if _variety:
+        if _variety and not retention_slot:
             candidate_pool = _family_week_free_subset(candidate_pool, slot, used_items)
             candidate_pool = _family_block_free_subset(candidate_pool, slot, used_items)
             candidate_pool = _family_under_start_cap_subset(candidate_pool, used_items)

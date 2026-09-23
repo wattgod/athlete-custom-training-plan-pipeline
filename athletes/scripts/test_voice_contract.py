@@ -93,6 +93,16 @@ def test_story_notes_have_beats_and_pass_lint():
     assert lint_notes(notes, rules=RULES) == []
 
 
+def test_taper_notes_preserve_intensity_with_recovery_opt_down():
+    """AE-1.17: keep the short hard touches; athlete can back off for poor recovery."""
+    notes = render_story_notes(_plan())
+    taper = next(n for n in notes if n["title"] == "Week 7: Taper")
+    race = next(n for n in notes if n["title"] == "Week 8: Race Week")
+    assert "short hard efforts" in taper["body"].lower()
+    assert "back off" in taper["body"].lower()
+    assert "back off" in race["body"].lower()
+
+
 def test_story_notes_never_repeat_a_sentence_across_weeks():
     notes = render_story_notes(_plan())
     # AE-9.3/AE-9.4 (round-2 addendum): the two fixed-form templates are

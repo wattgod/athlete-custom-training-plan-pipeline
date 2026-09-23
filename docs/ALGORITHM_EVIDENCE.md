@@ -200,6 +200,15 @@ forbid long ≥92% BLOCKS (>120 s reps, >900 s total), not touches;
 (extends ruling Q7 into the taper). Entry-fatigue scaling: pre-taper
 overload (≥110–120% load) requires a longer/deeper taper — depth and
 duration are a function of fatigue at taper start, never a fixed lookup.
+**Matti clarification 2026-09-23:** "lighter taper" means a lighter
+*reduction in intensity time*: reduce overall riding volume while retaining
+short hard touches and the 70% pre-taper hard-time floor enforced by
+`ae_lint.py` (using the last load week when a recovery week precedes the
+taper); do not interpret it as a request for less intensity. Athlete
+copy must say they may back off the hard touches when recovery is poor and
+tell the coach; missed efforts are not made up. The AE-1.12 per-session caps
+still bind, and a schedule that cannot satisfy both rules remains review-
+blocked rather than silently waived.
 NOTE: the coach's curated race-week library cards are believed cap-
 compliant by class (short-burst); a library audit against the ≥92%-block
 caps is QUEUED, archive-never-delete rules apply to any violators found.

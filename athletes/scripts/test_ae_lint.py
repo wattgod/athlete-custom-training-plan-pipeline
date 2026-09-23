@@ -441,6 +441,18 @@ def test_taper_shape_sub_300_pre_taper_skip():
     assert not any(f["rule"] == "AE-1.17" for f in lint_taper_shape(workouts, TAPER_RACE))
 
 
+def test_taper_retention_uses_last_load_week_before_recovery_entry():
+    """AE-1.17: a recovery week at taper entry cannot erase the intensity baseline."""
+    workouts = [
+        _taper_workout(date(2026, 8, 27), tss=350, hard_seconds=1200),
+        _taper_workout(date(2026, 9, 3), tss=150, hard_seconds=20),
+        _taper_workout(date(2026, 9, 10), tss=200, hard_seconds=700),
+        _taper_workout(date(2026, 9, 17), tss=180, hard_seconds=700),
+    ]
+    findings = lint_taper_shape(workouts, TAPER_RACE)
+    assert len([f for f in findings if f["severity"] == "FAIL" and f["rule"] == "AE-1.17"]) == 2
+
+
 def test_taper_shape_silent_without_race_date():
     workouts = [_taper_workout(date(2026, 9, 10), tss=300, hard_seconds=10)]
     assert lint_taper_shape(workouts, None) == []
@@ -456,9 +468,12 @@ def test_saturday_race_taper_excludes_race_and_partial_calendar_weeks():
         _taper_workout(date(2027, 6, 4), tss=100, hard_seconds=400),
         _taper_workout(race, tss=350),
     ]
-    # The fixed race-14..race-1 taper is May 22..June 4. Neither the hard
-    # session before it nor race-day TSS belongs in its two seven-day bins.
-    assert not any(f['rule'] == 'AE-1.17' for f in lint_taper_shape(workouts, race))
+    # The fixed race-14..race-1 taper is May 22..June 4. The older hard
+    # session is the baseline because May 15-21 was a recovery week; neither
+    # that session nor race-day TSS belongs in the taper's own seven-day bins.
+    findings = lint_taper_shape(workouts, race)
+    assert {f['day'] for f in findings if f['severity'] == 'FAIL' and f['rule'] == 'AE-1.17'} == {
+        '2027-05-22', '2027-05-29'}
 
 
 # --- RPE decode (live defect 2026-08-29): ae_lint read RPE-metric structures

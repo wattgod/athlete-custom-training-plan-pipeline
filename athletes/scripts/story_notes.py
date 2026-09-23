@@ -121,8 +121,8 @@ _NOTICE: Dict[str, List[str]] = {
         "Easy means easy. The recovery week fails when the easy rides get competitive.",
     ],
     "taper": [
-        "Feeling sluggish in a taper is normal. Feeling sharp by the weekend is the goal. Do not add work to fix a bad day.",
-        "The second taper is not a fitness test. Keep the written openers brief and let the freshness arrive. Extra miles would only spend it.",
+        "Short hard efforts stay in, but overall riding drops. If you are not recovering, back off the efforts and tell me. Do not make them up later.",
+        "Keep the short hard efforts while total riding drops. If recovery is poor, back off and tell me before the next hard day. Missed work stays missed.",
     ],
     "race": [
         "Nothing new this week: no new food, no new position, no new kit. Sleep well Thursday; Friday night rarely cooperates.",
@@ -526,8 +526,8 @@ def _race_week_lines(plan_ir: Any, week: Any, sessions: List[Any]) -> List[str]:
         fuel = (f" Fuel {event_fuel} with familiar products at {fuel_range[0]}-{fuel_range[-1]} g/hr."
                 if len(fuel_range) >= 2 and a_date == _as_date(_get(snapshot, "date"))
                 else f" Fuel {event_fuel} at the practiced rate on the race card.")
-        lines.append(f"No bonus miles or make-up work before {a_name}. "
-                     f"Keep the openers controlled for {a_name}." + fuel)
+        lines.append(f"Before {a_name}, skip bonus miles and keep the short hard efforts "
+                     f"controlled; if recovery slips, back off and tell me." + fuel)
         lines.append(re.sub(r"\s+", " ",
                             f"Inside or out—keep the written RPE smooth for {a_name}."
                             + choice_tail +
@@ -537,7 +537,8 @@ def _race_week_lines(plan_ir: Any, week: Any, sessions: List[Any]) -> List[str]:
     else:
         fuel = (f" Fuel {event_fuel} with familiar products at {fuel_range[0]}-{fuel_range[-1]} g/hr."
                 if len(fuel_range) >= 2 else "")
-        lines.append("No bonus miles or make-up work. Keep the openers controlled." + fuel)
+        lines.append("No bonus miles or make-up work. Keep the short hard efforts controlled. "
+                     "If recovery slips, back off and tell me." + fuel)
         lines.append(re.sub(r"\s+", " ", "Inside or out—keep the written RPE smooth." + choice_tail
                             + " Pain, illness, or changed function: stop and tell me.").strip())
         lines.append(_NOTICE["race"][0])

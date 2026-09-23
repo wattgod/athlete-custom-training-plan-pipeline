@@ -549,11 +549,12 @@ def lint_taper_shape(workouts: list[dict], race: date | None,
           window's last 3 days (<=TAPER_OPENER_BUMP_MAX over the
           immediately-prior 3-day load). WARN, rule AE-1.17.
       (b) intensity retention -- seven-day hard-seconds (AE-1.12 >=92%FTP
-          seconds) inside the window must stay
-          >= TAPER_INTENSITY_RETENTION of the preceding seven days'
-          hard-seconds (Matti ruling 2026-08-26). Silently skipped if that
-          pre-taper week had < TAPER_INTENSITY_FLOOR_SECONDS hard-seconds
-          (nothing to retain). FAIL, rule AE-1.17.
+          seconds) inside the window must stay >= TAPER_INTENSITY_RETENTION
+          of the last meaningful pre-taper week. If the immediately prior
+          seven days are a recovery week (<300s), look back one more week;
+          otherwise a scheduled recovery week would disable the rule.
+          Silently skip only when neither preceding week has enough hard
+          work to retain. FAIL, rule AE-1.17.
       (c) CTL retention -- race-day modeled CTL must stay >=
           CTL_TAPER_RETENTION_FRACTION of CTL at taper start (AE-1.18,
           joins AE-1.14). FAIL, rule AE-1.18.
@@ -607,6 +608,10 @@ def lint_taper_shape(workouts: list[dict], race: date | None,
     race_days = {day for w in workouts if (day := _workout_day(w)) is not None
                  and ((not w.get('structure') and (w.get('tssPlanned') or 0) >= 100)
                       or re.match(r'\s*(RACE|EVENT)\b', str(w.get('title') or '')))}
+    if pre_taper_hard < TAPER_INTENSITY_FLOOR_SECONDS:
+        last_load_week = pre_taper_week - timedelta(days=7)
+        if not any(last_load_week <= day < pre_taper_week for day in race_days):
+            pre_taper_hard = _bin_total(daily_hard, last_load_week)
     if pre_taper_hard >= TAPER_INTENSITY_FLOOR_SECONDS:
         for wk in window_weeks:
             if any(wk <= day < wk + timedelta(days=7) for day in race_days):

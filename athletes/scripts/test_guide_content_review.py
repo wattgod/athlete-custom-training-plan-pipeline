@@ -61,6 +61,8 @@ class TestNoScheduleDuplication:
         assert not SCHEDULE_DAY_ROW.search(html)
         assert "Day -1" not in html and "Day -6" not in html
         assert "Pre-Race Checklist" in html  # the advice stays
+        assert "short hard efforts" in html
+        assert "back off" in html
 
     def test_phase_progression_has_no_week_numbers(self):
         html = _section_phase_progression(21, "compete")

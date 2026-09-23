@@ -637,6 +637,7 @@ def _build_week(
             athlete_age=athlete_age,
             stress_level=stress_level,
             session_floor_min=session_floor_min,
+            intensity_days=[d for d, role in day_roles.items() if role == 'intensity'],
         )
 
     # Get workout menu for this week
@@ -922,6 +923,7 @@ def _build_race_week(
     athlete_age: Optional[int] = None,
     stress_level: Optional[str] = None,
     session_floor_min: int = SESSION_FLOOR_MIN,
+    intensity_days: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Build the coach-approved race-week microcycle.
 
@@ -943,6 +945,22 @@ def _build_race_week(
     opener_day = next(
         (day for day in pre_race_days if day not in off_days), None)
 
+    # AE-1.17: when the athlete's schedule has two separated quality days
+    # before the race-eve opener, retain two short high-intensity touches.
+    # Each workout remains subject to AE-1.12's 120-second-rep/900-second
+    # session caps at render and library-selection time. With only one safe
+    # quality day, keep the familiar lighter sharpener instead of stacking
+    # sessions next to openers merely to chase the retention floor.
+    retained_days = [d for d in (intensity_days or [])
+                     if d not in off_days and d != opener_day
+                     and DAY_ORDER.index(d) < race_index
+                     and (opener_day is None
+                          or DAY_ORDER.index(opener_day) - DAY_ORDER.index(d) >= 2)]
+    retained_days.sort(key=DAY_ORDER.index)
+    retain_two = len(retained_days) >= 2 and all(
+        DAY_ORDER.index(b) - DAY_ORDER.index(a) >= 2
+        for a, b in zip(retained_days, retained_days[1:]))
+
     def _session(name, level, role, duration=None, tss=None):
         duration = get_workout_duration(name, level) if duration is None else duration
         tss = get_workout_tss(name, level) if tss is None else tss
@@ -957,7 +975,7 @@ def _build_race_week(
 
     # Quality-day preference is intentionally the same as the normal week
     # template.  Do not place the sharpener adjacent to day-before openers.
-    sharpener_day = next(
+    sharpener_day = retained_days[0] if retain_two else next(
         (day for day in ('Tue', 'Thu', 'Mon', 'Wed', 'Fri', 'Sat', 'Sun')
          if day not in off_days and day not in (race_day, opener_day)
          and DAY_ORDER.index(day) < race_index
@@ -965,9 +983,10 @@ def _build_race_week(
               or abs(DAY_ORDER.index(day) - DAY_ORDER.index(opener_day)) > 1)),
         None,
     )
+    second_touch_day = retained_days[1] if retain_two else None
     easy_day = next(
         (day for day in ('Wed', 'Thu', 'Tue', 'Mon', 'Fri', 'Sat', 'Sun')
-         if day not in off_days and day not in (race_day, opener_day, sharpener_day)
+         if day not in off_days and day not in (race_day, opener_day, sharpener_day, second_touch_day)
          and DAY_ORDER.index(day) < race_index),
         None,
     )
@@ -981,11 +1000,12 @@ def _build_race_week(
         elif day == opener_day:
             workout = _session('Openers', 2, 'intensity')
         elif day == sharpener_day:
-            workout = _session(
-                'Stars In Your Eyes', sharpener_dose['level'], 'intensity',
-                duration=round(sharpener_dose['duration_min']),
-                tss=sharpener_dose['tss'],
-            )
+            workout = (_session('Thirty-Fifteens', 6, 'intensity') if retain_two
+                       else _session('Stars In Your Eyes', sharpener_dose['level'], 'intensity',
+                                     duration=round(sharpener_dose['duration_min']),
+                                     tss=sharpener_dose['tss']))
+        elif day == second_touch_day:
+            workout = _session('VO2max 40/20', 6, 'intensity')
         elif day == easy_day:
             # Keep this deliberate middle-of-week ride in the 45-60min house
             # range rather than emitting a normal 70min Endurance L1.
