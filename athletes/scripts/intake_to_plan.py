@@ -2833,6 +2833,17 @@ def generate_coaching_brief(
             f"Medications: {meds}" if meds and meds.lower() not in ('none', 'n/a', '') else "No medications listed",
         )
 
+    # Unresolved pain -> no FTP retests (generate_athlete_package). Said
+    # here so the coach knows the retests were left off, not lost.
+    from post_render_validator import genuinely_unresolved_pain
+    unresolved = genuinely_unresolved_pain(profile)
+    if unresolved:
+        md += _add_row(
+            f"Current injury/pain: {unresolved[0][:120]}",
+            "No mid- or late-plan FTP retests",
+            "No sign it is healed or cleared; add a retest once you clear the athlete",
+        )
+
     # Indoor tolerance -> workout design
     indoor_tol = profile.get('training_environment', {}).get('indoor_riding_tolerance', '?')
     longest_indoor = profile.get('workout_preferences', {}).get('longest_indoor_tolerable', '?')
@@ -3358,6 +3369,28 @@ def run_quality_gates(athlete_id: str) -> bool:
 # Personal Email Generator
 # ===========================================================================
 
+def _plan_has_retest(athlete_dir: Optional[Path]) -> bool:
+    """True when the built plan schedules a field test after Week 1.
+
+    Read from plan_ir.json, the plan as generated, so the email never
+    promises a retest the schedule left off (an explicit no-test answer,
+    or unresolved pain).
+    """
+    if not athlete_dir:
+        return False
+    try:
+        plan = json.loads((Path(athlete_dir) / 'plan_ir.json').read_text())
+    except (OSError, ValueError):
+        return False
+    for week in plan.get('weeks') or []:
+        if not isinstance(week, dict) or int(week.get('number') or 0) <= 1:
+            continue
+        if any(isinstance(session, dict) and session.get('is_field_test')
+               for session in week.get('sessions') or []):
+            return True
+    return False
+
+
 def generate_personal_email(
     profile: Dict[str, Any],
     parsed: Dict[str, Any],
@@ -3496,9 +3529,10 @@ def generate_personal_email(
                      "establish your real zones. Everything after that will be calibrated to your "
                      "actual numbers.\n")
     elif ftp:
+        retest = (" The plan includes a retest mid-plan to adjust as you get fitter."
+                  if _plan_has_retest(athlete_dir) else "")
         lines.append(f"**Your zones are set.** FTP of {ftp}W gives us clean power targets "
-                     "across every workout. The plan includes a retest mid-plan to adjust as "
-                     "you get fitter.\n")
+                     f"across every workout.{retest}\n")
 
     # --- Intensity cap explanation ---
     is_masters = isinstance(age, (int, float)) and int(age) >= 50

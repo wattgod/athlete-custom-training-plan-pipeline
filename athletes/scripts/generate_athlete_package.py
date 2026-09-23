@@ -1052,6 +1052,19 @@ def _initial_field_test_required(profile: Optional[dict]) -> bool:
     return True
 
 
+def _field_retests_withheld_for_pain(profile: Optional[dict]) -> bool:
+    """Mid- and late-plan FTP retests are left off when the intake reports
+    pain or injury with no sign it is healed or cleared -- the tests the
+    post-render gate would block (UNRESOLVED_PAIN_MAX_PRESCRIPTION).
+
+    Retests only. The Week 1 re-anchor is a promise the whole deliverable
+    makes (profile reanchor, canonical model, TP manifest, guide), so it
+    stays as scheduled and the gate's finding puts it in front of the coach.
+    No deliverable surface promises a retest."""
+    from post_render_validator import genuinely_unresolved_pain
+    return bool(genuinely_unresolved_pain(profile or {}))
+
+
 def _mark_initial_testing_week(plan_dates: dict, profile: Optional[dict],
                                derived: Optional[dict] = None) -> None:
     """Make a required Week 1 assessment a first-class calendar type."""
@@ -1066,6 +1079,14 @@ def _mark_initial_testing_week(plan_dates: dict, profile: Optional[dict],
                 and week.get('phase') not in {'taper', 'race'}):
             week['week_type'] = 'testing'
             return
+
+
+def _b_race_overlay_role(is_b_race_easy: bool) -> dict:
+    """AE-1.9 keeps the B-race overlay's easy spin two days out; it is a
+    recovery spin, which AE-2.7 exempts from the session floor. The legacy
+    path records no role, so without this the post-render floor check read
+    the 40-minute spin as a truncated ride (2026-09-22 order)."""
+    return {'role': 'recovery'} if is_b_race_easy else {}
 
 
 def _delivery_role(archetype_id: str, builder_role: str, week_type: str,
@@ -3261,6 +3282,14 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         (profile.get('fitness_markers') or {}).get(
             'field_testing_allowed', True) is not False
     )
+    # The retest scheduling below used to ignore both an explicit no-test
+    # directive (FIELD_TEST_SUPPRESSION_BREACH on every >=10-week plan) and
+    # unresolved pain (a returning-from-concussion athlete got two FTP
+    # retests the gate then blocked, 2026-09-22 order).
+    retests_allowed = (field_testing_allowed
+                       and not _field_retests_withheld_for_pain(profile))
+    if field_testing_allowed and not retests_allowed:
+        log.info("FTP retests withheld: intake reports unresolved pain/injury")
     initial_field_test_required = _initial_field_test_required(profile)
     ftp_test_target_weeks = [1] if initial_field_test_required else []
 
@@ -3320,7 +3349,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             return w
         return 0
 
-    if total_weeks >= 10:
+    if retests_allowed and total_weeks >= 10:
         # Mid-plan retest: prefer the week before build starts
         mid_target = first_build_week - 1 if first_build_week and first_build_week > 2 else total_weeks // 2
         mid_week = _find_ftp_week(mid_target, min_gap_from=1,
@@ -3328,7 +3357,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         if mid_week > 0:
             ftp_test_target_weeks.append(mid_week)
 
-    if total_weeks >= 16:
+    if retests_allowed and total_weeks >= 16:
         # Third test: prefer the week before peak starts
         late_target = first_peak_week - 1 if first_peak_week and first_peak_week > 2 else (total_weeks * 3) // 4
         previous_test_week = ftp_test_target_weeks[-1]
@@ -5059,7 +5088,8 @@ GO GET IT, {athlete_name.upper()}!
                         _emit_authored_document(filepath, zwo_content)
                         generated_files.append(filepath)
                         _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
-                                            display_name=display_name)
+                                            display_name=display_name,
+                                            **_b_race_overlay_role(is_b_race_easy))
                         continue  # Skip the standard generation below
                 except Exception as e:
                     # Fall back to standard generation if Nate generator fails
@@ -5132,7 +5162,8 @@ GO GET IT, {athlete_name.upper()}!
 
             generated_files.append(filepath)
             _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
-                                display_name=display_name)
+                                display_name=display_name,
+                                **_b_race_overlay_role(is_b_race_easy))
 
     # ===================================================================
     # SERIES SUFFIX PATCH (D2): block-builder intensity days that belong

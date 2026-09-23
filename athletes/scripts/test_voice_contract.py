@@ -7,6 +7,8 @@ from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent))
 import rest_day_cards as R
 import story_notes
@@ -104,6 +106,43 @@ def test_story_notes_never_repeat_a_sentence_across_weeks():
     sentences = Counter(s.strip() for n in freely_authored
                         for s in re.split(r"(?<=[.!?])\s+", n["body"]) if len(s.split()) >= 6)
     assert not [s for s, c in sentences.items() if c > 1]
+
+
+def _long_plan(weeks=35):
+    """A 3:1 load/recovery season: base, build, peak, taper, race -- long
+    enough that every phrase pool and fixed position line comes round again."""
+    plan = _plan(8)
+    template = plan["weeks"][1]["sessions"]
+    start = date(2026, 9, 28)
+    plan["weeks"] = []
+    for w in range(1, weeks + 1):
+        if w == weeks:
+            week_type, phase = "race", "race"
+        elif w == weeks - 1:
+            week_type, phase = "taper", "taper"
+        else:
+            week_type = "recovery" if w % 4 == 0 else "load"
+            phase = "base" if w <= 17 else ("build" if w <= 26 else "peak")
+        shift = timedelta(days=7 * (w - 1))
+        sessions = [{**s, "date": (date.fromisoformat(s["date"]) - date(2026, 8, 31)
+                                   + start + shift).isoformat()} for s in template]
+        plan["weeks"].append({"number": w, "phase": phase, "week_type": week_type,
+                              "sessions": sessions})
+    return plan
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP pending new phrase pools (copy work for Matti under "
+    "docs/AI_WRITING_POLICY.md): the position lines recur every block and "
+    "the notice pools wrap, so a 34-week plan repeats ~32 sentences and "
+    "VOICE_CONTRACT fires. Dropping repeats instead left 11 of 36 Monday "
+    "notes as a bare 'Week N of M.'. Remove this marker once the pools "
+    "cover a full season."))
+def test_long_plan_story_notes_pass_the_voice_lint():
+    """2026-09-22 order: a 34-week plan repeated 32 sentences ("Last load
+    week of this block.", "Back into peak with fresh legs." ...)."""
+    notes = render_story_notes(_long_plan())
+    assert lint_notes(notes, rules=RULES) == []
 
 
 def test_story_notes_are_deterministic():

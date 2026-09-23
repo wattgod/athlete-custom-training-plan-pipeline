@@ -209,7 +209,8 @@ def _field_test_suppression_findings(
     )]
 
 
-def _unresolved_pain_evidence(profile: Dict[str, Any]) -> List[str]:
+def unresolved_pain_evidence(profile: Dict[str, Any]) -> List[str]:
+    """Current injury/pain entries not marked cleared."""
     evidence = []
     for injury in (profile.get("injury_history") or {}).get("current_injuries") or []:
         if isinstance(injury, dict):
@@ -231,10 +232,31 @@ def _unresolved_pain_evidence(profile: Dict[str, Any]) -> List[str]:
     return evidence
 
 
+# Intake stamps every current-injury answer status "active"
+# (intake_to_plan.py, "Current Injuries"), so "Broke my wrist in 2023, fully
+# healed and cleared" reaches the predicate above as unresolved. Any of this
+# language keeps the entry with the coach instead.
+_RESOLUTION_LANGUAGE = re.compile(
+    r"\b(?:healed|cleared|resolved|recovered|pain[- ]free|back to normal"
+    r"|no (?:more |longer )?(?:pain|issues?|problems?|symptoms)"
+    r"|no longer (?:an issue|a problem|bothers?|hurts?))\b|\b100 ?%",
+    re.I,
+)
+
+
+def genuinely_unresolved_pain(profile: Dict[str, Any]) -> List[str]:
+    """The part of ``unresolved_pain_evidence`` the generator may act on by
+    itself: entries that say nothing about being healed, cleared or
+    resolved. The gate keeps using the wider predicate, so an injury the
+    athlete calls healed still reaches the coach as before."""
+    return [text for text in unresolved_pain_evidence(profile)
+            if not _RESOLUTION_LANGUAGE.search(text)]
+
+
 def _unresolved_pain_load_findings(
     plan_ir: Dict[str, Any], profile: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
-    evidence = _unresolved_pain_evidence(profile)
+    evidence = unresolved_pain_evidence(profile)
     if not evidence:
         return []
     unsafe = []
@@ -556,6 +578,10 @@ _HARD_MINUTES_FLOOR = 90.0
 # 90-minute weekly floor structurally impossible there; race week is its
 # own thing entirely.
 _HARD_MINUTES_EXEMPT_WEEK_TYPES = {"recovery", "taper", "race"}
+# AE-2.1 scopes the floor by volume: "90-120 min of genuinely hard work per
+# week, minimum, for any athlete training >=6 h/wk". Below that the ratified
+# rule is silent, so the gate is too.
+_HARD_MINUTES_MIN_WEEKLY_HOURS = 6.0
 _VO2_FTP_THRESHOLD = 106.0
 _VO2_SECONDS_MIN = 5 * 60
 _VO2_SECONDS_MAX = 18 * 60
@@ -689,14 +715,35 @@ def _vo2_dose_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
     return findings
 
 
-def _hard_minutes_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _weekly_hours(profile: Dict[str, Any] | None) -> float | None:
+    """The athlete's stated weekly cycling hours, or None when unknown."""
+    raw = ((profile or {}).get("weekly_availability") or {}).get(
+        "cycling_hours_target")
+    try:
+        hours = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return hours if hours > 0 else None
+
+
+def _hard_minutes_findings(
+    plan_ir: Dict[str, Any], profile: Dict[str, Any] | None = None,
+) -> List[Dict[str, Any]]:
     """AE-2.1 (phase-scoped, sol programming review 2026-08-24): a LOAD week
     needs >=90 structured hard minutes (>=92% FTP, test efforts counted per
     the ratified scoping addendum); recovery/taper/race weeks are governed
     by their own rules and exempt. WARNING severity: the plan still ships,
     but a real offender (W3's 26.7 hard minutes in the sol review, the
     plan's only true build/load week) surfaces for coach review instead of
-    shipping silently."""
+    shipping silently.
+
+    The floor applies only to athletes training >=6 h/wk, as AE-2.1 is
+    written. A 5 h/wk, 2-3 ride athlete got a WARNING on every load week of
+    a 34-week plan (2026-09-22 order) under a rule that does not cover them.
+    Unknown hours keep the floor on."""
+    hours = _weekly_hours(profile)
+    if hours is not None and hours < _HARD_MINUTES_MIN_WEEKLY_HOURS:
+        return []
     totals: Dict[int, float] = {}
     for week_num, session in _sessions(plan_ir):
         if session.get("tp_kind") != "bike":
@@ -966,11 +1013,17 @@ def _voice_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
     findings: List[str] = []
     findings.extend(lint_notes(render_coached_weekly_notes(plan_ir)))
     findings.extend(lint_rest_cards(session for _, session in _sessions(plan_ir)))
-    return [
-        _issue("VOICE_CONTRACT", finding,
-               basis="athletes/config/voice_rules.yaml applied to rendered notes and Day Off cards")
-        for finding in findings
-    ]
+    if not findings:
+        return []
+    # One issue carrying every finding. One issue per finding under the same
+    # id was collapsed by validate_transitional_input's id dedup to the LAST
+    # finding only: a 34-week plan with 32 repeated sentences reported one.
+    message = findings[0] if len(findings) == 1 else (
+        f"{len(findings)} voice-contract findings; first: {findings[0]}")
+    return [_issue(
+        "VOICE_CONTRACT", message,
+        review_value=findings[0] if len(findings) == 1 else {"findings": findings},
+        basis="athletes/config/voice_rules.yaml applied to rendered notes and Day Off cards")]
 
 
 def validate_transitional_input(
@@ -1117,7 +1170,7 @@ def validate_transitional_input(
     confirmations.extend(_day_cap_findings(plan_ir, profile))
     issues.extend(_short_quality_findings(plan_ir, profile))
     issues.extend(_endurance_tss_rate_findings(plan_ir))
-    issues.extend(_hard_minutes_findings(plan_ir))
+    issues.extend(_hard_minutes_findings(plan_ir, profile))
     issues.extend(_vo2_dose_findings(plan_ir))
 
     fueling = context.get("fueling") or {}

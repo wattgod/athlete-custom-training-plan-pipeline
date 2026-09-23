@@ -147,6 +147,47 @@ class TestGeneratePersonalEmail:
         assert 'gravelgodcycling.com' not in email
 
 
+def _plan_ir(tmp_path, field_test_weeks):
+    import json
+    weeks = [
+        {'number': n, 'sessions': [
+            {'type': 'ftp_test' if n in field_test_weeks else 'endurance',
+             'is_field_test': n in field_test_weeks},
+        ]}
+        for n in range(1, 13)
+    ]
+    (tmp_path / 'plan_ir.json').write_text(json.dumps({'weeks': weeks}))
+    return tmp_path
+
+
+class TestRetestPromise:
+    """The email may only promise a mid-plan retest the schedule contains.
+
+    Retests are withheld for an explicit no-test answer or unresolved pain
+    (2026-09-22 order); the email used to promise one whenever FTP was known.
+    """
+
+    @pytest.fixture
+    def known_ftp(self, profile):
+        profile['fitness_markers'] = {'ftp_watts': 245, 'ftp_estimated': False}
+        return profile
+
+    def test_promises_retest_when_scheduled(self, known_ftp, parsed, tmp_path):
+        email = generate_personal_email(
+            known_ftp, parsed, athlete_dir=_plan_ir(tmp_path, {1, 6}))
+        assert 'retest mid-plan' in email
+
+    def test_no_retest_promise_when_only_week_one_is_tested(
+            self, known_ftp, parsed, tmp_path):
+        email = generate_personal_email(
+            known_ftp, parsed, athlete_dir=_plan_ir(tmp_path, {1}))
+        assert 'retest' not in email
+        assert '**Your zones are set.**' in email
+
+    def test_no_retest_promise_without_a_built_plan(self, known_ftp, parsed):
+        assert 'retest' not in generate_personal_email(known_ftp, parsed)
+
+
 class TestEmailDeliveryCopy:
     def test_subject_no_exclamation(self):
         assert '!' not in EmailDelivery.SUBJECT
