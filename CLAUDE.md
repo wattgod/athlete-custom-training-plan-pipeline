@@ -49,7 +49,8 @@ Questionnaire → Block-Builder Engine → ZWO Workouts → HTML Guide → PDF �
 4. Coach reviews plan_preview.html + coaching_brief.md
 5. Coach imports ZWO files to TrainingPeaks
 6. Coach sends confirmation via API endpoint
-7. Follow-up emails auto-fire (Day 1, 3, 7)
+7. Follow-up emails auto-fire (Day 1, 3, 7), counted from the CONFIRMED delivery.
+   Nothing fires while an order is BLOCKED_REVIEW, APPROVED or APPLIED.
 ```
 
 ## Project Structure
@@ -184,6 +185,7 @@ Tests cover health, validation, WooCommerce, Stripe, coaching checkout (setup fe
 - `TestCoachingCheckoutEnhancements` — phone_number_collection + subscription_data.metadata present
 - `TestLogOrderSchema` — log entries include email, name, product_type fields
 - `TestFollowupReadsCorrectLogFiles` — reads YYYY-MM.jsonl, skips failed orders
+- `TestFollowupsWaitForDelivery` — follow-ups + touchpoints only after CONFIRMED; day offsets count from delivery, not payment
 - `TestRateLimiting` — limiter exists on app, checkout endpoints have rate limit decorators
 - Coaching-side `TestCssTokenValidation` — every var(--gg-*) must be defined in tokens.css
 - Coaching-side `TestAccessibility` — FAQ aria-expanded reset, no "/MO" in billing

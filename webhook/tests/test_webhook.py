@@ -3866,6 +3866,170 @@ class TestCheckoutRecovery:
             assert response.status_code == 200
 
 
+def _deliver_plan(deliveries_dir, order_id, delivered_at=None):
+    """Walk a real fulfilment state to CONFIRMED, as the coach's TP apply does.
+
+    Follow-ups only go to delivered plans, so any test that expects a send
+    needs this. ``delivered_at`` backdates the confirmation the day-1/3/7
+    offsets count from.
+    """
+    from fulfillment_state import (APPLIED, APPROVED, confirm_after_send,
+                                   finalize_transitional_release,
+                                   transition, write_generation)
+    from d2_identity import record_identity_result
+
+    order_dir = Path(deliveries_dir) / 'orders' / order_id
+    order_dir.mkdir(parents=True, exist_ok=True)
+    path = order_dir / 'fulfillment_status.json'
+    state = write_generation(path, 'test_athlete', delivery_platform='trainingpeaks')
+    record_identity_result(path, state['generation_revision'], {
+        'outcome': 'bound', 'tp_athlete_id': 'fixture-athlete', 'candidates': [],
+    }, capability_jti='fixture-binding-jti')
+    artifacts = order_dir / 'artifacts'
+    artifacts.mkdir()
+    (artifacts / 'guide.html').write_text('sealed guide')
+    state = finalize_transitional_release(
+        path, artifacts, expected_revision=state['generation_revision'])
+    transition(
+        path, APPROVED, 'coach@example.test',
+        expected_revision=state['generation_revision'],
+        expected_catalog_digest=state['review_catalog_digest'],
+        review_decisions=[
+            {'item_id': item['item_id'], 'revision': state['generation_revision'],
+             'disposition': 'confirmed'}
+            for item in state['review_items']
+            if item['type'] in {'required_confirmation', 'verified_fact'}
+        ],
+    )
+    transition(path, APPLIED, 'coach@example.test',
+               platform='trainingpeaks', evidence='TP 123')
+    confirm_after_send(path, lambda: True)
+    if delivered_at is not None:
+        data = json.loads(path.read_text())
+        data['confirmation']['at'] = delivered_at.isoformat().replace('+00:00', 'Z')
+        path.write_text(json.dumps(data))
+    return path
+
+
+def _write_plan_order(log_dir, order_id, paid_at, **extra):
+    order = {
+        'product_type': 'training_plan',
+        'order_id': order_id,
+        'athlete_id': 'test_athlete',
+        'email': 'athlete@test.com',
+        'name': 'Test Athlete',
+        'timestamp': paid_at.isoformat(),
+        'success': True,
+        **extra,
+    }
+    log_file = log_dir / (paid_at.strftime('%Y-%m') + '.jsonl')
+    with open(log_file, 'a') as f:
+        f.write(json.dumps(order) + '\n')
+
+
+class TestFollowupsWaitForDelivery:
+    """Follow-ups and touchpoints say the plan is on the athlete's calendar.
+
+    2026-09-22: a paid order sat in BLOCKED_REVIEW and the day-1 email still
+    told the athlete "Your plan went out yesterday". Nothing short of a
+    CONFIRMED delivery may trigger them, and the day offsets count from
+    delivery, not payment.
+    """
+
+    @pytest.fixture
+    def dirs(self, tmp_path):
+        log_dir = tmp_path / '.logs'
+        log_dir.mkdir()
+        deliveries = tmp_path / 'deliveries'
+        with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app.DELIVERIES_DIR', str(deliveries)):
+            yield log_dir, deliveries
+
+    def test_blocked_review_order_gets_no_followup(self, dirs):
+        from fulfillment_state import write_generation
+        from app import process_followup_emails
+        log_dir, deliveries = dirs
+        now = datetime.now(timezone.utc)
+        _write_plan_order(log_dir, 'cs_blocked', now - timedelta(days=1))
+        order_dir = deliveries / 'orders' / 'cs_blocked'
+        order_dir.mkdir(parents=True)
+        write_generation(order_dir / 'fulfillment_status.json', 'test_athlete', [{
+            'id': 'R05', 'source': 'block_compliance', 'severity': 'CRITICAL',
+            'message': 'Intensity count: W1: 1 intensity (need 2-2)',
+        }])
+
+        with patch('app._send_followup_email') as mock_send:
+            stats = process_followup_emails()
+
+        mock_send.assert_not_called()
+        assert stats['sent'] == 0
+        assert stats['undelivered'] == 1
+
+    def test_order_without_fulfillment_state_gets_no_followup(self, dirs):
+        from app import process_followup_emails
+        log_dir, _ = dirs
+        _write_plan_order(log_dir, 'cs_no_state',
+                          datetime.now(timezone.utc) - timedelta(days=3))
+
+        with patch('app._send_followup_email') as mock_send:
+            stats = process_followup_emails()
+
+        mock_send.assert_not_called()
+        assert stats['undelivered'] == 1
+
+    def test_day_offsets_count_from_delivery_not_payment(self, dirs):
+        from app import process_followup_emails
+        log_dir, deliveries = dirs
+        now = datetime.now(timezone.utc)
+        # Paid 5 days ago, held in review, delivered yesterday: day 1 is due,
+        # day 3 is not.
+        _write_plan_order(log_dir, 'cs_late', now - timedelta(days=5))
+        _deliver_plan(deliveries, 'cs_late', delivered_at=now - timedelta(days=1))
+
+        with patch('app._send_followup_email', return_value=True) as mock_send:
+            stats = process_followup_emails()
+
+        assert stats['sent'] == 1
+        assert 'one thing to do first' in mock_send.call_args[0][1]
+
+    def test_delivered_today_gets_nothing_yet(self, dirs):
+        from app import process_followup_emails
+        log_dir, deliveries = dirs
+        now = datetime.now(timezone.utc)
+        _write_plan_order(log_dir, 'cs_today', now - timedelta(days=3))
+        _deliver_plan(deliveries, 'cs_today')
+
+        with patch('app._send_followup_email') as mock_send:
+            stats = process_followup_emails()
+
+        mock_send.assert_not_called()
+        assert stats['undelivered'] == 0
+
+    def test_touchpoints_wait_for_delivery(self, dirs, tmp_path):
+        from app import process_touchpoint_emails
+        log_dir, deliveries = dirs
+        now = datetime.now(timezone.utc)
+        _write_plan_order(log_dir, 'cs_touch', now - timedelta(days=2))
+        athletes = tmp_path / 'athletes'
+        plan_start = (now - timedelta(days=1)).strftime('%Y-%m-%d')
+        (athletes / 'test-athlete').mkdir(parents=True)
+        (athletes / 'test-athlete' / 'plan_dates.yaml').write_text(
+            f"plan_start: '{plan_start}'\n"
+            f"weeks:\n- monday: '{plan_start}'\n  sunday: '2099-01-04'\n")
+
+        with patch('app.ATHLETES_DIR', str(athletes)), \
+             patch('app._send_email', return_value=True) as mock_send:
+            held = process_touchpoint_emails()
+            mock_send.assert_not_called()
+            assert held['undelivered'] == 1
+
+            _deliver_plan(deliveries, 'cs_touch')
+            stats = process_touchpoint_emails()
+
+        assert stats['sent'] == 1
+        assert mock_send.call_args.kwargs['subject'].startswith('Quick check')
+
+
 class TestFollowupEmails:
     """Tests for post-purchase follow-up email sequence."""
 
@@ -3914,7 +4078,11 @@ class TestFollowupEmails:
         log_filename = order_time.strftime('%Y-%m') + '.jsonl'
         (log_dir / log_filename).write_text(order + '\n')
 
+        _deliver_plan(tmp_path / 'deliveries', 'cs_test_day1',
+                      delivered_at=datetime.now(timezone.utc) - timedelta(days=1))
+
         with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app.DELIVERIES_DIR', str(tmp_path / 'deliveries')), \
              patch('app._send_followup_email') as mock_send:
             mock_send.return_value = True
             from app import process_followup_emails
@@ -3952,7 +4120,11 @@ class TestFollowupEmails:
         })
         (log_dir / 'followup_sent.jsonl').write_text(sent + '\n')
 
+        _deliver_plan(tmp_path / 'deliveries', 'cs_test_dedup',
+                      delivered_at=datetime.now(timezone.utc) - timedelta(days=1))
+
         with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app.DELIVERIES_DIR', str(tmp_path / 'deliveries')), \
              patch('app._send_followup_email') as mock_send:
             from app import process_followup_emails
             stats = process_followup_emails()
@@ -4002,7 +4174,11 @@ class TestFollowupEmails:
         log_filename = order_time.strftime('%Y-%m') + '.jsonl'
         (log_dir / log_filename).write_text(order + '\n')
 
+        _deliver_plan(tmp_path / 'deliveries', 'cs_test_day7',
+                      delivered_at=datetime.now(timezone.utc) - timedelta(days=7))
+
         with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app.DELIVERIES_DIR', str(tmp_path / 'deliveries')), \
              patch('app._send_followup_email') as mock_send:
             mock_send.return_value = True
             from app import process_followup_emails
@@ -4340,7 +4516,11 @@ class TestFollowupReadsCorrectLogFiles:
         # orders.jsonl should NOT exist (that was the old bug)
         assert not (log_dir / 'orders.jsonl').exists()
 
+        _deliver_plan(tmp_path / 'deliveries', 'cs_correct_path',
+                      delivered_at=datetime.now(timezone.utc) - timedelta(days=1))
+
         with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app.DELIVERIES_DIR', str(tmp_path / 'deliveries')), \
              patch('app._send_followup_email') as mock_send:
             mock_send.return_value = True
             from app import process_followup_emails
