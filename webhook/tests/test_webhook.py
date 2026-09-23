@@ -4029,6 +4029,63 @@ class TestFollowupsWaitForDelivery:
         assert stats['sent'] == 1
         assert mock_send.call_args.kwargs['subject'].startswith('Quick check')
 
+    def test_orders_before_state_cutover_keep_their_touchpoints(self, dirs, tmp_path):
+        """Pre-2026-08-06 orders have no order-scoped state to check."""
+        from app import process_touchpoint_emails
+        log_dir, deliveries = dirs
+        now = datetime.now(timezone.utc)
+        _write_plan_order(log_dir, 'cs_legacy', datetime(2026, 7, 1, tzinfo=timezone.utc))
+        athletes = tmp_path / 'athletes'
+        plan_start = (now - timedelta(days=1)).strftime('%Y-%m-%d')
+        (athletes / 'test-athlete').mkdir(parents=True)
+        (athletes / 'test-athlete' / 'plan_dates.yaml').write_text(
+            f"plan_start: '{plan_start}'\n"
+            f"weeks:\n- monday: '{plan_start}'\n  sunday: '2099-01-04'\n")
+
+        with patch('app.ATHLETES_DIR', str(athletes)), \
+             patch('app._send_email', return_value=True):
+            stats = process_touchpoint_emails()
+
+        assert stats['sent'] == 1
+        assert not (deliveries / 'orders' / 'cs_legacy').exists()
+
+    def test_unreadable_state_skips_order_without_failing_cron(self, dirs):
+        from app import process_followup_emails
+        log_dir, deliveries = dirs
+        now = datetime.now(timezone.utc)
+        _write_plan_order(log_dir, 'cs_unreadable', now - timedelta(days=1))
+        _write_plan_order(log_dir, 'cs_fine', now - timedelta(days=1))
+        _deliver_plan(deliveries, 'cs_unreadable', delivered_at=now - timedelta(days=1))
+        _deliver_plan(deliveries, 'cs_fine', delivered_at=now - timedelta(days=1))
+
+        import app as app_module
+        real_load = app_module.load_fulfillment_state
+
+        def flaky_load(path):
+            if 'cs_unreadable' in str(path):
+                raise PermissionError('volume hiccup')
+            return real_load(path)
+
+        with patch('app.load_fulfillment_state', side_effect=flaky_load), \
+             patch('app._send_followup_email', return_value=True) as mock_send:
+            stats = process_followup_emails()
+
+        assert stats['sent'] == 1
+        assert stats['undelivered'] == 1
+        assert mock_send.call_count == 1
+
+    def test_checking_an_order_without_state_writes_nothing(self, dirs):
+        from app import process_followup_emails
+        log_dir, deliveries = dirs
+        _write_plan_order(log_dir, 'cs_ghost',
+                          datetime.now(timezone.utc) - timedelta(days=1))
+
+        with patch('app._send_followup_email') as mock_send:
+            process_followup_emails()
+
+        mock_send.assert_not_called()
+        assert not (deliveries / 'orders' / 'cs_ghost').exists()
+
 
 class TestFollowupEmails:
     """Tests for post-purchase follow-up email sequence."""

@@ -8539,7 +8539,13 @@ def _send_followup_email(email: str, subject: str, body: str,
     return _send_email(email, subject, body, reply_to=reply_to, brand=brand)
 
 
-def _plan_delivered_at(order_id: str) -> datetime | None:
+# Order-scoped fulfilment state shipped 2026-08-06 (3ac37563). Orders paid
+# before then have none and went out through the old coach-attach flow, so
+# their emails stay anchored on payment as before.
+ORDER_STATE_CUTOVER = datetime(2026, 8, 6, tzinfo=timezone.utc)
+
+
+def _plan_delivered_at(order: dict) -> datetime | None:
     """When the coach confirmed this order's plan was delivered, else None.
 
     The follow-ups and touchpoints tell the athlete the plan is already on
@@ -8550,8 +8556,15 @@ def _plan_delivered_at(order_id: str) -> datetime | None:
     or unreadable state file, gets no email.
     """
     try:
-        state = load_fulfillment_state(_fulfillment_status_path(order_id))
-    except (FulfillmentStateError, ValueError):
+        path = _fulfillment_status_path(order.get('order_id', ''))
+        if not path.exists():
+            # Checked before load(): locking would create the order dir.
+            paid_at = _parse_utc(order.get('timestamp') or order.get('processed_at'))
+            return paid_at if paid_at and paid_at < ORDER_STATE_CUTOVER else None
+        state = load_fulfillment_state(path)
+    except (FulfillmentStateError, OSError, ValueError):
+        # One bad order must not 500 the cron and take the touchpoint and
+        # consult sends in the same request down with it.
         return None
     if state.get('status') != CONFIRMED:
         return None
@@ -8612,7 +8625,7 @@ def process_followup_emails():
             if not email or not order_id:
                 continue
 
-            delivered_dt = _plan_delivered_at(order_id)
+            delivered_dt = _plan_delivered_at(order)
             if delivered_dt is None:
                 stats['undelivered'] += 1
                 continue
@@ -9709,7 +9722,7 @@ def process_touchpoint_emails():
 
             # Same rule as the day-1/3/7 sequence: these touches assume the
             # workouts are on the athlete's calendar.
-            if _plan_delivered_at(order_id) is None:
+            if _plan_delivered_at(order) is None:
                 stats['undelivered'] += 1
                 continue
 
