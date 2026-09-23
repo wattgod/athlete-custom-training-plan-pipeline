@@ -63,3 +63,51 @@ def test_validate_plan_counts_available_days_from_off_days():
     result = validate_plan(plan, target_hours=5, max_intensity=2,
                            off_days=['Mon', 'Tue', 'Wed'])
     assert not result['rules']['R05']['passed']
+
+
+# ---------------------------------------------------------------------------
+# VO2 dose -- floor growth goes to Z2, never to a work step
+# ---------------------------------------------------------------------------
+
+_PYRAMID = """<workout_file><name>x</name><description>WARM-UP:
+- 15 min
+</description><workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.70"/>
+    <SteadyState Duration="240" Power="1.10"/>
+    <SteadyState Duration="180" Power="0.55"/>
+    <SteadyState Duration="180" Power="1.12"/>
+    <SteadyState Duration="180" Power="0.55"/>
+    <SteadyState Duration="120" Power="1.17"/>
+    <SteadyState Duration="180" Power="0.55"/>
+    <SteadyState Duration="60" Power="1.22"/>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50"/>
+    </workout></workout_file>"""
+
+
+def _durations(zwo):
+    import re
+    return [int(v) for v in re.findall(r'Duration="(\d+)"', zwo)]
+
+
+def test_growing_a_steady_state_vo2_set_keeps_every_rep_intact():
+    """Descending VO2 Pyramid is written as SteadyState steps, no IntervalsT,
+    so floor growth used to add the whole difference to its largest block --
+    the first 110% rep -- turning 4 minutes into 45 (29 min >=106% FTP on
+    the real order; AE-3.1 allows 18)."""
+    from generate_athlete_package import _zwo_vo2_seconds
+    from workout_templates import scale_zwo_to_target_duration
+    grown = scale_zwo_to_target_duration(_PYRAMID, 85, 'VO2max Extended', snap_to=60)
+    assert sum(_durations(grown)) == 85 * 60
+    assert _durations(grown)[1:8] == _durations(_PYRAMID)[1:8]
+    assert _zwo_vo2_seconds(grown) == _zwo_vo2_seconds(_PYRAMID) == 600
+
+
+def test_growing_an_endurance_ride_still_extends_its_z2_block():
+    from workout_templates import scale_zwo_to_target_duration
+    endurance = ("<workout_file><workout>\n"
+                 '    <SteadyState Duration="3000" Power="0.68"/>\n'
+                 '    <SteadyState Duration="10" Power="1.20"/>\n'
+                 '    <Cooldown Duration="300" PowerLow="0.65" PowerHigh="0.50"/>\n'
+                 "    </workout></workout_file>")
+    grown = scale_zwo_to_target_duration(endurance, 90, 'Endurance', snap_to=60)
+    assert _durations(grown) == [5100, 10, 300]

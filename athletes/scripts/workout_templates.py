@@ -512,7 +512,15 @@ def scale_zwo_to_target_duration(zwo_xml: str, target_duration_min: int,
                 largest_dur = dur
                 largest_ss = m
 
-        if largest_ss:
+        if largest_ss and _steady_power(zwo_xml, largest_ss.start()) > _Z2_POWER_CEILING:
+            # The largest block is WORK, not aerobic filler: a pyramid or
+            # tempo set written as SteadyState steps (no IntervalsT). Adding
+            # the extra time to it turned a 4-minute 110% rep into 45 minutes
+            # (2026-09-22 order: 29 min >=106% FTP against AE-3.1's 18). The
+            # extra time is Z2 (AE-2.7), so it goes to the warm-up and
+            # cool-down, split as in the interval branch above.
+            zwo_xml = _grow_warmup_cooldown(zwo_xml, int(diff), snap_to)
+        elif largest_ss:
             old_dur = int(largest_ss.group(2))
             new_dur = old_dur + int(diff)
             if snap_to:
@@ -522,3 +530,42 @@ def scale_zwo_to_target_duration(zwo_xml: str, target_duration_min: int,
                        + zwo_xml[largest_ss.end(2):])
 
     return _sync_description_durations(zwo_xml)
+
+
+# Top of Z2 (Endurance 65-75% FTP). A SteadyState above this is work.
+_Z2_POWER_CEILING = 0.75
+
+
+def _steady_power(zwo_xml: str, tag_start: int) -> float:
+    """Power of the SteadyState element whose opening tag starts at
+    ``tag_start`` (attribute order varies, so read the whole tag)."""
+    import re
+    tag_end = zwo_xml.find('>', tag_start)
+    match = re.search(r'\bPower="([\d.]+)"', zwo_xml[tag_start:tag_end])
+    return float(match.group(1)) if match else 0.0
+
+
+def _grow_warmup_cooldown(zwo_xml: str, extra: int, snap_to: int) -> str:
+    """Add ``extra`` seconds of Z2 to the warm-up (55%) and cool-down (45%),
+    or append a Z2 cool-down when the session has neither."""
+    import re
+    if extra <= 0:
+        return zwo_xml
+    warmup = re.search(r'(<Warmup\s[^>]*?)Duration="(\d+)"', zwo_xml)
+    cooldown = re.search(r'(<Cooldown\s[^>]*?)Duration="(\d+)"', zwo_xml)
+    if not warmup and not cooldown:
+        if snap_to:
+            extra = max(snap_to, _snap_seconds(extra, snap_to))
+        return zwo_xml.replace(
+            '</workout>',
+            f'        <Cooldown Duration="{extra}" PowerLow="0.65" PowerHigh="0.55"/>\n    </workout>', 1)
+    to_warmup = int(extra * 0.55) if (warmup and cooldown) else (extra if warmup else 0)
+    shares = [(warmup, to_warmup), (cooldown, extra - to_warmup)]
+    # Rewrite from the end of the string so earlier match offsets stay valid.
+    for match, add in sorted(((m, a) for m, a in shares if m and a > 0),
+                             key=lambda item: item[0].start(2), reverse=True):
+        new_dur = int(match.group(2)) + add
+        if snap_to:
+            new_dur = _snap_seconds(new_dur, snap_to)
+        zwo_xml = zwo_xml[:match.start(2)] + str(new_dur) + zwo_xml[match.end(2):]
+    return zwo_xml
