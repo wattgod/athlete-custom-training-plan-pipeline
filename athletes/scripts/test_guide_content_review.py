@@ -84,7 +84,7 @@ def test_joint_a_race_guide_names_both_goals_and_transition():
     from training_guide_builder import _build_full_guide
 
     profile = {
-        "name": "Johnny",
+        "name": "Example Rider",
         "fitness": {},
         "schedule": {},
         "target_race": {"name": "Unbound Gravel 100", "date": "2027-06-05", "goal_type": "finish"},
@@ -94,7 +94,7 @@ def test_joint_a_race_guide_names_both_goals_and_transition():
         ],
     }
     html = _build_full_guide(
-        athlete_name="Johnny", race_name="Unbound Gravel 100", race_distance=100,
+        athlete_name="Example Rider", race_name="Unbound Gravel 100", race_distance=100,
         tier="finisher", level="intermediate", plan_duration=20,
         profile=profile, derived={"race_date": "2027-06-05", "race_distance_miles": 100},
         schedule={}, plan_config={}, race_data={},
