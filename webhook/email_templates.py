@@ -1,19 +1,11 @@
-"""Customer-facing follow-up email copy for training plan orders.
+"""Suggested follow-up copy for training plan orders.
+
+Since 2026-09-23 this copy is not emailed to athletes. process_followup_emails()
+puts it in a reminder to the coach, who edits and sends it by hand.
 
 This module is the single source of truth for the day-1/3/7 post-purchase
 sequence. It has zero dependencies so it can be imported by app.py and by
 tests without pulling in Flask.
-
-WIRING (one-line app.py change, owned by the app.py executor):
-    Replace the inline FOLLOWUP_SEQUENCE constant in webhook/app.py
-    (the list defined under "POST-PURCHASE FOLLOW-UP EMAIL SEQUENCE")
-    with:
-
-        from email_templates import FOLLOWUP_SEQUENCE
-
-    Nothing else changes — the shape (day / subject / template with a
-    {first_name} placeholder) matches what process_followup_emails()
-    already consumes.
 
 Copy rules (enforced by webhook/tests/test_email_templates.py):
 - Coach-to-athlete voice. Direct, specific, numbers where possible.

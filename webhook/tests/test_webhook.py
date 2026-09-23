@@ -3958,7 +3958,7 @@ class TestFollowupsWaitForDelivery:
             'message': 'Intensity count: W1: 1 intensity (need 2-2)',
         }])
 
-        with patch('app._send_followup_email') as mock_send:
+        with patch('app._send_coach_reminder') as mock_send:
             stats = process_followup_emails()
 
         mock_send.assert_not_called()
@@ -3971,7 +3971,7 @@ class TestFollowupsWaitForDelivery:
         _write_plan_order(log_dir, 'cs_no_state',
                           datetime.now(timezone.utc) - timedelta(days=3))
 
-        with patch('app._send_followup_email') as mock_send:
+        with patch('app._send_coach_reminder') as mock_send:
             stats = process_followup_emails()
 
         mock_send.assert_not_called()
@@ -3986,11 +3986,11 @@ class TestFollowupsWaitForDelivery:
         _write_plan_order(log_dir, 'cs_late', now - timedelta(days=5))
         _deliver_plan(deliveries, 'cs_late', delivered_at=now - timedelta(days=1))
 
-        with patch('app._send_followup_email', return_value=True) as mock_send:
+        with patch('app._send_coach_reminder', return_value=True) as mock_send:
             stats = process_followup_emails()
 
         assert stats['sent'] == 1
-        assert 'one thing to do first' in mock_send.call_args[0][1]
+        assert 'one thing to do first' in mock_send.call_args[0][2]
 
     def test_delivered_today_gets_nothing_yet(self, dirs):
         from app import process_followup_emails
@@ -3999,7 +3999,7 @@ class TestFollowupsWaitForDelivery:
         _write_plan_order(log_dir, 'cs_today', now - timedelta(days=3))
         _deliver_plan(deliveries, 'cs_today')
 
-        with patch('app._send_followup_email') as mock_send:
+        with patch('app._send_coach_reminder') as mock_send:
             stats = process_followup_emails()
 
         mock_send.assert_not_called()
@@ -4018,7 +4018,7 @@ class TestFollowupsWaitForDelivery:
             f"weeks:\n- monday: '{plan_start}'\n  sunday: '2099-01-04'\n")
 
         with patch('app.ATHLETES_DIR', str(athletes)), \
-             patch('app._send_email', return_value=True) as mock_send:
+             patch('app._send_coach_reminder', return_value=True) as mock_send:
             held = process_touchpoint_emails()
             mock_send.assert_not_called()
             assert held['undelivered'] == 1
@@ -4027,7 +4027,7 @@ class TestFollowupsWaitForDelivery:
             stats = process_touchpoint_emails()
 
         assert stats['sent'] == 1
-        assert mock_send.call_args.kwargs['subject'].startswith('Quick check')
+        assert mock_send.call_args[0][2].startswith('Quick check')
 
     def test_orders_before_state_cutover_keep_their_touchpoints(self, dirs, tmp_path):
         """Pre-2026-08-06 orders have no order-scoped state to check."""
@@ -4043,7 +4043,7 @@ class TestFollowupsWaitForDelivery:
             f"weeks:\n- monday: '{plan_start}'\n  sunday: '2099-01-04'\n")
 
         with patch('app.ATHLETES_DIR', str(athletes)), \
-             patch('app._send_email', return_value=True):
+             patch('app._send_coach_reminder', return_value=True):
             stats = process_touchpoint_emails()
 
         assert stats['sent'] == 1
@@ -4067,7 +4067,7 @@ class TestFollowupsWaitForDelivery:
             return real_load(path)
 
         with patch('app.load_fulfillment_state', side_effect=flaky_load), \
-             patch('app._send_followup_email', return_value=True) as mock_send:
+             patch('app._send_coach_reminder', return_value=True) as mock_send:
             stats = process_followup_emails()
 
         assert stats['sent'] == 1
@@ -4080,11 +4080,107 @@ class TestFollowupsWaitForDelivery:
         _write_plan_order(log_dir, 'cs_ghost',
                           datetime.now(timezone.utc) - timedelta(days=1))
 
-        with patch('app._send_followup_email') as mock_send:
+        with patch('app._send_coach_reminder') as mock_send:
             process_followup_emails()
 
         mock_send.assert_not_called()
         assert not (deliveries / 'orders' / 'cs_ghost').exists()
+
+
+class TestFollowupsAreCoachReminders:
+    """Since 2026-09-23 the day-1/3/7 sequence and the touchpoints remind the
+    coach with suggested text; nothing automated goes to the athlete."""
+
+    @pytest.fixture
+    def dirs(self, tmp_path):
+        log_dir = tmp_path / '.logs'
+        log_dir.mkdir()
+        deliveries = tmp_path / 'deliveries'
+        with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app.DELIVERIES_DIR', str(deliveries)), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.test'):
+            yield log_dir, deliveries
+
+    def _delivered_yesterday(self, log_dir, deliveries, order_id):
+        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+        _write_plan_order(log_dir, order_id, yesterday)
+        _deliver_plan(deliveries, order_id, delivered_at=yesterday)
+
+    def _plan_started_yesterday(self, tmp_path):
+        athletes = tmp_path / 'athletes'
+        plan_start = (datetime.now(timezone.utc) - timedelta(days=1)).strftime('%Y-%m-%d')
+        (athletes / 'test-athlete').mkdir(parents=True)
+        (athletes / 'test-athlete' / 'plan_dates.yaml').write_text(
+            f"plan_start: '{plan_start}'\n"
+            f"weeks:\n- monday: '{plan_start}'\n  sunday: '2099-01-04'\n")
+        return athletes
+
+    def test_followup_goes_to_coach_with_suggested_text(self, dirs):
+        from app import process_followup_emails
+        log_dir, deliveries = dirs
+        self._delivered_yesterday(log_dir, deliveries, 'cs_remind')
+
+        with patch('app._send_email', return_value=True) as send:
+            stats = process_followup_emails()
+
+        assert stats['sent'] == 1
+        assert [c.args[0] for c in send.call_args_list] == ['coach@example.test']
+        to, subject, body = send.call_args.args
+        assert subject == '[GG] Reminder: Test, day 1 after delivery'
+        assert 'Nothing was sent to the athlete' in body
+        assert 'Test Athlete <athlete@test.com>' in body
+        assert 'Suggested subject: Your plan: the one thing to do first' in body
+        assert 'Hey Test,' in body
+
+    def test_touchpoint_goes_to_coach_with_suggested_text(self, dirs, tmp_path):
+        from app import process_touchpoint_emails
+        log_dir, deliveries = dirs
+        self._delivered_yesterday(log_dir, deliveries, 'cs_touch_remind')
+
+        with patch('app.ATHLETES_DIR', str(self._plan_started_yesterday(tmp_path))), \
+             patch('app._send_email', return_value=True) as send:
+            stats = process_touchpoint_emails()
+
+        assert stats['sent'] == 1
+        to, subject, body = send.call_args.args
+        assert to == 'coach@example.test'
+        assert subject == '[GG] Reminder: Test, plan started, setup check'
+        assert 'Suggested subject: Quick check' in body
+
+    def test_no_coach_address_sends_nothing_and_retries_tomorrow(self, dirs):
+        from app import _get_sent_followups, process_followup_emails
+        log_dir, deliveries = dirs
+        self._delivered_yesterday(log_dir, deliveries, 'cs_nobody')
+
+        with patch('app.NOTIFICATION_EMAIL', ''), \
+             patch('app.RESEND_API_KEY', 're_test'), \
+             patch('app._send_email') as send:
+            stats = process_followup_emails()
+
+        send.assert_not_called()
+        assert stats['errors'] == 1
+        assert ('cs_nobody', 1) not in _get_sent_followups()
+
+    def test_failed_touchpoint_reminder_is_not_marked_sent(self, dirs, tmp_path):
+        # The touchpoint loop used to ignore _send_email's False return and
+        # log the touch as sent, so a failed send was never retried.
+        from app import _get_sent_followups, process_touchpoint_emails
+        log_dir, deliveries = dirs
+        self._delivered_yesterday(log_dir, deliveries, 'cs_tp_fail')
+
+        with patch('app.ATHLETES_DIR', str(self._plan_started_yesterday(tmp_path))), \
+             patch('app._send_email', return_value=False):
+            stats = process_touchpoint_emails()
+
+        assert stats['sent'] == 0
+        assert stats['errors'] == 1
+        assert ('cs_tp_fail', 'tp:setup_check') not in _get_sent_followups()
+
+    def test_touchpoint_labels(self):
+        from app import _touchpoint_label
+        assert _touchpoint_label('recovery_note') == 'first recovery week starts'
+        assert _touchpoint_label('b_debrief_2027-03-13') == 'B-race debrief (2027-03-13)'
+        assert _touchpoint_label('something_new') == 'something_new'
 
 
 class TestFollowupEmails:
@@ -4140,7 +4236,7 @@ class TestFollowupEmails:
 
         with patch('app.DATA_DIR', str(tmp_path)), \
              patch('app.DELIVERIES_DIR', str(tmp_path / 'deliveries')), \
-             patch('app._send_followup_email') as mock_send:
+             patch('app._send_coach_reminder') as mock_send:
             mock_send.return_value = True
             from app import process_followup_emails
             stats = process_followup_emails()
@@ -4148,8 +4244,8 @@ class TestFollowupEmails:
         assert stats['sent'] == 1
         mock_send.assert_called_once()
         args = mock_send.call_args
-        assert 'athlete@test.com' == args[0][0]
-        assert 'one thing to do first' in args[0][1]
+        assert args[0][0]['email'] == 'athlete@test.com'
+        assert 'one thing to do first' in args[0][2]
 
     def test_process_skips_already_sent(self, tmp_path):
         """Follow-up not re-sent if already tracked."""
@@ -4182,7 +4278,7 @@ class TestFollowupEmails:
 
         with patch('app.DATA_DIR', str(tmp_path)), \
              patch('app.DELIVERIES_DIR', str(tmp_path / 'deliveries')), \
-             patch('app._send_followup_email') as mock_send:
+             patch('app._send_coach_reminder') as mock_send:
             from app import process_followup_emails
             stats = process_followup_emails()
 
@@ -4207,7 +4303,7 @@ class TestFollowupEmails:
         (log_dir / log_filename).write_text(order + '\n')
 
         with patch('app.DATA_DIR', str(tmp_path)), \
-             patch('app._send_followup_email') as mock_send:
+             patch('app._send_coach_reminder') as mock_send:
             from app import process_followup_emails
             stats = process_followup_emails()
 
@@ -4236,14 +4332,14 @@ class TestFollowupEmails:
 
         with patch('app.DATA_DIR', str(tmp_path)), \
              patch('app.DELIVERIES_DIR', str(tmp_path / 'deliveries')), \
-             patch('app._send_followup_email') as mock_send:
+             patch('app._send_coach_reminder') as mock_send:
             mock_send.return_value = True
             from app import process_followup_emails
             process_followup_emails()
 
         # Day 7 email should mention coaching
         call_args = mock_send.call_args
-        assert '/coaching/' in call_args[0][2]  # body contains coaching URL
+        assert '/coaching/' in call_args[0][3]  # body contains coaching URL
 
     def test_followup_sequence_has_required_fields(self):
         """All follow-up templates have required fields."""
@@ -4578,7 +4674,7 @@ class TestFollowupReadsCorrectLogFiles:
 
         with patch('app.DATA_DIR', str(tmp_path)), \
              patch('app.DELIVERIES_DIR', str(tmp_path / 'deliveries')), \
-             patch('app._send_followup_email') as mock_send:
+             patch('app._send_coach_reminder') as mock_send:
             mock_send.return_value = True
             from app import process_followup_emails
             stats = process_followup_emails()
@@ -4606,7 +4702,7 @@ class TestFollowupReadsCorrectLogFiles:
         (log_dir / log_filename).write_text(order + '\n')
 
         with patch('app.DATA_DIR', str(tmp_path)), \
-             patch('app._send_followup_email') as mock_send:
+             patch('app._send_coach_reminder') as mock_send:
             from app import process_followup_emails
             stats = process_followup_emails()
 

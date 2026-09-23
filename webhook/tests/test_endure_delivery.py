@@ -1219,7 +1219,7 @@ def test_trainingpeaks_followups_are_suppressed_for_endure_orders(
         'delivery_platform': 'endure',
         'timestamp': (datetime.now() - timedelta(days=1)).isoformat(),
     }) + '\n')
-    with patch.object(app_module, '_send_followup_email') as send:
+    with patch.object(app_module, '_send_coach_reminder') as send:
         stats = app_module.process_followup_emails()
     assert stats['checked'] == 0
     send.assert_not_called()
