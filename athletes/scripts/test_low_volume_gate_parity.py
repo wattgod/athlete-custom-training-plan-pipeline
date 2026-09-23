@@ -37,7 +37,6 @@ FIXED_CLASSES = (
     "HARD_MINUTES_BELOW_FLOOR",
     "SHORT_SESSION_BELOW_FLOOR",
     "VO2_DOSE_OUT_OF_RANGE",
-    "VOICE_CONTRACT",
 )
 
 # Webhook-shaped questionnaire (webhook/app.py::_questionnaire_to_markdown).
@@ -295,6 +294,15 @@ def test_low_volume_plan_r05_is_pending_matti(low_volume_order):
     r05 = [item for item in low_volume_order['state']['blocking_issues']
            if item['id'] == 'R05']
     assert r05 and '1 intensity (need 2-2)' in r05[0]['message']
+
+
+def test_low_volume_plan_voice_contract_is_pending_phrase_pools(low_volume_order):
+    """PENDING new note phrase pools (copy work for Matti): a 35-week plan
+    repeats position/notice sentences. The gate now reports every repeat in
+    one finding instead of only the last one."""
+    voice = [item for item in low_volume_order['state']['blocking_issues']
+             if item['id'] == 'VOICE_CONTRACT']
+    assert voice and len(voice[0]['review_value']['findings']) > 1
 
 
 def test_low_volume_plan_really_is_one_quality_day_per_load_week(low_volume_order):

@@ -42,23 +42,11 @@ def _words(text: str) -> int:
     return len(re.findall(r"\S+", text or ""))
 
 
-REAL_SENTENCE_MIN_WORDS = 6
-
-
-def split_sentences(text: str) -> List[str]:
-    """Every sentence, split the way the cross-week dupe check splits."""
-    return [s.strip() for s in _SENTENCE.split(text or "") if s.strip()]
-
-
-def is_real_sentence(sentence: str) -> bool:
-    return _words(sentence) >= REAL_SENTENCE_MIN_WORDS
-
-
 def _sentences(text: str) -> List[str]:
     """Real sentences only (>= 6 words): a session-name lead-in such as
     "Ronnestad 30-15 Monday." legitimately recurs when the same session sits
     on the same weekday in several weeks."""
-    return [s for s in split_sentences(text) if is_real_sentence(s)]
+    return [s.strip() for s in _SENTENCE.split(text or "") if _words(s) >= 6]
 
 
 def check_copy(text: str, *, rules: Dict[str, Any], where: str) -> List[str]:
