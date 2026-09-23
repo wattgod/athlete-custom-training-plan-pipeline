@@ -860,3 +860,43 @@ def test_approval_rejects_tampered_current_resolution_effects(tmp_path):
             expected_catalog_digest=tampered["review_catalog_digest"],
             review_decisions=_approval_decisions(tampered),
         )
+
+
+def test_d2_writers_cannot_reopen_an_externally_fulfilled_order(tmp_path):
+    # A D2 identity/resolution command rewrites status to BLOCKED_REVIEW or
+    # GENERATED; on a closed order that would silently reopen it.
+    path, state = _seed(tmp_path, order_id="closed-d2", control_value=155,
+                        intake_lthr=160, intake_age=19)
+    closed = transition(
+        path, "FULFILLED_EXTERNALLY", "Matti",
+        metadata={"reason": "hand-built calendar delivered 2026-09-23"})
+    revision = closed["generation_revision"]
+    fixture = json.loads((FIXTURE / "worker_probes.json").read_text())
+    fixture["tp_athlete_id"] = "fixture-athlete-m"
+    writers = {
+        "record_identity_result": lambda: record_identity_result(
+            path, revision, {"outcome": "bound",
+                             "tp_athlete_id": "fixture-athlete-m",
+                             "candidates": []},
+            capability_jti="closed-probe-jti-000000001"),
+        "select_identity_candidate": lambda: select_identity_candidate(
+            path, revision, "fixture-athlete-m", actor="coach"),
+        "record_account_inspection": lambda: record_account_inspection(
+            path, revision, fixture, intake_age=19,
+            intake_thresholds={"lthr": 160}, control_metric="hr",
+            canonical_control_value=155,
+            capability_jti="closed-inspect-jti-00001", observed_at=OBSERVED_AT),
+        "resolve_d2_item": lambda: resolve_d2_item(
+            path, revision, THRESHOLD_ITEM_ID, "update-from-intake",
+            actor="coach"),
+    }
+    # The manual readback writer needs real verified worker evidence; the
+    # terminal guard fires before that evidence is consulted.
+    evidence, _store = _worker_evidence(
+        tmp_path, closed, lthr=155, jti="closed-readback-jti-00001")
+    writers["record_manual_readback"] = lambda: record_manual_readback(
+        path, revision, THRESHOLD_ITEM_ID, evidence)
+    for name, write in writers.items():
+        with pytest.raises(FulfillmentStateError, match=f"D2 {name} refused"):
+            write()
+    assert load(path) == closed

@@ -84,7 +84,14 @@ produced — `product_type == 'training_plan_FAILED'`, `webhook/app.py:2398`),
 or the needs-review variant (plan delivered but `GG_NEEDS_REVIEW=1` in
 pipeline stdout). Route any new failure mode through this same
 subject-line vocabulary rather than a new channel — the coach's triage
-habit depends on exactly these three states.
+habit depends on exactly these three states. The one addition is
+`[GG] OVERDUE` (2026-09-23): a paid order still open more than 24h after
+payment, sent by the hourly state audit at most once per order+status per
+24h. It exists because a paid order sat in BLOCKED_REVIEW on 2026-09-22 and
+the only alert was the first BLOCKED REVIEW email. An order the coach
+finished by hand is closed with the `FULFILLED_EXTERNALLY` transition
+(CLAUDE.md, "Paid orders must reach a terminal status"), never left open and
+never faked as CONFIRMED.
 
 ## The recoverable-field checklist
 

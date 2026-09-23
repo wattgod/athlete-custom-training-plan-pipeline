@@ -11,7 +11,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
-                               CONFIRMED, GENERATED, FulfillmentStateError,
+                               CONFIRMED, FULFILLED_EXTERNALLY, GENERATED,
+                               TERMINAL_STATUSES, FulfillmentStateError,
                                bind_legacy_order,
                                approval_matches_release,
                                confirm_after_send, confirm_endure_after_send,
@@ -924,6 +925,181 @@ def test_cancellation_refuses_to_hide_application_evidence(tmp_path):
     with pytest.raises(FulfillmentStateError, match='compensation workflow'):
         transition(path, CANCELLED, 'daily-drill-cleanup')
     assert load(path)['status'] == APPLIED
+
+
+def _close_externally(path, reason='Hand-built 16-week TP calendar, sent 2026-09-23'):
+    return transition(
+        path, FULFILLED_EXTERNALLY, 'Matti',
+        evidence='TP calendar weeks 1-16 placed by hand',
+        metadata={'reason': reason})
+
+
+def test_external_fulfilment_closes_blocked_paid_order_with_history(tmp_path):
+    path = tmp_path / 'status.json'
+    write_generation(
+        path, 'jane_doe', [_issue('FTP_ESTIMATED')],
+        order_id='cs_live_fixture123', delivery_platform='trainingpeaks')
+    assert load(path)['status'] == BLOCKED_REVIEW
+
+    closed = _close_externally(path)
+
+    assert closed['status'] == FULFILLED_EXTERNALLY
+    assert FULFILLED_EXTERNALLY in TERMINAL_STATUSES
+    record = closed['external_fulfillment']
+    assert record['coach'] == 'Matti'
+    assert record['reason'].startswith('Hand-built')
+    assert record['evidence'] == 'TP calendar weeks 1-16 placed by hand'
+    assert record['from_status'] == BLOCKED_REVIEW
+    assert record['generation_revision'] == 1
+    event = closed['history'][-1]
+    assert event['event'] == 'TRANSITION'
+    assert event['from_status'] == BLOCKED_REVIEW
+    assert event['to_status'] == FULFILLED_EXTERNALLY
+    assert event['reason'].startswith('Hand-built')
+    # Blockers stay on record; the order is closed, not approved.
+    assert [issue['id'] for issue in closed['blocking_issues']] == ['FTP_ESTIMATED']
+    assert closed['approval'] is None and closed['confirmation'] is None
+    assert load(path) == closed
+
+
+def test_external_fulfilment_requires_reason_and_coach(tmp_path):
+    path = tmp_path / 'status.json'
+    write_generation(path, 'jane_doe', [_issue()], order_id='cs_live_fixture123')
+    with pytest.raises(FulfillmentStateError, match='reason is required'):
+        _close_externally(path, reason='   ')
+    with pytest.raises(FulfillmentStateError, match='coach is required'):
+        transition(path, FULFILLED_EXTERNALLY, ' ', metadata={'reason': 'x'})
+    assert load(path)['status'] == BLOCKED_REVIEW
+
+
+def test_external_fulfilment_is_idempotent_and_terminal(tmp_path):
+    path = tmp_path / 'status.json'
+    write_generation(path, 'jane_doe', order_id='cs_live_fixture123',
+                     delivery_platform='trainingpeaks')
+    _seal(path, tmp_path)
+    first = _close_externally(path)
+    again = _close_externally(path, reason='a different story')
+    assert again == first
+    # Not CONFIRMED: the pipeline confirmation path refuses it, so no
+    # "live on TrainingPeaks" email can follow a hand-built delivery.
+    with pytest.raises(FulfillmentStateError, match='requires APPLIED'):
+        confirm_after_send(path, lambda: True)
+    # Review found CANCELLED could overwrite it. No exit is allowed.
+    with pytest.raises(FulfillmentStateError, match='FULFILLED_EXTERNALLY is terminal'):
+        transition(path, CANCELLED, 'Matti', credential='operator-secret',
+                   metadata={'reason': 'refund'})
+    with pytest.raises(FulfillmentStateError, match='FULFILLED_EXTERNALLY is terminal'):
+        transition(path, APPLIED, 'Matti', platform='trainingpeaks', evidence='x')
+    with pytest.raises(FulfillmentStateError, match='FULFILLED_EXTERNALLY is terminal'):
+        _approve(path)
+    with pytest.raises(FulfillmentStateError, match='FULFILLED_EXTERNALLY is terminal'):
+        transition(path, CONFIRMED, 'Matti')
+    assert load(path) == first
+
+
+@pytest.mark.parametrize('closed', [CANCELLED, CONFIRMED])
+def test_no_transition_leaves_any_terminal_status(tmp_path, closed):
+    path = tmp_path / 'status.json'
+    write_generation(path, 'jane_doe', order_id='cs_live_fixture123',
+                     delivery_platform='manual')
+    _seal(path, tmp_path)
+    if closed == CANCELLED:
+        transition(path, CANCELLED, 'Matti', metadata={'reason': 'refunded'})
+    else:
+        _approve(path)
+        transition(path, APPLIED, 'Matti', platform='manual', evidence='attested')
+        confirm_after_send(path, lambda: True)
+    before = load(path)
+    for destination in (CANCELLED, CONFIRMED, FULFILLED_EXTERNALLY, APPROVED, APPLIED):
+        if destination == closed:
+            assert transition(path, destination, 'Matti',
+                              metadata={'reason': 'retry'}) == before
+            continue
+        with pytest.raises(FulfillmentStateError, match=f'{closed} is terminal'):
+            transition(path, destination, 'Matti', platform='manual',
+                       evidence='x', metadata={'reason': 'x'})
+    assert load(path) == before
+
+
+def test_external_fulfilment_refuses_staged_endure_delivery(tmp_path):
+    path = tmp_path / 'endure.json'
+    approved = _approved_endure(path, tmp_path)
+    action, staged = record_endure_stage_receipt(path, _endure_stage(approved))
+    assert action == 'staged' and staged['endure_stage'] is not None
+    with pytest.raises(FulfillmentStateError, match='staged in Endure'):
+        _close_externally(path)
+    assert load(path)['status'] == APPROVED
+
+
+def test_regeneration_and_seal_mismatch_cannot_reopen_external_close(tmp_path):
+    path = tmp_path / 'status.json'
+    write_generation(path, 'jane_doe', [_issue()], order_id='cs_live_fixture123',
+                     delivery_platform='trainingpeaks')
+    _seal(path, tmp_path)
+    closed = _close_externally(path)
+    with pytest.raises(FulfillmentStateError, match='regeneration refused'):
+        write_generation(path, 'jane_doe', order_id='cs_live_fixture123',
+                         delivery_platform='trainingpeaks')
+    assert record_seal_mismatch(path, 'sealed artifact mismatch: guide.html') == closed
+    assert load(path) == closed
+
+
+@pytest.mark.parametrize('closed_status', [CANCELLED, CONFIRMED])
+def test_external_fulfilment_refuses_other_terminal_states(tmp_path, closed_status):
+    path = tmp_path / 'status.json'
+    write_generation(path, 'jane_doe', order_id='cs_live_fixture123')
+    raw = json.loads(path.read_text())
+    raw['status'] = closed_status
+    if closed_status == CANCELLED:
+        raw['cancel_requested'] = True
+        raw['cancellation'] = {
+            'requested_by': 'Matti', 'at': '2026-09-23T00:00:00Z',
+            'worker_stop_acknowledged': True}
+    path.write_text(json.dumps(raw))
+    with pytest.raises(FulfillmentStateError, match='illegal transition'):
+        _close_externally(path)
+    assert load(path)['status'] == closed_status
+
+
+def test_external_fulfilment_refuses_pipeline_application_evidence(tmp_path):
+    path = tmp_path / 'applied.json'
+    write_generation(path, 'jane_doe', order_id='cs_live_fixture123',
+                     delivery_platform='manual')
+    _seal(path, tmp_path)
+    _approve(path)
+    transition(path, APPLIED, 'Matti', platform='manual', evidence='attested')
+    with pytest.raises(FulfillmentStateError, match='illegal transition APPLIED'):
+        _close_externally(path)
+    assert load(path)['status'] == APPLIED
+
+
+def test_external_fulfilment_refuses_in_flight_worker_attempt(tmp_path):
+    path = tmp_path / 'status.json'
+    write_generation(path, 'jane_doe', order_id='cs_live_fixture123')
+    raw = json.loads(path.read_text())
+    raw['application_attempt'] = {
+        'jti': 'phase5-fixture-jti', 'action': 'verify',
+        'request_digest': 'a' * 64, 'status': 'running',
+        'execution_epoch': 0, 'fencing_token': 1,
+        'lease': {'athlete_key_digest': 'b' * 64,
+                  'expires_at': '2026-09-23T01:00:00Z'},
+        'landed': [], 'intents': [], 'receipt_ref': '/fixture/receipt.json',
+    }
+    raw['execution_fence'] = 1
+    path.write_text(json.dumps(raw))
+    with pytest.raises(FulfillmentStateError, match='in-flight worker'):
+        _close_externally(path)
+    assert load(path)['status'] == GENERATED
+
+
+def test_external_fulfilment_status_requires_evidence_on_load(tmp_path):
+    path = tmp_path / 'status.json'
+    write_generation(path, 'jane_doe', order_id='cs_live_fixture123')
+    raw = json.loads(path.read_text())
+    raw['status'] = FULFILLED_EXTERNALLY
+    path.write_text(json.dumps(raw))
+    with pytest.raises(FulfillmentStateError, match='malformed'):
+        load(path)
 
 
 def test_v1_migration_quarantines_and_tombstones(tmp_path):

@@ -29,10 +29,21 @@ APPLIED = "APPLIED"
 APPLIED_ATTESTED = "APPLIED_ATTESTED"
 CONFIRMED = "CONFIRMED"
 CANCELLED = "CANCELLED"
+# The coach delivered this paid order outside the pipeline (for example a
+# hand-built calendar). Terminal, but NOT CONFIRMED: nothing was sent through
+# the pipeline's confirmation path, so pipeline-delivery copy must not assume
+# the sealed release reached the athlete.
+FULFILLED_EXTERNALLY = "FULFILLED_EXTERNALLY"
 VALID_STATUSES = {
     GENERATED, BLOCKED_REVIEW, APPROVED, APPLYING, APPLIED,
-    APPLIED_ATTESTED, CONFIRMED, CANCELLED,
+    APPLIED_ATTESTED, CONFIRMED, CANCELLED, FULFILLED_EXTERNALLY,
 }
+# No further fulfilment work is owed on these; every other status is open.
+TERMINAL_STATUSES = {CONFIRMED, CANCELLED, FULFILLED_EXTERNALLY}
+# Only states with no application evidence may be closed as external work;
+# anything the pipeline already applied must finish through confirmation or
+# the Phase 5 compensation workflow.
+EXTERNAL_FULFILLMENT_SOURCE_STATUSES = {GENERATED, BLOCKED_REVIEW, APPROVED}
 DELIVERY_PLATFORMS = {"trainingpeaks", "endure", "manual"}
 PHASE1_APPLIED_PLATFORMS = {"trainingpeaks", "manual"}
 RELEASE_STATUSES = {
@@ -621,6 +632,16 @@ def _validate_state(state: Any) -> Dict[str, Any]:
     for key in ("approval", "waiver", "application", "confirmation"):
         if key not in state:
             raise FulfillmentStateError(f"fulfillment state missing {key}")
+    state.setdefault("external_fulfillment", None)
+    external = state["external_fulfillment"]
+    if state["status"] == FULFILLED_EXTERNALLY:
+        if (not isinstance(external, dict)
+                or any(not str(external.get(field) or "").strip()
+                       for field in ("coach", "at", "reason", "from_status"))):
+            raise FulfillmentStateError(
+                "FULFILLED_EXTERNALLY requires external_fulfillment evidence")
+    elif external is not None and not isinstance(external, dict):
+        raise FulfillmentStateError("external_fulfillment must be an object or null")
     state.setdefault("endure_stage", None)
     stage = state["endure_stage"]
     if stage is not None:
@@ -850,6 +871,14 @@ def _history(state: Dict[str, Any], event: str, **details: Any) -> None:
     state["updated_at"] = now_iso()
 
 
+def refuse_if_terminal(state: Dict[str, Any], action: str) -> None:
+    """Fail closed before any writer moves an order out of a terminal status."""
+    status = state.get("status")
+    if status in TERMINAL_STATUSES:
+        raise FulfillmentStateError(
+            f"{action} refused: order is {status}, a terminal status")
+
+
 def _opaque_manual_order_id(prefix: str = "manual") -> str:
     return f"{prefix}_{uuid.uuid4().hex}"
 
@@ -887,6 +916,11 @@ def write_generation(
             if raw is not None:
                 raise FulfillmentStateError("refusing to overwrite malformed fulfillment state")
 
+        if previous and previous.get("status") == FULFILLED_EXTERNALLY:
+            # CANCELLED drills are deliberately reprocessable and a seal
+            # mismatch may supersede CONFIRMED; a hand-delivered order has
+            # nothing for a regeneration to replace.
+            refuse_if_terminal(previous, "regeneration")
         if previous:
             immutable_order_id = previous["order_id"]
             immutable_platform = previous["delivery_platform"]
@@ -1382,6 +1416,11 @@ def record_seal_mismatch(
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")
+        if state["status"] == FULFILLED_EXTERNALLY:
+            # The sealed pipeline release was never what the athlete got, so
+            # there is no authority to revoke. Callers still report the
+            # failed verification; reopening a delivered order would be false.
+            return copy.deepcopy(state)
         _materialize_seal_mismatch(state, str(message))
         _atomic_write(state_path, state)
         return copy.deepcopy(state)
@@ -1482,11 +1521,53 @@ def transition(
                 and expected_revision != state["generation_revision"]):
             raise FulfillmentStateError("generation revision mismatch; review is superseded")
         current = state["status"]
-        if to == CONFIRMED and current == CONFIRMED:
+        if to == current and to in TERMINAL_STATUSES:
             return copy.deepcopy(state)
-        if to == CANCELLED:
-            if current == CANCELLED:
-                return copy.deepcopy(state)
+        if current in TERMINAL_STATUSES:
+            raise FulfillmentStateError(
+                f"illegal transition {current} -> {to}; {current} is terminal")
+        if to == FULFILLED_EXTERNALLY:
+            if current not in EXTERNAL_FULFILLMENT_SOURCE_STATUSES:
+                raise FulfillmentStateError(
+                    f"illegal transition {current} -> {to}; only "
+                    + ", ".join(sorted(EXTERNAL_FULFILLMENT_SOURCE_STATUSES))
+                    + " orders can be closed as fulfilled outside the pipeline"
+                )
+            attempt = state.get("application_attempt")
+            landed = (
+                attempt.get("landed", [])
+                if isinstance(attempt, dict) else []
+            )
+            in_flight = (
+                isinstance(attempt, dict)
+                and attempt.get("status") in {"accepted", "running"}
+            )
+            if state.get("application") or landed or in_flight:
+                raise FulfillmentStateError(
+                    "external fulfilment requires no pipeline application "
+                    "evidence and no in-flight worker attempt"
+                )
+            if (state.get("endure_stage") is not None
+                    or state.get("endure_confirmation_attempt") is not None):
+                raise FulfillmentStateError(
+                    "external fulfilment refused: this order is staged in Endure "
+                    "or has an Endure access email in flight; finish or "
+                    "reconcile the Endure delivery first"
+                )
+            reason = str((metadata or {}).get("reason") or "").strip()
+            if not reason:
+                raise FulfillmentStateError(
+                    "reason is required: say what was delivered, where, and when"
+                )
+            state["external_fulfillment"] = {
+                "coach": coach.strip(),
+                "at": now_iso(),
+                "reason": reason,
+                "evidence": str(evidence or "").strip(),
+                "from_status": current,
+                "generation_revision": state["generation_revision"],
+            }
+        elif to == CANCELLED:
             attempt = state.get("application_attempt")
             landed = (
                 attempt.get("landed", [])

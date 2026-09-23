@@ -148,6 +148,31 @@ def test_cleanup_cancels_previous_order_and_verifies_state(tmp_path, monkeypatch
     assert state["cancellation"]["worker_stop_acknowledged"] is True
 
 
+def test_drill_shares_the_state_machine_terminal_statuses():
+    from webhook.fulfillment_state import TERMINAL_STATUSES
+    assert drill.TERMINAL_STATUSES is TERMINAL_STATUSES
+    assert "FULFILLED_EXTERNALLY" in drill.TERMINAL_STATUSES
+
+
+def test_cleanup_leaves_an_externally_fulfilled_order_alone(tmp_path, monkeypatch):
+    # With a private terminal set, cleanup would try CANCELLED, which the
+    # state machine now refuses, and the whole drill would fail.
+    from fulfillment_state import transition
+    client = _configure_app(tmp_path, monkeypatch)
+    previous = drill.order_id_for(DAY.replace(day=11))
+    path = _seed_order(previous)
+    webhook_app.mark_order_processed(previous, "daily_drill")
+    closed = transition(path, "FULFILLED_EXTERNALLY", "Matti",
+                        metadata={"reason": "fixture close"})
+
+    assertions = drill.cleanup_previous_order(
+        _config(), DAY, transport=FlaskTransport(client))
+
+    assert [item["passed"] for item in assertions] == [True]
+    assert "already terminal" in assertions[0]["detail"]
+    assert load(path) == closed
+
+
 def test_cleanup_passes_when_previous_drill_never_existed(tmp_path, monkeypatch):
     """First-run case: /api/order-status answers 200 "processing" (never 404)
     for session refs the webhook has not processed, so cleanup must treat a

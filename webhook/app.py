@@ -42,8 +42,9 @@ from provider_revenue import (
 import yaml
 
 from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
-                               CONFIRMED,
-                               RELEASE_STATUSES, FulfillmentStateError,
+                               CONFIRMED, FULFILLED_EXTERNALLY,
+                               RELEASE_STATUSES, TERMINAL_STATUSES,
+                               FulfillmentStateError,
                                approval_matches_release, bind_legacy_order,
                                confirm_after_send, confirm_endure_after_send,
                                finalize_transitional_release,
@@ -3470,6 +3471,12 @@ def persist_deliverables(order_id: str, athlete_id: str = '', source_dir: Path |
     existing_state = None
     if state_path.exists():
         existing_state = load_fulfillment_state(state_path)
+        if existing_state.get('status') == FULFILLED_EXTERNALLY:
+            # The coach delivered this order by hand. A rerun must not copy a
+            # fresh pipeline state over that record and silently reopen it.
+            raise FulfillmentStateError(
+                'order was fulfilled outside the pipeline; refusing to '
+                'persist a regenerated revision over it')
 
     if state_unavailable:
         state = write_generation(state_path, athlete_id, [{
@@ -4220,6 +4227,13 @@ def _review_bootstrap(status: int = 200):
     return _review_response(render_bootstrap(nonce), status, nonce=nonce)
 
 
+# A delivered (CONFIRMED) order keeps its review page: the Endure confirm
+# redirects there to show "Complete", and every writer behind the page
+# already refuses terminal states. Only orders that never shipped through
+# the pipeline close it.
+REVIEW_CLOSED_STATUSES = frozenset({CANCELLED, FULFILLED_EXTERNALLY})
+
+
 def _authorized_review(order_ref: str):
     """Return (order_id, current state, review session), without leaking on failure."""
     order_id = _resolve_review_order_id(order_ref)
@@ -4233,8 +4247,8 @@ def _authorized_review(order_ref: str):
         state = load_fulfillment_state(_fulfillment_status_path(order_id))
     except FulfillmentStateError as exc:
         raise ReviewAuthError('review state is unavailable') from exc
-    if state.get('status') == CANCELLED:
-        raise ReviewAuthError('review credential is cancelled')
+    if state.get('status') in REVIEW_CLOSED_STATUSES:
+        raise ReviewAuthError('review credential is closed')
     if (session.get('athlete_id') != state.get('athlete_id')
             or session.get('generation_revision') != state.get('generation_revision')):
         raise ReviewAuthError('review link is superseded by a newer revision')
@@ -4293,7 +4307,7 @@ def open_review_session(order_ref):
         return _review_bootstrap(401)
     try:
         state = load_fulfillment_state(_fulfillment_status_path(order_id))
-        if state.get('status') == CANCELLED:
+        if state.get('status') in REVIEW_CLOSED_STATUSES:
             return _review_bootstrap(401)
         claims = verify_review_token(
             token, order_id=state['order_id'], athlete_id=state['athlete_id'],
@@ -5070,7 +5084,8 @@ def transition_fulfillment_state(order_ref):
             credential=('operator-secret'
                         if destination in (APPROVED, CANCELLED) else ''),
             metadata=({'reason': str(data.get('reason') or '').strip()}
-                      if destination == CANCELLED else None),
+                      if destination in (CANCELLED, FULFILLED_EXTERNALLY)
+                      else None),
         )
     except FulfillmentStateError as exc:
         return jsonify({'error': str(exc)}), 409
@@ -5141,6 +5156,7 @@ def fulfillment_status(order_ref):
         'endure_stage': state.get('endure_stage'),
         'endure_confirmation_attempt': state.get('endure_confirmation_attempt'),
         'confirmation': state['confirmation'],
+        'external_fulfillment': state.get('external_fulfillment'),
         'superseded_approvals': state.get('superseded_approvals', []),
     }
     from fulfillment_state import external_state_projection
@@ -10322,6 +10338,34 @@ def intel_stats():
 
     orders.sort(key=lambda item: (item.get('timestamp') or '', item.get('id') or ''))
     recoveries.sort(key=lambda item: (item.get('timestamp') or '', item.get('id') or ''))
+
+    # A processing record's `success` only means generation reached a durable
+    # state (a BLOCKED_REVIEW quarantine counts). Delivery truth is the
+    # order's fulfilment status, so every training-plan row carries it and
+    # open_paid_orders lists every paid order still owed a plan, in or out
+    # of the window (hashed refs only).
+    from tools.audit_fulfillment_states import (
+        list_open_paid_orders, order_ref)
+    for order in orders:
+        if order.get('product_type') != 'training_plan' or not order.get('id'):
+            continue
+        order['order_ref'] = order_ref(order['id'])
+        try:
+            state = json.loads(_fulfillment_status_path(order['id']).read_text())
+        except (OSError, ValueError, TypeError):
+            state = None
+        if not isinstance(state, dict):
+            order.update({'fulfillment_status': None,
+                          'fulfillment_open': None, 'blocker_count': None})
+            continue
+        status = str(state.get('status') or '') or None
+        order.update({
+            'fulfillment_status': status,
+            'fulfillment_open': status not in TERMINAL_STATUSES,
+            'blocker_count': len(state.get('blocking_issues') or []),
+        })
+    open_paid_orders = list_open_paid_orders(
+        Path(DELIVERIES_DIR) / 'orders', now=datetime.now(timezone.utc))
     coaching_cutoff = datetime.now(timezone.utc) - _td(hours=hours)
     coaching_projections = []
     for case in _iter_coaching_intakes() or ():
@@ -10333,6 +10377,7 @@ def intel_stats():
         'window_hours': hours,
         'orders': orders,
         'failed_orders': [o for o in orders if o.get('success') is False],
+        'open_paid_orders': open_paid_orders,
         'recoveries': recoveries,
         'questionnaire_starts': q_starts,
         'coaching_onboarding': _aggregate_coaching_funnel(
@@ -10387,9 +10432,12 @@ def cron_state_audit():
             or not 1 <= max_age_days <= 30):
         return jsonify({'error': 'max_age_days must be an integer from 1 to 30'}), 400
     try:
-        from tools.audit_fulfillment_states import build_audit_artifact
-        artifact = build_audit_artifact(
-            Path(DELIVERIES_DIR) / 'orders', max_age_days=max_age_days)
+        from tools.audit_fulfillment_states import build_audit_report
+        now = datetime.now(timezone.utc)
+        artifact, stale_orders = build_audit_report(
+            Path(DELIVERIES_DIR) / 'orders', now=now,
+            max_age_days=max_age_days)
+        _alert_stale_paid_orders(artifact, stale_orders, now)
         logger.info(
             'Fulfillment state audit: %s',
             json.dumps(artifact, sort_keys=True, separators=(',', ':')),
@@ -10399,6 +10447,120 @@ def cron_state_audit():
     except Exception:
         logger.exception('Fulfillment state audit execution failed')
         return jsonify({'error': 'Internal error'}), 500
+
+
+def _stale_alert_ledger_path() -> Path:
+    return Path(DATA_DIR) / '.stale_paid_order_alerts.json'
+
+
+def _build_stale_order_email(record: dict) -> tuple:
+    """Coach alert for one paid order that is past the 24h window.
+
+    Private coach inbox only (same channel and [GG] prefix as the order
+    notifications). The subject is logged by _send_email, so it carries the
+    hashed audit ref, never the order id, athlete, or customer email.
+    """
+    order_id = record['order_id']
+    hours = record['hours_since_payment']
+    status = record['status']
+    blockers = record.get('blocker_ids') or []
+    subject = (f"[GG] OVERDUE: paid order {record['state_ref']} still "
+               f"{status} {hours}h after payment")
+    close_payload = json.dumps({
+        'to': FULFILLED_EXTERNALLY, 'coach': 'YOUR NAME',
+        'reason': 'WHAT YOU DELIVERED, WHERE, AND WHEN',
+    })
+    text = (
+        f"A paid training-plan order is past the {record['sla_hours']}h "
+        f"window and is not closed.\n\n"
+        f"Order:           {order_id}\n"
+        f"Audit ref:       {record['state_ref']}\n"
+        f"Athlete id:      {record.get('athlete_id') or 'unknown'}\n"
+        f"Platform:        {record.get('delivery_platform') or 'unknown'}\n"
+        f"Status:          {status}\n"
+        f"Since payment:   {hours}h (counted from when this order's "
+        f"fulfilment state was first written, shortly after payment)\n"
+        f"Blockers:        {len(blockers)}"
+        + (f" ({', '.join(blockers)})" if blockers else '') + "\n\n"
+        "The customer was told to expect the plan or a specific blocker "
+        "update within 24 hours after payment.\n\n"
+        "Close it one of three ways:\n"
+        "1. Finish it in the pipeline: open the review link from the "
+        "BLOCKED REVIEW email, resolve the blockers, approve, apply, then "
+        "confirm.\n"
+        "2. You delivered the plan outside the pipeline (for example a "
+        "hand-built calendar). Record that honestly. The transition sends "
+        "nothing to the athlete:\n"
+        f"   curl -X POST {REVIEW_BASE_URL}/api/fulfillment/{order_id}/transition \\\n"
+        "     -H \"Content-Type: application/json\" "
+        "-H \"X-Cron-Secret: $CRON_SECRET\" \\\n"
+        f"     -d '{close_payload}'\n"
+        "3. The order was refunded or abandoned: the same call with "
+        "\"to\": \"CANCELLED\" and a reason.\n\n"
+        "This alert repeats at most once every 24 hours while the order "
+        "stays in this status.\n"
+    )
+    return subject, text
+
+
+def _alert_stale_paid_orders(artifact: dict, stale_orders: list,
+                             now: datetime) -> None:
+    """Email the coach once per stale paid order per status per 24h.
+
+    The ledger decides which findings alert this run. It is written BEFORE
+    any email goes out, so an email is only ever sent for an alert that is
+    already durably recorded. If the ledger cannot be read, locked or
+    written, no email is sent that run and every stale finding stays
+    CRITICAL (red run). A broken ledger therefore can never turn into an
+    hourly repeat-email storm, and it never drops the other findings.
+    """
+    from tools.audit_fulfillment_states import (
+        apply_alert_ledger, load_alert_ledger, mark_alert_ledger_unavailable,
+        save_alert_ledger)
+    ledger_path = _stale_alert_ledger_path()
+    lock_path = ledger_path.with_name(ledger_path.name + '.lock')
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(lock_path, 'a+') as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                ledger, ledger_status = load_alert_ledger(ledger_path)
+                new_refs, next_ledger = apply_alert_ledger(
+                    artifact, ledger, now=now)
+                save_alert_ledger(ledger_path, next_ledger)
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+    except Exception:
+        logger.exception(
+            'Stale paid-order alert ledger unavailable; no alert emails sent')
+        mark_alert_ledger_unavailable(artifact)
+        return
+    artifact['alert_ledger'] = ledger_status
+
+    by_ref = {record['state_ref']: record for record in stale_orders}
+    outcomes = {}
+    for ref in new_refs:
+        record = by_ref.get(ref)
+        if record is None:
+            outcomes[ref] = 'unavailable'
+            continue
+        try:
+            subject, text = _build_stale_order_email(record)
+            if not (NOTIFICATION_EMAIL and RESEND_API_KEY):
+                logger.critical(f'STALE PAID ORDER: {subject}')
+                outcomes[ref] = 'unconfigured'
+            elif _send_email(NOTIFICATION_EMAIL, subject, text):
+                outcomes[ref] = 'sent'
+            else:
+                # Recorded, not retried: the red run is the guaranteed channel.
+                logger.critical(f'STALE PAID ORDER (email failed): {subject}')
+                outcomes[ref] = 'failed'
+        except Exception:
+            logger.exception('Stale paid-order alert email crashed')
+            outcomes[ref] = 'failed'
+    for item in artifact.get('anomalies') or []:
+        if item.get('state_ref') in outcomes and item.get('alert') == 'new':
+            item['coach_email'] = outcomes[item['state_ref']]
 
 
 @app.route('/api/cron/stripe-reconciliation', methods=['POST'])

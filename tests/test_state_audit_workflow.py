@@ -117,3 +117,58 @@ def test_health_step_retains_non_200_http_failure_guard():
     assert health_step.index(status_guard) < health_step.index("python3 - <<'PY'")
     guard_body = health_step.split(status_guard, 1)[1].split("fi", 1)[0]
     assert "exit 1" in guard_body
+
+
+def _annotation_source():
+    lines = WORKFLOW.read_text().splitlines(keepends=True)
+    step = next(
+        index for index, line in enumerate(lines)
+        if "- name: Trigger authenticated Railway state audit" in line)
+    start = next(
+        index + 1
+        for index, line in enumerate(lines[step:], start=step)
+        if line.strip() == "python3 - <<'PY'"
+    )
+    end = next(
+        index
+        for index, line in enumerate(lines[start:], start=start)
+        if line.strip() == "PY"
+    )
+    return textwrap.dedent("".join(lines[start:end]))
+
+
+def test_audit_step_annotates_stale_paid_orders(tmp_path):
+    (tmp_path / "state-audit.json").write_text(json.dumps({
+        "anomalies": [
+            {"state_ref": "abc123abc123", "code": "PAID_ORDER_STALE",
+             "severity": "CRITICAL", "status": "BLOCKED_REVIEW",
+             "hours_since_payment": 26, "blocker_count": 2, "alert": "new",
+             "coach_email": "sent", "detail": "paid order is still open"},
+            {"state_ref": "def456def456", "code": "PAID_ORDER_STALE",
+             "severity": "WARNING", "status": "APPROVED",
+             "hours_since_payment": 30, "blocker_count": 0,
+             "alert": "repeat_within_24h", "detail": "paid order is still open"},
+        ],
+        "alert_ledger": "failed",
+    }))
+    env = os.environ.copy()
+    env["RUNNER_TEMP"] = str(tmp_path)
+    result = subprocess.run(
+        [sys.executable, "-c", _annotation_source()],
+        capture_output=True, env=env, text=True)
+
+    assert result.returncode == 0, result.stderr
+    first, second, ledger = result.stdout.splitlines()
+    assert ledger.startswith("::warning::stale-order alert ledger unavailable")
+    assert first.startswith("::error::PAID_ORDER_STALE state_ref=abc123abc123 ")
+    assert "hours_since_payment=26 blocker_count=2 alert=new" in first
+    assert second.startswith("::warning::PAID_ORDER_STALE state_ref=def456def456 ")
+
+
+def test_audit_step_still_fails_on_non_200_after_annotations():
+    workflow = WORKFLOW.read_text()
+    audit_step = workflow.split(
+        "- name: Trigger authenticated Railway state audit", 1)[1]
+    status_guard = 'if [ "$HTTP_STATUS" != "200" ]; then'
+    assert audit_step.index("python3 - <<'PY'") < audit_step.index(status_guard)
+    assert "exit 1" in audit_step.split(status_guard, 1)[1].split("fi", 1)[0]

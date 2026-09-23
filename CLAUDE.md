@@ -53,6 +53,42 @@ Questionnaire → Block-Builder Engine → ZWO Workouts → HTML Guide → PDF �
    Nothing fires while an order is BLOCKED_REVIEW, APPROVED or APPLIED.
 ```
 
+### Paid orders must reach a terminal status
+Terminal = `CONFIRMED`, `CANCELLED`, or `FULFILLED_EXTERNALLY`
+(`TERMINAL_STATUSES` in `webhook/fulfillment_state.py`). The hourly "Railway
+Fulfillment State Audit" flags any paid order (`cs_live_*` Stripe checkout or
+WooCommerce order number) still open more than 24h after payment as
+`PAID_ORDER_STALE`: the run goes red and the coach gets a `[GG] OVERDUE` email.
+Both happen at most once per order+status per 24h (ledger:
+`DATA_DIR/.stale_paid_order_alerts.json`). The 24h figure is what the coach
+notification says the customer was promised.
+
+If the coach delivered a paid order outside the pipeline (hand-built
+calendar), close it honestly. The transition sends nothing to the athlete,
+and the order is never treated as `CONFIRMED`:
+```bash
+curl -X POST https://athlete-custom-training-plan-pipeline-production.up.railway.app/api/fulfillment/<order_id>/transition \
+  -H "Content-Type: application/json" -H "X-Cron-Secret: $CRON_SECRET" \
+  -d '{"to":"FULFILLED_EXTERNALLY","coach":"Matti","reason":"what was delivered, where, when","evidence":"optional"}'
+```
+Allowed only from `GENERATED`, `BLOCKED_REVIEW`, or `APPROVED` with no
+application evidence and no Endure stage or access email in flight. `reason`
+is required and recorded in `external_fulfillment` and in the state history.
+Use `"to":"CANCELLED"` for a refunded or abandoned order, before closing it.
+
+Terminal means no exits: `transition()` refuses every move out of a terminal
+status (same-status retries are idempotent), D2 commands refuse terminal
+orders, and review links and sessions stop working for `CANCELLED` and
+`FULFILLED_EXTERNALLY`. A `CONFIRMED` order keeps its (read-only) review page,
+because the Endure confirm redirects there to show the completed delivery.
+A pipeline rerun or seal mismatch cannot overwrite or reopen
+`FULFILLED_EXTERNALLY`.
+
+If the alert ledger cannot be read, locked, or written, the audit sends no
+OVERDUE email that run. Every stale order stays CRITICAL and the artifact
+reports `"alert_ledger": "failed"`. The ledger is always written before any
+email goes out, so a broken volume cannot cause an hourly email storm.
+
 ## Project Structure
 ```
 webhook/

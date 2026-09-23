@@ -68,6 +68,28 @@ jobs:
             -H "X-Cron-Secret: $STATE_AUDIT_CRON_SECRET" \
             --data '{"max_age_days":3}')
           python3 -m json.tool "${RUNNER_TEMP}/state-audit.json"
+          # Surface each finding as a run annotation. The artifact is already
+          # redacted server-side (hashed state refs, no names or emails).
+          # A stale paid order is CRITICAL (red) once per order+status per
+          # 24h; the hourly repeats in between are warnings.
+          python3 - <<'PY'
+          import json, os, pathlib
+          data = json.loads(
+              (pathlib.Path(os.environ["RUNNER_TEMP"]) / "state-audit.json").read_text())
+          keys = ("state_ref", "status", "hours_since_payment", "blocker_count",
+                  "alert", "coach_email", "age_days")
+          for item in data.get("anomalies") or []:
+              level = "error" if item.get("severity") == "CRITICAL" else "warning"
+              fields = " ".join(f"{key}={item[key]}" for key in keys if key in item)
+              print(f"::{level}::{item.get('code')} {fields} - {item.get('detail')}")
+          ledger = data.get("alert_ledger")
+          if ledger == "failed":
+              print("::warning::stale-order alert ledger unavailable; no OVERDUE "
+                    "emails were sent and every stale paid order is CRITICAL")
+          elif ledger == "reset_corrupt":
+              print("::warning::stale-order alert ledger was corrupt and was reset; "
+                    "stale paid orders may have re-alerted once this run")
+          PY
           if [ "$HTTP_STATUS" != "200" ]; then
             echo "::error::State audit returned HTTP $HTTP_STATUS"
             exit 1
