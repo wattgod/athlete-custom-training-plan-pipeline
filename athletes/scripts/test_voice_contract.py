@@ -129,6 +129,13 @@ def test_two_race_week_notes_name_the_race_in_that_week_and_pass_voice_lint():
     assert lint_notes(notes, rules=RULES) == []
 
 
+def test_two_tapers_do_not_repeat_the_closing_rule():
+    plan = _plan()
+    plan['weeks'][2]['week_type'] = plan['weeks'][2]['phase'] = 'taper'
+    notes = render_story_notes(plan)
+    assert lint_notes(notes, rules=RULES) == []
+
+
 def test_story_notes_are_deterministic():
     assert render_story_notes(_plan()) == render_story_notes(_plan())
 

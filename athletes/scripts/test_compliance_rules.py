@@ -208,6 +208,29 @@ class TestVO2maxGapConstants:
         """VO2max gap maximum is 16 days."""
         assert VO2MAX_GAP_MAX_DAYS == 16
 
+    def test_a_race_resets_vo2_gap_between_distinct_peaks(self):
+        from block_compliance import r02_vo2max_frequency
+        weeks = [
+            {'plan_week': 1, 'phase': 'peak', 'week_type': 'load',
+             'days': [{'name': 'VO2max 30/30'}]},
+            {'plan_week': 2, 'phase': 'taper', 'week_type': 'taper', 'days': []},
+            {'plan_week': 3, 'phase': 'race', 'week_type': 'race',
+             'days': [{'role': 'race'}]},
+            {'plan_week': 4, 'phase': 'recovery', 'week_type': 'recovery', 'days': []},
+            {'plan_week': 5, 'phase': 'base', 'week_type': 'load',
+             'days': [{'name': 'VO2max 40/20'}]},
+        ]
+        assert r02_vo2max_frequency(weeks)[0] is True
+
+    def test_uninterrupted_vo2_gap_still_fails(self):
+        from block_compliance import r02_vo2max_frequency
+        weeks = [
+            {'plan_week': number, 'phase': 'base', 'week_type': 'load',
+             'days': [{'name': 'VO2max 30/30'}] if number in (1, 5) else []}
+            for number in range(1, 6)
+        ]
+        assert r02_vo2max_frequency(weeks)[0] is False
+
 
 # ============================================================
 # Step 7: Fuel tags

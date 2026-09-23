@@ -149,7 +149,7 @@ def r02_vo2max_frequency(weeks: List[dict]) -> Tuple[bool, str]:
             continue  # Race-day overlay displaces training — exempt like racing
         for day_data in week.get('days', []):
             if day_data.get('name', '') in VO2MAX_TYPES:
-                vo2_weeks.append(week.get('plan_week', 0))
+                vo2_weeks.append((week_index, week.get('plan_week', 0)))
                 break
 
     if not non_racing_weeks:
@@ -162,7 +162,17 @@ def r02_vo2max_frequency(weeks: List[dict]) -> Tuple[bool, str]:
     # Check gaps
     max_gap = 0
     for i in range(1, len(vo2_weeks)):
-        gap = vo2_weeks[i] - vo2_weeks[i-1]
+        prior_index, prior_number = vo2_weeks[i - 1]
+        current_index, current_number = vo2_weeks[i]
+        # An A race is itself the peak effort, followed by a protected
+        # recovery and a new build. Do not demand a VO2 session during that
+        # transition just to satisfy a week-number subtraction.
+        if any(w.get('week_type') == 'race'
+               or w.get('phase') in ('race', 'racing')
+               or _week_has_race_day(w)
+               for w in weeks[prior_index + 1:current_index]):
+            continue
+        gap = current_number - prior_number
         max_gap = max(max_gap, gap)
 
     # 16 days = ~2.3 weeks

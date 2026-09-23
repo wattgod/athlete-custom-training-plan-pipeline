@@ -122,6 +122,7 @@ _NOTICE: Dict[str, List[str]] = {
     ],
     "taper": [
         "Feeling sluggish in a taper is normal. Feeling sharp by the weekend is the goal. Do not add work to fix a bad day.",
+        "The second taper is not a fitness test. Keep the written openers brief and let the freshness arrive. Extra miles would only spend it.",
     ],
     "race": [
         "Nothing new this week: no new food, no new position, no new kit. Sleep well Thursday; Friday night rarely cooperates.",
@@ -450,6 +451,9 @@ def _position_line(number: int, total: int, phase: str, week_type: str,
     if week_type == "race":
         return f"Race week. {race_name} is {_race_day_phrase(weeks_to_race)}. The work is done; this week is about arriving fresh."
     if week_type == "taper":
+        if phase_use:
+            return (f"Week {number} of {total}. Second taper. The volume is down again; "
+                    "keep the short sharp efforts short and arrive ready to race.")
         return f"Week {number} of {total}. Taper. I have dropped the volume and kept a little sharpness; fatigue leaves faster than fitness does."
     if week_type == "recovery":
         return f"Week {number} of {total}. Recovery week, and I mean it: the last block gets absorbed now, not later."
@@ -648,11 +652,11 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
         )
         lines: List[str] = [_position_line(number, total, phase, week_type, prev_type, next_type,
                                            race_name, weeks_to_race,
-                                           phase_use=phase_use.get(phase, 0) if plain else 0,
+                                           phase_use=phase_use.get(phase, 0) if plain or week_type == "taper" else 0,
                                            legs_heavy_callback=legs_heavy_callback)]
         if legs_heavy_callback:
             thread["legs_heavy_payoff_used"] = True
-        if plain:
+        if plain or week_type == "taper":
             phase_use[phase] = phase_use.get(phase, 0) + 1
         focus = str(_get(_get(plan_ir, "coached_block") or {}, "focus") or "").strip().rstrip(".")
         if focus and not focus_said:
