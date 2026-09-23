@@ -448,19 +448,29 @@ def build_audit_artifact(
     return artifact
 
 
-def load_alert_ledger(path: Path) -> dict[str, Any]:
-    """Read the stale-order alert ledger; unreadable means nothing alerted."""
+def load_alert_ledger(path: Path) -> tuple[dict[str, Any], str]:
+    """Return ``(ledger, status)`` for the stale-order alert ledger.
+
+    A missing file is an empty ledger (``ok``). Unparseable content is reset
+    to empty (``reset_corrupt``): at most one repeat alert, after which the
+    save overwrites it. Any other read error raises, so the caller sends no
+    email rather than re-alerting from a ledger it cannot see.
+    """
     try:
-        raw = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+        text = Path(path).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}, "ok"
+    try:
+        raw = json.loads(text)
+    except json.JSONDecodeError:
+        return {}, "reset_corrupt"
     alerts = raw.get("alerts") if isinstance(raw, dict) else None
     if not isinstance(alerts, dict):
-        return {}
+        return {}, "reset_corrupt"
     return {
         str(ref): dict(entry) for ref, entry in alerts.items()
         if isinstance(entry, dict)
-    }
+    }, "ok"
 
 
 def apply_alert_ledger(
@@ -508,15 +518,36 @@ def apply_alert_ledger(
 
 
 def save_alert_ledger(path: Path, ledger: Mapping[str, Any]) -> None:
+    """Atomically replace the ledger; raises on any write failure."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp.write_text(
-        json.dumps({"version": 1, "alerts": dict(ledger)}, indent=2,
-                   sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    os.replace(tmp, path)
+    try:
+        with open(tmp, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(
+                {"version": 1, "alerts": dict(ledger)}, indent=2,
+                sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    finally:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def mark_alert_ledger_unavailable(artifact: dict[str, Any]) -> None:
+    """No ledger, no dedupe: every stale finding is CRITICAL and unemailed."""
+    for item in artifact.get("anomalies") or []:
+        if item.get("code") != PAID_ORDER_STALE:
+            continue
+        item["severity"] = CRITICAL
+        item["alert"] = "ledger_unavailable"
+        item["coach_email"] = "suppressed_ledger_unavailable"
+        item.pop("last_alerted_at", None)
+    artifact["alert_ledger"] = "failed"
+    artifact["summary"] = _summary(artifact.get("anomalies") or [])
 
 
 def _print_table(artifact: Mapping[str, Any]) -> None:

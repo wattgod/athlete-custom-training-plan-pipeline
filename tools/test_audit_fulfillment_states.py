@@ -1,6 +1,8 @@
 import json
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from tools import audit_fulfillment_states as audit
 
 
@@ -313,14 +315,52 @@ def test_alert_ledger_realerts_on_status_change_and_prunes_resolved(tmp_path):
     assert new == [] and next_ledger == {}
 
 
-def test_alert_ledger_round_trips_and_tolerates_corruption(tmp_path):
+def test_alert_ledger_round_trips_and_reports_corruption(tmp_path):
     path = tmp_path / "ledger.json"
-    assert audit.load_alert_ledger(path) == {}
+    assert audit.load_alert_ledger(path) == ({}, "ok")
     audit.save_alert_ledger(path, {"abc": {"status": "GENERATED", "alerted_at": "x"}})
-    assert audit.load_alert_ledger(path) == {
-        "abc": {"status": "GENERATED", "alerted_at": "x"}}
+    assert audit.load_alert_ledger(path) == (
+        {"abc": {"status": "GENERATED", "alerted_at": "x"}}, "ok")
+    assert [item.name for item in tmp_path.iterdir()] == ["ledger.json"]
     path.write_text("{not json")
-    assert audit.load_alert_ledger(path) == {}
+    assert audit.load_alert_ledger(path) == ({}, "reset_corrupt")
+
+
+def test_alert_ledger_read_errors_raise_instead_of_resetting(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.mkdir()
+    with pytest.raises(OSError):
+        audit.load_alert_ledger(path)
+
+
+def test_alert_ledger_save_failure_raises_and_leaves_no_temp_file(
+        tmp_path, monkeypatch):
+    path = tmp_path / "ledger.json"
+
+    def fail_replace(src, dst):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(audit.os, "replace", fail_replace)
+    with pytest.raises(OSError):
+        audit.save_alert_ledger(path, {"abc": {"status": "GENERATED"}})
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_ledger_unavailable_keeps_every_stale_order_critical(tmp_path):
+    _write(tmp_path, "order", _paid_state())
+    artifact = audit.build_audit_artifact(tmp_path, now=NOW)
+    ref = audit.order_ref(PAID_ORDER_ID)
+    audit.apply_alert_ledger(
+        artifact, {ref: {"status": "BLOCKED_REVIEW", "alerted_at": _iso(NOW)}},
+        now=NOW + timedelta(hours=1))
+    assert artifact["summary"]["critical"] == 0  # downgraded as a repeat
+    audit.mark_alert_ledger_unavailable(artifact)
+    [item] = _stale(artifact)
+    assert item["severity"] == audit.CRITICAL
+    assert item["alert"] == "ledger_unavailable"
+    assert "last_alerted_at" not in item
+    assert artifact["alert_ledger"] == "failed"
+    assert artifact["summary"]["critical"] == 1
 
 
 def test_list_open_paid_orders_includes_fresh_and_stale_without_raw_ids(tmp_path):

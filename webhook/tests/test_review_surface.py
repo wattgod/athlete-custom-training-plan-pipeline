@@ -1019,3 +1019,33 @@ def test_redaction_filter_is_installed_on_application_request_loggers():
         assert webhook_app._bearer_query_redaction in (
             webhook_app.logging.getLogger(logger_name).filters
         )
+
+
+def test_review_link_cannot_reopen_an_externally_fulfilled_order(review_client):
+    # Closing does not bump athlete_id or generation_revision, so a live
+    # session or an unexpired review link would otherwise still work.
+    order_id = 'cs_live_closedReview1'
+    state, state_path, _ = _seed_order(
+        order_id, blockers=[_issue('R05')])
+    _login(review_client, order_id)
+    token = webhook_app._generate_review_token(order_id, 'coach@example.invalid')
+    from fulfillment_state import transition
+    closed = transition(
+        state_path, 'FULFILLED_EXTERNALLY', 'Matti',
+        metadata={'reason': 'hand-built calendar delivered 2026-09-23'})
+
+    # The existing session is refused (scanner-safe shell, no order data).
+    page = review_client.get(f'/review/{order_id}')
+    assert 'Coach review' in page.get_data(as_text=True)
+    assert 'R05' not in page.get_data(as_text=True)
+    # Mutating review routes refuse the session.
+    for route in ('approve', 'd2/resolve', 'stage-endure', 'confirm-endure'):
+        response = review_client.post(
+            f'/review/{order_id}/{route}', data={'csrf_token': 'x'})
+        assert response.status_code in (401, 409), (route, response.status_code)
+        assert 'R05' not in response.get_data(as_text=True), route
+    # A fresh exchange of a still-valid link token is refused too.
+    reopened = review_client.post(
+        f'/review/{order_id}/session', data={'token': token})
+    assert reopened.status_code == 401
+    assert load(state_path) == closed

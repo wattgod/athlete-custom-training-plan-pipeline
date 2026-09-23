@@ -149,6 +149,7 @@ def test_audit_step_annotates_stale_paid_orders(tmp_path):
              "hours_since_payment": 30, "blocker_count": 0,
              "alert": "repeat_within_24h", "detail": "paid order is still open"},
         ],
+        "alert_ledger": "failed",
     }))
     env = os.environ.copy()
     env["RUNNER_TEMP"] = str(tmp_path)
@@ -157,7 +158,8 @@ def test_audit_step_annotates_stale_paid_orders(tmp_path):
         capture_output=True, env=env, text=True)
 
     assert result.returncode == 0, result.stderr
-    first, second = result.stdout.splitlines()
+    first, second, ledger = result.stdout.splitlines()
+    assert ledger.startswith("::warning::stale-order alert ledger unavailable")
     assert first.startswith("::error::PAID_ORDER_STALE state_ref=abc123abc123 ")
     assert "hours_since_payment=26 blocker_count=2 alert=new" in first
     assert second.startswith("::warning::PAID_ORDER_STALE state_ref=def456def456 ")

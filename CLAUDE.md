@@ -72,9 +72,19 @@ curl -X POST https://athlete-custom-training-plan-pipeline-production.up.railway
   -d '{"to":"FULFILLED_EXTERNALLY","coach":"Matti","reason":"what was delivered, where, when","evidence":"optional"}'
 ```
 Allowed only from `GENERATED`, `BLOCKED_REVIEW`, or `APPROVED` with no
-application evidence. `reason` is required and recorded in
-`external_fulfillment` and in the state history. Use `"to":"CANCELLED"` for a
-refunded or abandoned order.
+application evidence and no Endure stage or access email in flight. `reason`
+is required and recorded in `external_fulfillment` and in the state history.
+Use `"to":"CANCELLED"` for a refunded or abandoned order, before closing it.
+
+Terminal means no exits: `transition()` refuses every move out of a terminal
+status (same-status retries are idempotent), D2 commands refuse terminal
+orders, and review links and sessions stop working. A pipeline rerun or seal
+mismatch cannot overwrite or reopen `FULFILLED_EXTERNALLY`.
+
+If the alert ledger cannot be read, locked, or written, the audit sends no
+OVERDUE email that run. Every stale order stays CRITICAL and the artifact
+reports `"alert_ledger": "failed"`. The ledger is always written before any
+email goes out, so a broken volume cannot cause an hourly email storm.
 
 ## Project Structure
 ```

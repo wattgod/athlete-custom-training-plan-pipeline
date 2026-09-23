@@ -871,6 +871,14 @@ def _history(state: Dict[str, Any], event: str, **details: Any) -> None:
     state["updated_at"] = now_iso()
 
 
+def refuse_if_terminal(state: Dict[str, Any], action: str) -> None:
+    """Fail closed before any writer moves an order out of a terminal status."""
+    status = state.get("status")
+    if status in TERMINAL_STATUSES:
+        raise FulfillmentStateError(
+            f"{action} refused: order is {status}, a terminal status")
+
+
 def _opaque_manual_order_id(prefix: str = "manual") -> str:
     return f"{prefix}_{uuid.uuid4().hex}"
 
@@ -908,6 +916,11 @@ def write_generation(
             if raw is not None:
                 raise FulfillmentStateError("refusing to overwrite malformed fulfillment state")
 
+        if previous and previous.get("status") == FULFILLED_EXTERNALLY:
+            # CANCELLED drills are deliberately reprocessable and a seal
+            # mismatch may supersede CONFIRMED; a hand-delivered order has
+            # nothing for a regeneration to replace.
+            refuse_if_terminal(previous, "regeneration")
         if previous:
             immutable_order_id = previous["order_id"]
             immutable_platform = previous["delivery_platform"]
@@ -1403,6 +1416,11 @@ def record_seal_mismatch(
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")
+        if state["status"] == FULFILLED_EXTERNALLY:
+            # The sealed pipeline release was never what the athlete got, so
+            # there is no authority to revoke. Callers still report the
+            # failed verification; reopening a delivered order would be false.
+            return copy.deepcopy(state)
         _materialize_seal_mismatch(state, str(message))
         _atomic_write(state_path, state)
         return copy.deepcopy(state)
@@ -1503,11 +1521,12 @@ def transition(
                 and expected_revision != state["generation_revision"]):
             raise FulfillmentStateError("generation revision mismatch; review is superseded")
         current = state["status"]
-        if to == CONFIRMED and current == CONFIRMED:
+        if to == current and to in TERMINAL_STATUSES:
             return copy.deepcopy(state)
+        if current in TERMINAL_STATUSES:
+            raise FulfillmentStateError(
+                f"illegal transition {current} -> {to}; {current} is terminal")
         if to == FULFILLED_EXTERNALLY:
-            if current == FULFILLED_EXTERNALLY:
-                return copy.deepcopy(state)
             if current not in EXTERNAL_FULFILLMENT_SOURCE_STATUSES:
                 raise FulfillmentStateError(
                     f"illegal transition {current} -> {to}; only "
@@ -1528,6 +1547,13 @@ def transition(
                     "external fulfilment requires no pipeline application "
                     "evidence and no in-flight worker attempt"
                 )
+            if (state.get("endure_stage") is not None
+                    or state.get("endure_confirmation_attempt") is not None):
+                raise FulfillmentStateError(
+                    "external fulfilment refused: this order is staged in Endure "
+                    "or has an Endure access email in flight; finish or "
+                    "reconcile the Endure delivery first"
+                )
             reason = str((metadata or {}).get("reason") or "").strip()
             if not reason:
                 raise FulfillmentStateError(
@@ -1542,8 +1568,6 @@ def transition(
                 "generation_revision": state["generation_revision"],
             }
         elif to == CANCELLED:
-            if current == CANCELLED:
-                return copy.deepcopy(state)
             attempt = state.get("application_attempt")
             landed = (
                 attempt.get("landed", [])

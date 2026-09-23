@@ -164,3 +164,21 @@ def test_intel_stats_reports_fulfilment_status_not_just_processing(ops_client):
     assert body["orders"][0]["fulfillment_status"] == "FULFILLED_EXTERNALLY"
     assert body["orders"][0]["fulfillment_open"] is False
     assert body["open_paid_orders"] == []
+
+
+def test_pipeline_rerun_cannot_overwrite_an_external_close(ops_client, tmp_path):
+    client, data, _ = ops_client
+    path = _blocked_order(data)
+    assert _close(client, CLOSE).status_code == 200
+    closed = load(path)
+    with pytest.raises(webhook_app.FulfillmentStateError,
+                       match="fulfilled outside the pipeline"):
+        webhook_app.persist_deliverables(
+            ORDER_ID, "jane_doe", source_dir=tmp_path / "rerun",
+            delivery_platform="trainingpeaks")
+    with pytest.raises(webhook_app.FulfillmentStateError,
+                       match="fulfilled outside the pipeline|regeneration refused"):
+        webhook_app.persist_deliverables(
+            ORDER_ID, "jane_doe", source_dir=tmp_path / "rerun",
+            delivery_platform="trainingpeaks", state_unavailable=True)
+    assert load(path) == closed

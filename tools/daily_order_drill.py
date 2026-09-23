@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import json
 import os
+import sys
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -18,10 +19,16 @@ from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+# One definition of "closed" shared with the state machine and the audit.
+from webhook.fulfillment_state import TERMINAL_STATUSES  # noqa: E402
+
 
 EXPECTED_STATUS = "BLOCKED_REVIEW"
 EXPECTED_BLOCKERS = ("RACE_UNMATCHED",)
-TERMINAL_STATUSES = {"CANCELLED", "CONFIRMED"}
 
 
 class DrillError(RuntimeError):

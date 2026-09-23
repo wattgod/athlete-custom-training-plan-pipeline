@@ -235,3 +235,90 @@ def test_fresh_paid_order_and_drill_stay_green(audit_client, sent_emails):
     assert response.status_code == 200
     assert response.get_json()["summary"]["stale_paid_orders"] == 0
     assert sent_emails == []
+
+
+# --- Ledger failures (review finding: an OSError used to drop every finding
+# and, because emails went out before the ledger save, re-send hourly) -------
+
+def _other_critical(root):
+    _write(root, "cancelled-order", _minimal_state(
+        "synthetic-order", status="CANCELLED",
+        cancellation={"worker_stop_acknowledged": False}))
+
+
+def test_ledger_write_failure_keeps_findings_and_sends_no_email(
+        audit_client, sent_emails, monkeypatch):
+    from tools import audit_fulfillment_states as audit_tool
+    client, root = audit_client
+    _write(root, PAID_ORDER_ID, _paid_state())
+    _other_critical(root)
+
+    def broken_save(path, ledger):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(audit_tool, "save_alert_ledger", broken_save)
+    for _ in range(3):  # hourly runs while the volume is broken
+        response = _post(client)
+        assert response.status_code == 500
+        data = response.get_json()
+        assert data["alert_ledger"] == "failed"
+        codes = {item["code"]: item for item in data["anomalies"]}
+        assert set(codes) == {"PAID_ORDER_STALE", "CANCELLED_STOP_UNACKNOWLEDGED"}
+        stale = codes["PAID_ORDER_STALE"]
+        assert stale["severity"] == "CRITICAL"
+        assert stale["alert"] == "ledger_unavailable"
+        assert stale["coach_email"] == "suppressed_ledger_unavailable"
+    assert sent_emails == []
+
+
+@pytest.mark.parametrize("breakage", ["unreadable_ledger", "unlockable"])
+def test_ledger_read_or_lock_failure_sends_no_email(
+        audit_client, sent_emails, breakage):
+    client, root = audit_client
+    _write(root, PAID_ORDER_ID, _paid_state())
+    ledger_path = webhook_app._stale_alert_ledger_path()
+    if breakage == "unreadable_ledger":
+        ledger_path.mkdir(parents=True)  # read raises IsADirectoryError
+    else:
+        ledger_path.with_name(ledger_path.name + ".lock").mkdir(parents=True)
+    response = _post(client)
+    assert response.status_code == 500
+    assert response.get_json()["alert_ledger"] == "failed"
+    assert response.get_json()["summary"]["stale_paid_orders"] == 1
+    assert sent_emails == []
+
+
+def test_ledger_is_durable_before_any_email_is_sent(
+        audit_client, monkeypatch):
+    client, root = audit_client
+    _write(root, PAID_ORDER_ID, _paid_state())
+    ledger_path = webhook_app._stale_alert_ledger_path()
+    seen = []
+
+    def send(to, subject, body, *args, **kwargs):
+        seen.append(json.loads(ledger_path.read_text())["alerts"])
+        return True
+
+    monkeypatch.setattr(webhook_app, "NOTIFICATION_EMAIL", "coach@example.test")
+    monkeypatch.setattr(webhook_app, "RESEND_API_KEY", "re_fixture")
+    monkeypatch.setattr(webhook_app, "_send_email", send)
+    assert _post(client).status_code == 500
+    [alerts_at_send_time] = seen
+    ref = _post(client).get_json()["anomalies"][0]["state_ref"]
+    assert ref in alerts_at_send_time
+
+
+def test_corrupt_ledger_is_reset_with_at_most_one_repeat(
+        audit_client, sent_emails):
+    client, root = audit_client
+    _write(root, PAID_ORDER_ID, _paid_state())
+    ledger_path = webhook_app._stale_alert_ledger_path()
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text("{truncated")
+    first = _post(client)
+    assert first.status_code == 500
+    assert first.get_json()["alert_ledger"] == "reset_corrupt"
+    second = _post(client)
+    assert second.status_code == 200
+    assert second.get_json()["alert_ledger"] == "ok"
+    assert len(sent_emails) == 1

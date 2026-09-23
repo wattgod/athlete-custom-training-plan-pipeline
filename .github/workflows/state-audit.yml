@@ -82,6 +82,13 @@ jobs:
               level = "error" if item.get("severity") == "CRITICAL" else "warning"
               fields = " ".join(f"{key}={item[key]}" for key in keys if key in item)
               print(f"::{level}::{item.get('code')} {fields} - {item.get('detail')}")
+          ledger = data.get("alert_ledger")
+          if ledger == "failed":
+              print("::warning::stale-order alert ledger unavailable; no OVERDUE "
+                    "emails were sent and every stale paid order is CRITICAL")
+          elif ledger == "reset_corrupt":
+              print("::warning::stale-order alert ledger was corrupt and was reset; "
+                    "stale paid orders may have re-alerted once this run")
           PY
           if [ "$HTTP_STATUS" != "200" ]; then
             echo "::error::State audit returned HTTP $HTTP_STATUS"

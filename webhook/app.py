@@ -3471,6 +3471,12 @@ def persist_deliverables(order_id: str, athlete_id: str = '', source_dir: Path |
     existing_state = None
     if state_path.exists():
         existing_state = load_fulfillment_state(state_path)
+        if existing_state.get('status') == FULFILLED_EXTERNALLY:
+            # The coach delivered this order by hand. A rerun must not copy a
+            # fresh pipeline state over that record and silently reopen it.
+            raise FulfillmentStateError(
+                'order was fulfilled outside the pipeline; refusing to '
+                'persist a regenerated revision over it')
 
     if state_unavailable:
         state = write_generation(state_path, athlete_id, [{
@@ -4234,8 +4240,8 @@ def _authorized_review(order_ref: str):
         state = load_fulfillment_state(_fulfillment_status_path(order_id))
     except FulfillmentStateError as exc:
         raise ReviewAuthError('review state is unavailable') from exc
-    if state.get('status') == CANCELLED:
-        raise ReviewAuthError('review credential is cancelled')
+    if state.get('status') in TERMINAL_STATUSES:
+        raise ReviewAuthError('review credential is closed')
     if (session.get('athlete_id') != state.get('athlete_id')
             or session.get('generation_revision') != state.get('generation_revision')):
         raise ReviewAuthError('review link is superseded by a newer revision')
@@ -4294,7 +4300,7 @@ def open_review_session(order_ref):
         return _review_bootstrap(401)
     try:
         state = load_fulfillment_state(_fulfillment_status_path(order_id))
-        if state.get('status') == CANCELLED:
+        if state.get('status') in TERMINAL_STATUSES:
             return _review_bootstrap(401)
         claims = verify_review_token(
             token, order_id=state['order_id'], athlete_id=state['athlete_id'],
@@ -10494,43 +10500,60 @@ def _alert_stale_paid_orders(artifact: dict, stale_orders: list,
                              now: datetime) -> None:
     """Email the coach once per stale paid order per status per 24h.
 
-    The same ledger downgrades repeat detections to WARNING, so the hourly
-    audit workflow goes red once per alert instead of every hour.
+    The ledger decides which findings alert this run. It is written BEFORE
+    any email goes out, so an email is only ever sent for an alert that is
+    already durably recorded. If the ledger cannot be read, locked or
+    written, no email is sent that run and every stale finding stays
+    CRITICAL (red run). A broken ledger therefore can never turn into an
+    hourly repeat-email storm, and it never drops the other findings.
     """
     from tools.audit_fulfillment_states import (
-        apply_alert_ledger, load_alert_ledger, save_alert_ledger)
+        apply_alert_ledger, load_alert_ledger, mark_alert_ledger_unavailable,
+        save_alert_ledger)
     ledger_path = _stale_alert_ledger_path()
     lock_path = ledger_path.with_name(ledger_path.name + '.lock')
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(lock_path, 'a+') as lock:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(lock_path, 'a+') as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                ledger, ledger_status = load_alert_ledger(ledger_path)
+                new_refs, next_ledger = apply_alert_ledger(
+                    artifact, ledger, now=now)
+                save_alert_ledger(ledger_path, next_ledger)
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+    except Exception:
+        logger.exception(
+            'Stale paid-order alert ledger unavailable; no alert emails sent')
+        mark_alert_ledger_unavailable(artifact)
+        return
+    artifact['alert_ledger'] = ledger_status
+
+    by_ref = {record['state_ref']: record for record in stale_orders}
+    outcomes = {}
+    for ref in new_refs:
+        record = by_ref.get(ref)
+        if record is None:
+            outcomes[ref] = 'unavailable'
+            continue
         try:
-            new_refs, next_ledger = apply_alert_ledger(
-                artifact, load_alert_ledger(ledger_path), now=now)
-            by_ref = {record['state_ref']: record for record in stale_orders}
-            outcomes = {}
-            for ref in new_refs:
-                record = by_ref.get(ref)
-                if record is None:
-                    outcomes[ref] = 'unavailable'
-                    continue
-                subject, text = _build_stale_order_email(record)
-                if not (NOTIFICATION_EMAIL and RESEND_API_KEY):
-                    logger.critical(f'STALE PAID ORDER: {subject}')
-                    outcomes[ref] = 'unconfigured'
-                elif _send_email(NOTIFICATION_EMAIL, subject, text):
-                    outcomes[ref] = 'sent'
-                else:
-                    logger.critical(f'STALE PAID ORDER (email failed): {subject}')
-                    outcomes[ref] = 'failed'
-            for item in artifact.get('anomalies') or []:
-                if item.get('state_ref') in outcomes and item.get('alert') == 'new':
-                    item['coach_email'] = outcomes[item['state_ref']]
-            # The red workflow run is the guaranteed channel; a failed email
-            # is recorded rather than retried hourly into a nag storm.
-            save_alert_ledger(ledger_path, next_ledger)
-        finally:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+            subject, text = _build_stale_order_email(record)
+            if not (NOTIFICATION_EMAIL and RESEND_API_KEY):
+                logger.critical(f'STALE PAID ORDER: {subject}')
+                outcomes[ref] = 'unconfigured'
+            elif _send_email(NOTIFICATION_EMAIL, subject, text):
+                outcomes[ref] = 'sent'
+            else:
+                # Recorded, not retried: the red run is the guaranteed channel.
+                logger.critical(f'STALE PAID ORDER (email failed): {subject}')
+                outcomes[ref] = 'failed'
+        except Exception:
+            logger.exception('Stale paid-order alert email crashed')
+            outcomes[ref] = 'failed'
+    for item in artifact.get('anomalies') or []:
+        if item.get('state_ref') in outcomes and item.get('alert') == 'new':
+            item['coach_email'] = outcomes[item['state_ref']]
 
 
 @app.route('/api/cron/stripe-reconciliation', methods=['POST'])

@@ -25,6 +25,7 @@ from fulfillment_state import (
     _validate_issue,
     locked_state,
     now_iso,
+    refuse_if_terminal,
 )
 
 
@@ -281,6 +282,7 @@ def record_identity_result(
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")
+        refuse_if_terminal(state, "D2 record_identity_result")
         validate_d2_state(state)
         if state["generation_revision"] != expected_revision:
             raise FulfillmentStateError("generation revision mismatch")
@@ -336,6 +338,7 @@ def select_identity_candidate(
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")
+        refuse_if_terminal(state, "D2 select_identity_candidate")
         validate_d2_state(state)
         if state["generation_revision"] != expected_revision:
             raise FulfillmentStateError("generation revision mismatch")
@@ -427,6 +430,7 @@ def record_account_inspection(
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")
+        refuse_if_terminal(state, "D2 record_account_inspection")
         validate_d2_state(state)
         if state["generation_revision"] != expected_revision:
             raise FulfillmentStateError("generation revision mismatch")
@@ -604,6 +608,7 @@ def resolve_d2_item(
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")
+        refuse_if_terminal(state, "D2 resolve_d2_item")
         validate_d2_state(state)
         if state["generation_revision"] != expected_revision:
             raise FulfillmentStateError("generation revision mismatch")
@@ -736,6 +741,7 @@ def record_manual_readback(
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")
+        refuse_if_terminal(state, "D2 record_manual_readback")
         validate_d2_state(state)
         if state["generation_revision"] != expected_revision:
             raise FulfillmentStateError("generation revision mismatch")
