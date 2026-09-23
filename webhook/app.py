@@ -4227,6 +4227,13 @@ def _review_bootstrap(status: int = 200):
     return _review_response(render_bootstrap(nonce), status, nonce=nonce)
 
 
+# A delivered (CONFIRMED) order keeps its review page: the Endure confirm
+# redirects there to show "Complete", and every writer behind the page
+# already refuses terminal states. Only orders that never shipped through
+# the pipeline close it.
+REVIEW_CLOSED_STATUSES = frozenset({CANCELLED, FULFILLED_EXTERNALLY})
+
+
 def _authorized_review(order_ref: str):
     """Return (order_id, current state, review session), without leaking on failure."""
     order_id = _resolve_review_order_id(order_ref)
@@ -4240,7 +4247,7 @@ def _authorized_review(order_ref: str):
         state = load_fulfillment_state(_fulfillment_status_path(order_id))
     except FulfillmentStateError as exc:
         raise ReviewAuthError('review state is unavailable') from exc
-    if state.get('status') in TERMINAL_STATUSES:
+    if state.get('status') in REVIEW_CLOSED_STATUSES:
         raise ReviewAuthError('review credential is closed')
     if (session.get('athlete_id') != state.get('athlete_id')
             or session.get('generation_revision') != state.get('generation_revision')):
@@ -4300,7 +4307,7 @@ def open_review_session(order_ref):
         return _review_bootstrap(401)
     try:
         state = load_fulfillment_state(_fulfillment_status_path(order_id))
-        if state.get('status') in TERMINAL_STATUSES:
+        if state.get('status') in REVIEW_CLOSED_STATUSES:
             return _review_bootstrap(401)
         claims = verify_review_token(
             token, order_id=state['order_id'], athlete_id=state['athlete_id'],

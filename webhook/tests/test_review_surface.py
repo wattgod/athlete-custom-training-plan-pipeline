@@ -1049,3 +1049,38 @@ def test_review_link_cannot_reopen_an_externally_fulfilled_order(review_client):
         f'/review/{order_id}/session', data={'token': token})
     assert reopened.status_code == 401
     assert load(state_path) == closed
+
+
+def test_delivered_order_keeps_its_review_page(review_client):
+    # The Endure confirm redirects to /review/<id> to show the completed
+    # delivery; a CONFIRMED order must still render, and the signed link
+    # must still open a session, while every writer refuses it.
+    from fulfillment_state import (APPLIED, APPROVED, CONFIRMED,
+                                   confirm_after_send, transition)
+    order_id = 'cs_live_deliveredReview1'
+    state, state_path, _ = _seed_order(order_id)
+    transition(
+        state_path, APPROVED, 'coach@example.invalid',
+        expected_revision=state['generation_revision'],
+        expected_catalog_digest=state['review_catalog_digest'],
+        review_decisions=[
+            {'item_id': item['item_id'], 'revision': state['generation_revision'],
+             'disposition': 'confirmed'}
+            for item in state['review_items']
+            if item['type'] in {'required_confirmation', 'verified_fact'}
+        ],
+    )
+    transition(state_path, APPLIED, 'coach@example.invalid',
+               platform='trainingpeaks', evidence='TP 123')
+    confirm_after_send(state_path, lambda: True)
+    assert load(state_path)['status'] == CONFIRMED
+
+    _login(review_client, order_id)
+    page = review_client.get(f'/review/{order_id}')
+    assert page.status_code == 200
+    assert 'athlete-m' in page.get_data(as_text=True)
+    # Writers behind the page still refuse the delivered order.
+    response = review_client.post(
+        f'/review/{order_id}/approve', data={'csrf_token': 'x'})
+    assert response.status_code in (400, 401, 403, 409)
+    assert load(state_path)['status'] == CONFIRMED

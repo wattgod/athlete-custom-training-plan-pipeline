@@ -78,8 +78,11 @@ Use `"to":"CANCELLED"` for a refunded or abandoned order, before closing it.
 
 Terminal means no exits: `transition()` refuses every move out of a terminal
 status (same-status retries are idempotent), D2 commands refuse terminal
-orders, and review links and sessions stop working. A pipeline rerun or seal
-mismatch cannot overwrite or reopen `FULFILLED_EXTERNALLY`.
+orders, and review links and sessions stop working for `CANCELLED` and
+`FULFILLED_EXTERNALLY`. A `CONFIRMED` order keeps its (read-only) review page,
+because the Endure confirm redirects there to show the completed delivery.
+A pipeline rerun or seal mismatch cannot overwrite or reopen
+`FULFILLED_EXTERNALLY`.
 
 If the alert ledger cannot be read, locked, or written, the audit sends no
 OVERDUE email that run. Every stale order stays CRITICAL and the artifact
