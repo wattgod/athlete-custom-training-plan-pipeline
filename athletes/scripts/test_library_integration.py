@@ -30,7 +30,28 @@ import calculate_plan_dates as cpd
 import library_selector
 from generate_athlete_package import (_library_selection_in_scope,
                                       generate_zwo_files,
-                                      resolve_library_selections)
+                                      resolve_library_selections,
+                                      _rebalance_recovery_weeks_post_resolution)
+
+
+def test_recovery_rebalance_can_shorten_unresolved_easy_rides_to_band():
+    load = lambda week: {'plan_week': week, 'week_type': 'load',
+                         'total_tss': 380, 'days': []}
+    recovery = {'plan_week': 3, 'week_type': 'recovery', 'phase': 'base',
+                'total_tss': 254, 'days': [
+                    {'day': 'Mon', 'name': 'Endurance', 'role': 'filler',
+                     'duration': 70, 'tss': 55},
+                    {'day': 'Tue', 'name': 'Endurance', 'role': 'filler',
+                     'duration': 70, 'tss': 55},
+                    {'day': 'Fri', 'name': 'Endurance', 'role': 'long_ride',
+                     'duration': 180, 'tss': 144},
+                ]}
+    plan = {'weeks': [load(1), load(2), recovery]}
+    _rebalance_recovery_weeks_post_resolution(
+        plan, day_caps={}, athlete_seed='synthetic', session_floor_min=60,
+        series_state={}, used_items={}, index=None)
+    assert 0.50 <= recovery['total_tss'] / 380 <= 0.65
+    assert all(day['duration'] >= 60 for day in recovery['days'])
 
 
 # =============================================================================

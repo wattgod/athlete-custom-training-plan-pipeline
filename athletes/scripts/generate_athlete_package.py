@@ -1836,6 +1836,45 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
             day['library_resolution'] = replacement
             _recompute_library_week_totals(bw)
 
+        if bw.get('total_tss', 0) > ceiling:
+            # Some weeks have no lower-TSS curated substitute. Shorten only
+            # synthetic, easy Endurance filler before touching the long ride;
+            # curated items keep their authored duration and TSS intact.
+            from math import ceil
+            easy_days = sorted(
+                (day for day in bw.get('days', [])
+                 if day.get('name') == 'Endurance'
+                 and day.get('role') in ('filler', 'long_ride')
+                 and not day.get('library_resolution')
+                 and not (day.get('post_sim_recovery') or day.get('pre_sim_recovery'))),
+                key=lambda day: (day.get('role') == 'long_ride',
+                                 -(day.get('duration') or 0)),
+            )
+            for day in easy_days:
+                duration = int(day.get('duration') or 0)
+                tss = float(day.get('tss') or 0)
+                minimum = max(45, int(session_floor_min or 0))
+                if duration <= minimum or tss <= 0:
+                    continue
+                excess = float(bw['total_tss']) - ceiling
+                if excess <= 0:
+                    break
+                cut = min(duration - minimum, ceil(excess * duration / tss))
+                new_duration = duration - cut
+                new_tss = round(tss * new_duration / duration, 1)
+                if float(bw['total_tss']) - (tss - new_tss) < preceding * 0.52:
+                    continue
+                day['duration'] = new_duration
+                day['tss'] = new_tss
+                bw['prescribed_duration'] = sum(
+                    int(item.get('duration') or 0) for item in bw.get('days', []))
+                bw['prescribed_tss'] = sum(
+                    float(item.get('tss') or 0) for item in bw.get('days', []))
+                bw['total_duration'] = (bw['prescribed_duration']
+                                        + int(bw.get('fixed_duration') or 0))
+                bw['total_tss'] = (bw['prescribed_tss']
+                                   + float(bw.get('fixed_tss') or 0))
+
 
 # Filesystem-reserved characters. A race name is authored copy, not a
 # slug, so it can legitimately contain any of these -- `Gran Fondo Pekan /

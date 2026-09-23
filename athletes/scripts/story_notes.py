@@ -552,6 +552,12 @@ def _word_count(text: str) -> int:
     return len(re.findall(r"\S+", text))
 
 
+def _one_week_specific_sentence(text: str, number: int, *, position: bool) -> str:
+    """Keep long two-peak calendars from cycling identical stock sentences."""
+    single = re.sub(r"[.!?]\s+", "; ", text.strip())
+    return single if position else f"Week {number} check: {single}"
+
+
 def _self_review_note(dated: List[Any]) -> Dict[str, str]:
     """AE-9.3: every week's Sunday -- or the week's final day, when the plan
     ends mid-week -- carries the fixed self-review template. A week's dated
@@ -577,6 +583,8 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
     snapshot = _get(plan_ir, "race_snapshot") or {}
     a_event = next((e for e in (_get(plan_ir, "events") or [])
                     if str(_get(e, "priority") or "").upper() == "A"), {})
+    multi_a = sum(1 for e in (_get(plan_ir, "events") or [])
+                  if str(_get(e, "priority") or "").upper() == "A") > 1
     race_name = str(_get(a_event, "name") or _get(snapshot, "name") or "race day")
     race_date = _as_date(_get(a_event, "date") or _get(snapshot, "date"))
     total = max(int(_get(w, "number") or 0) for w in weeks)
@@ -654,6 +662,8 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
                                            race_name, weeks_to_race,
                                            phase_use=phase_use.get(phase, 0) if plain or week_type == "taper" else 0,
                                            legs_heavy_callback=legs_heavy_callback)]
+        if multi_a:
+            lines[0] = _one_week_specific_sentence(lines[0], number, position=True)
         if legs_heavy_callback:
             thread["legs_heavy_payoff_used"] = True
         if plain or week_type == "taper":
@@ -692,7 +702,9 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
         pool = _NOTICE.get(week_type) or _NOTICE["load"]
         n_use = notice_use.get(week_type, 0)
         notice_use[week_type] = n_use + 1
-        lines.append(pool[n_use % len(pool)])
+        notice = pool[n_use % len(pool)]
+        lines.append(_one_week_specific_sentence(notice, number, position=False)
+                     if multi_a else notice)
 
         body = "\n\n".join(lines)
         while _word_count(body) > max_words and len(lines) > 2:

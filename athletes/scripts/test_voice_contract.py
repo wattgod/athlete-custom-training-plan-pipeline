@@ -136,6 +136,21 @@ def test_two_tapers_do_not_repeat_the_closing_rule():
     assert lint_notes(notes, rules=RULES) == []
 
 
+def test_repeated_peak_reentries_have_distinct_copy():
+    plan = _plan()
+    plan['events'] = [
+        {'name': 'Spring Race', 'date': '2026-09-20', 'priority': 'A'},
+        {'name': 'Fall Race', 'date': '2026-10-17', 'priority': 'A'},
+    ]
+    for index in (1, 3, 5):
+        plan['weeks'][index]['week_type'] = 'recovery'
+    for index in (2, 4, 6):
+        plan['weeks'][index]['week_type'] = 'load'
+        plan['weeks'][index]['phase'] = 'peak'
+    notes = render_story_notes(plan)
+    assert lint_notes(notes, rules=RULES) == []
+
+
 def test_story_notes_are_deterministic():
     assert render_story_notes(_plan()) == render_story_notes(_plan())
 
