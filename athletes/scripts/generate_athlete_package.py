@@ -1535,6 +1535,21 @@ _SEATED_ONLY_SYNTHETIC_REMAP_NAMES = frozenset({
 _SEATED_ONLY_SYNTHETIC_REMAP_TARGET = 'VO2max 30/30'
 
 
+def _ae31_safe_synthetic_name(canonical_name: str, library_resolution) -> str:
+    """Keep a VO2-labelled fallback out of the underdosed blended archetype.
+
+    The blended 30/30 + SFR synthetic L1-L3 supplies only 2-3 minutes at
+    >=106% FTP, below AE-3.1's 5-minute hard floor. A curated resolution
+    retains its authored identity; only an unresolved synthetic slot moves
+    to the established VO2 30/30 family. The block-builder slot stays intact
+    for progression/compliance bookkeeping.
+    """
+    if library_resolution is None and canonical_name in {
+            'Mixed Intervals', 'Blended 30/30 and SFR'}:
+        return 'VO2max 30/30'
+    return canonical_name
+
+
 def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None,
                                athlete_seed=None, session_floor_min: int = 0,
                                excluded_calendar_slots: Optional[set] = None,
@@ -4124,6 +4139,7 @@ TIPS:
                 # C4/D3: the resolution pass (before the compliance gate,
                 # above) stashed a curated TP library item on this day.
                 _library_resolution = bb_day.get('library_resolution')
+                bb_name = _ae31_safe_synthetic_name(bb_name, _library_resolution)
 
                 # Self-heal (coach ruling 2026-08-24): a pinned test slot
                 # can reach this point with no library_resolution attached

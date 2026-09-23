@@ -447,6 +447,20 @@ def test_taper_shape_silent_without_race_date():
     assert lint_taper_shape(workouts, None, current_ctl=100.0) == []
 
 
+def test_saturday_race_taper_excludes_race_and_partial_calendar_weeks():
+    race = date(2027, 6, 5)
+    workouts = [
+        _taper_workout(date(2027, 5, 14), tss=500, hard_seconds=3600),
+        _taper_workout(date(2027, 5, 21), tss=200),
+        _taper_workout(date(2027, 5, 28), tss=150, hard_seconds=400),
+        _taper_workout(date(2027, 6, 4), tss=100, hard_seconds=400),
+        _taper_workout(race, tss=350),
+    ]
+    # The fixed race-14..race-1 taper is May 22..June 4. Neither the hard
+    # session before it nor race-day TSS belongs in its two seven-day bins.
+    assert not any(f['rule'] == 'AE-1.17' for f in lint_taper_shape(workouts, race))
+
+
 # --- RPE decode (live defect 2026-08-29): ae_lint read RPE-metric structures
 # as ZERO hard seconds, silently disabling AE-1.12 caps + AE-1.17 taper
 # intensity retention for every RPE-authored plan (Judd/Andy/Edward/Brian).

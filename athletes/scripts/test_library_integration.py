@@ -213,6 +213,14 @@ class TestScopePredicate:
 
 
 class TestResolveLibrarySelections:
+    def test_underdosed_blended_vo2_synthetic_fallback_uses_compliant_family(self):
+        from generate_athlete_package import _ae31_safe_synthetic_name
+
+        assert _ae31_safe_synthetic_name('Mixed Intervals', None) == 'VO2max 30/30'
+        assert _ae31_safe_synthetic_name('Blended 30/30 and SFR', None) == 'VO2max 30/30'
+        assert _ae31_safe_synthetic_name('Mixed Intervals', {'item_id': 42}) == 'Mixed Intervals'
+        assert _ae31_safe_synthetic_name('Tempo', None) == 'Tempo'
+
     def test_race_week_sharpener_stays_on_the_calibrated_synthetic_path(
         self, monkeypatch,
     ):
