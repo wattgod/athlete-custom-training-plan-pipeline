@@ -1550,6 +1550,12 @@ def _ae31_safe_synthetic_name(canonical_name: str, library_resolution) -> str:
     return canonical_name
 
 
+def _ae31_safe_variation_offset(canonical_name: str, render_name: str,
+                                 offset: int) -> int:
+    """Pin a remapped fallback to the verified VO2 30/30 archetype."""
+    return 0 if canonical_name != render_name else offset
+
+
 def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None,
                                athlete_seed=None, session_floor_min: int = 0,
                                excluded_calendar_slots: Optional[set] = None,
@@ -4266,6 +4272,10 @@ TIPS:
                     var_key = f"{bb_name}_{bb_role}"
                     var_offset = _bb_variation_counters.get(var_key, 0)
                     _bb_variation_counters[var_key] = var_offset + 1
+                # The safe family is selected for its measured dose; rotating
+                # its variation can choose a 24-min Norwegian 4x8 archetype.
+                var_offset = _ae31_safe_variation_offset(
+                    bb_day['name'], bb_name, var_offset)
 
                 # Workout personality: intensity days carry the archetype's
                 # name and a series number ("Thunder_Quads_2") instead of the
