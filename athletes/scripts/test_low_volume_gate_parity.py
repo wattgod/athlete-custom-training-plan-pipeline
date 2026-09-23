@@ -2,19 +2,21 @@
 
 2026-09-22 order: a time-crunched rider (~5 h/wk, 2-3 rides, kettlebells 3x
 a week, back from a crash and concussion, MidSouth B-race then Unbound 100)
-got a 34-week plan the review gate blocked with 31 findings. Every one was
+got a 34-week plan the review gate blocked with 31 findings, most of them
 the generator producing something its own gate rejects:
 
-  HARD_MINUTES_BELOW_FLOOR x26  gate ignored AE-2.1's ">=6 h/wk" scope
-  R05                           gate ignored the registry's "<=3 available
-                                cycling days allows 1" clause
-  SHORT_SESSION_BELOW_FLOOR     B-race easy spin shipped with no recovery role
-  UNRESOLVED_PAIN_MAX_...       generator scheduled FTP retests anyway
-  VO2_DOSE_OUT_OF_RANGE         floor growth stretched a 4-min VO2 rep
-  VOICE_CONTRACT                long plan repeated its notes' sentences
+  HARD_MINUTES_BELOW_FLOOR x26  fixed: gate ignored AE-2.1's ">=6 h/wk" scope
+  SHORT_SESSION_BELOW_FLOOR     fixed: B-race easy spin had no recovery role
+  VO2_DOSE_OUT_OF_RANGE         fixed: floor growth stretched a 4-min VO2 rep
+  UNRESOLVED_PAIN_MAX_...       partly fixed: no retests for genuinely
+                                unresolved pain; the rest is a rule conflict
+  R05                           PENDING Matti's R05 decision
+  VOICE_CONTRACT                PENDING new phrase pools (copy work)
+  RACE_STALE                    race-data gap, not code
 
 The profile below is synthetic. The end-to-end test runs the real intake
-path once (~15 s) and asserts none of those classes come back.
+path once (~15 s): fixed classes must not come back, pending ones are
+asserted present so the tests flip when the rulings land.
 """
 from __future__ import annotations
 
@@ -33,7 +35,6 @@ from block_compliance import r05_intensity_count, validate_plan  # noqa: E402
 
 FIXED_CLASSES = (
     "HARD_MINUTES_BELOW_FLOOR",
-    "R05",
     "SHORT_SESSION_BELOW_FLOOR",
     "VO2_DOSE_OUT_OF_RANGE",
     "VOICE_CONTRACT",
@@ -136,26 +137,18 @@ def _load_week(intensity_days):
     return {'plan_week': 1, 'week_type': 'load', 'phase': 'base', 'days': days}
 
 
-def test_r05_allows_one_quality_day_with_three_available_days():
-    ok, message = r05_intensity_count([_load_week({'Thu'})], max_per_week=2,
-                                      available_days=3)
-    assert ok, message
-
-
-def test_r05_still_wants_two_quality_days_with_four_available_days():
-    ok, _ = r05_intensity_count([_load_week({'Thu'})], max_per_week=2,
-                                available_days=4)
-    assert not ok
-
-
-def test_validate_plan_counts_available_days_from_off_days():
-    plan = {'weeks': [_load_week({'Thu'})]}
-    result = validate_plan(plan, target_hours=5, max_intensity=2,
-                           off_days=['Mon', 'Tue', 'Wed', 'Fri'])
-    assert result['rules']['R05']['passed'], result['rules']['R05']['message']
-    result = validate_plan(plan, target_hours=5, max_intensity=2,
-                           off_days=['Mon', 'Tue', 'Wed'])
+def test_r05_pending_matti_still_wants_two_quality_days_on_three_riding_days():
+    """PENDING MATTI'S R05 DECISION (docs/proposals/low-volume-intensity-
+    floor-2026-09.md). Production R05 is frozen at min(2, max_intensity)
+    (SPEC_EARNED_SELECTION A3.0); the registry's "<=3 available cycling days
+    allows 1-3" clause is a DRAFT E3 target, and AE-2.1 says any R05
+    revision needs owner review and a version bump. So a Thu/Sat/Sun rider
+    with one quality day still fails. Update this test with the ruling."""
+    result = validate_plan({'weeks': [_load_week({'Thu'})]}, target_hours=5,
+                           max_intensity=2, off_days=['Mon', 'Tue', 'Wed', 'Fri'])
     assert not result['rules']['R05']['passed']
+    assert '1 intensity (need 2-2)' in result['rules']['R05']['message']
+    assert r05_intensity_count([_load_week({'Thu', 'Sun'})], max_per_week=2)[0]
 
 
 # ---------------------------------------------------------------------------
@@ -259,9 +252,19 @@ def test_low_volume_plan_has_none_of_the_fixed_finding_classes(low_volume_order)
     assert not [i for i in ids if i.startswith(FIXED_CLASSES)], ids
 
 
+def test_low_volume_plan_r05_is_pending_matti(low_volume_order):
+    """PENDING MATTI'S R05 DECISION: the generator fits one quality day
+    per load week on Thu/Sat/Sun and production R05 still wants two.
+    When the ruling lands, move R05 into FIXED_CLASSES or change the
+    generator, and delete this test."""
+    r05 = [item for item in low_volume_order['state']['blocking_issues']
+           if item['id'] == 'R05']
+    assert r05 and '1 intensity (need 2-2)' in r05[0]['message']
+
+
 def test_low_volume_plan_really_is_one_quality_day_per_load_week(low_volume_order):
     """Guards the fixture: if the generator ever finds room for two quality
-    days here, the R05 assertion above stops proving anything."""
+    days here, the R05 test above stops describing the order."""
     counts = {sum(1 for s in week['sessions'] if s.get('role') == 'intensity')
               for week in low_volume_order['plan_ir']['weeks']
               if week.get('week_type') == 'load' and week.get('phase') == 'base'}
