@@ -9814,7 +9814,8 @@ def process_touchpoint_emails():
                 try:
                     reminded = _send_coach_reminder(
                         order, _touchpoint_label(touch['key']),
-                        touch['subject'], touch['body'])
+                        touch['subject'], touch['body'],
+                        brand=normalize_brand(order.get('brand')))
                 except Exception as e:
                     reminded = False
                     logger.error(f"Touchpoint reminder failed: {e}")
