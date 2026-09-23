@@ -195,6 +195,17 @@ def test_strength_drops_for_the_week_when_no_relocation_slot_fits():
     assert relocated == []
 
 
+def test_strength_can_keep_coach_designated_day_strict_when_relocation_is_unsafe():
+    def is_available(day):
+        return day not in {'Fri', 'Sun'}
+
+    placed = place_strength_days(
+        is_available, 1, blocked_days={'Sat'},
+        strength_only_abbrevs=['Sat'], strict_only_days=True,
+    )
+    assert placed == []
+
+
 def test_recovery_floor_uses_preceding_load_weeks_and_stays_in_house_band():
     descriptors = [
         {'plan_week': 1, 'phase': 'base', 'week_type': 'load'},

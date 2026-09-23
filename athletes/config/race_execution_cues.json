@@ -1,0 +1,26 @@
+{
+  "mid_south": {
+    "source": "gravel-race-automation/race-data/mid-south.json; athletes/config/race_intel.json",
+    "training_dimensions": [
+      "On a safe gravel ride, rehearse smooth pacing over repeated rollers and staying sheltered when the road is exposed to wind.",
+      "Practice line choice, braking before loose corners, and controlled remounts. If the course is wet, handling and traction matter more than forcing a power number."
+    ],
+    "race_choices": [
+      "Dry red clay can make this a fast group ride. With your survival goal, let an early surge go before it forces repeated red-zone efforts.",
+      "If rain turns the clay sticky, ride for traction, clear a packed wheel, and walk a section that cannot be ridden safely.",
+      "Plan what to carry between the historically reported aid points around miles 30 and 60; verify the 2027 handbook before race week."
+    ]
+  },
+  "unbound_gravel_100": {
+    "source": "gravel-race-automation/race-data/unbound-100.json; athletes/config/race_intel.json",
+    "training_dimensions": [
+      "Use safe rough-gravel rides to practice choosing a clean line, holding a relaxed upper body, and eating while the bike is moving.",
+      "Rehearse a brief rise over a roller followed by an immediate return to sustainable pace; fuel through the change rather than waiting for a smooth road."
+    ],
+    "race_choices": [
+      "Protect the tires on sharp flint. Choose a clean line and keep enough attention for washed-out gullies instead of chasing every wheel.",
+      "Carry a tested repair kit and enough fuel and fluid to reach the next confirmed aid point. The database lists Council Grove near mile 50, but the 2027 route and services need checking.",
+      "On exposed, hot sections, keep the effort sustainable and continue the practiced fueling schedule; do not use power to chase a pace the conditions will not support."
+    ]
+  }
+}

@@ -523,6 +523,8 @@ def _build_full_guide(
         isinstance(_str_inc, str) and _str_inc.strip().lower() in ("yes", "true"))
     sections.append(_section_weekly_structure(schedule, tier_display, weekly_hours, est_race_hrs,
                                               strength_included=_strength_included))
+    if _strength_included:
+        sections.append(_section_strength_personalization(profile))
     sections.append(_section_phase_progression(plan_duration, tier, ride_realism,
                                                strength_included=_strength_included))
     sections.append(_section_workout_execution(
@@ -534,7 +536,8 @@ def _build_full_guide(
     sections.append(_section_nutrition(race_data, tier, race_distance, profile, plan_duration, store_mode=store_mode))
     sections.append(_section_mental_preparation(race_data, race_distance, tier))
     sections.append(_section_race_week(race_data, tier, race_name, derived, _discipline))
-    sections.append(_section_race_day(race_data, tier, race_distance, race_name, weekly_hours))
+    sections.append(_section_race_day(race_data, tier, race_distance, race_name,
+                                      weekly_hours, profile=profile))
     sections.append(_section_skills(race_data, _discipline))
     if _discipline == "road":
         sections.append(_section_road_format_strategy(profile, section_num=14))
@@ -1426,6 +1429,28 @@ def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: s
 </section>"""
 
 
+def _section_strength_personalization(profile: Dict) -> str:
+    """Explain the prescribed dose, its phase arc, and relevant movement limits."""
+    from html import escape
+    sessions = int((profile.get("strength") or {}).get("sessions_per_week") or 0)
+    if sessions < 1:
+        return ""
+    named_days = (profile.get("schedule_constraints") or {}).get("strength_only_days") or []
+    when = ", ".join(str(day).title() for day in named_days) if named_days else "the prescribed day"
+    knee = ((profile.get("movement_limitations") or {}).get("deep_squat") == "limited")
+    knee_note = ("<p>Your left knee is cleared for hard riding, but the deep-squat range is still limited. "
+                 "Use a comfortable range on squats and split squats; do not chase depth or lift through pain. "
+                 "Tell me if soreness returns.</p>" if knee else "")
+    return f"""<section class="guide-section">
+  <h3>Your Strength Work</h3>
+  <p>I have put {sessions} strength session{'s' if sessions != 1 else ''} each load week on {escape(when)}.
+  The first weeks build movement tolerance; the middle of the plan builds force; later sessions maintain it with less volume.
+  Recovery and taper weeks cut the dose, and race weeks have no loaded lift.</p>
+  <p>Friday is your long ride. If that ride leaves you heavy-legged, reduce or skip Saturday's lift rather than carrying soreness into Monday's key ride.</p>
+  {knee_note}
+</section>"""
+
+
 def _section_phase_progression(plan_duration: int, tier: str, ride_realism: float = 1.0,
                                strength_included: bool = True):
     # Long ride description adapts to what the athlete can actually do
@@ -2212,7 +2237,8 @@ def _section_race_week(race_data: Dict, tier: str, race_name: str,
   </div>
 </section>"""
 
-def _section_race_day(race_data: Dict, tier: str, race_distance, race_name: str, weekly_hours: str = ""):
+def _section_race_day(race_data: Dict, tier: str, race_distance, race_name: str,
+                      weekly_hours: str = "", profile: Optional[Dict] = None):
     dr_hours = race_data.get("dress_rehearsal_hours", {})
     tier_dr = dr_hours.get(tier)
 
@@ -2251,6 +2277,26 @@ If something fails in the dress rehearsal, fix it before race day.</p></div>"""
         decision_cards.append(f'  <div class="data-card"><div class="data-card__header">IF: {label.upper()}</div><div class="data-card__content"><p>{action}</p></div></div>')
     decision_html = "\n".join(decision_cards) if decision_cards else ""
 
+    # AE-1.7/AE-1.8: two A races need two different terrain and execution
+    # briefs, sourced from matched race IDs rather than the final target's
+    # generic race-day paragraph. The 2027 route/services remain unverified.
+    from race_execution_cues import guide_cues
+    playbooks = []
+    for event in _joint_a_races(profile or {}):
+        cues = guide_cues(str(event.get('race_id') or ''))
+        if cues:
+            playbooks.append(
+                f"<div class=\"data-card\"><div class=\"data-card__header\">"
+                f"{escape(str(event['name']))} - {escape(str(event['date']))}</div>"
+                f"<div class=\"data-card__content\">{cues}</div></div>"
+            )
+    playbook_html = (
+        '<h3>Your Two A-Race Playbooks</h3><p>These are training and race-day '
+        'choices based on the current race database. Confirm the 2027 route, '
+        'aid points and conditions before each event.</p>' + ''.join(playbooks)
+        if playbooks else ''
+    )
+
     return f"""<section id="section-12" class="gg-section">
   <h2>12 &middot; Race Day</h2>
 
@@ -2287,6 +2333,8 @@ If something fails in the dress rehearsal, fix it before race day.</p></div>"""
   </div>
 
   {f'<h3>In-Race Decision Tree</h3><p>When things go wrong (and something always does), use these protocols:</p>{decision_html}' if decision_html else ''}
+
+  {playbook_html}
 
   <h3>Post-Race</h3>
   <ul>

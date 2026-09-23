@@ -51,3 +51,47 @@ def test_heather_like_manifest_is_platform_independent(tmp_path):
     assert manifest['mental_training_tasks'][0]['id'] == 'visualization'
     assert manifest['course_entitlement']['race'] == 'Nannup'
     assert (tmp_path / 'fulfillment_manifest.json').exists()
+
+
+def test_gravelgod_plan_includes_four_gravel_grit_notes(tmp_path):
+    ir = {
+        'athlete': {'id': 'grit-rider', 'name': 'Grit Rider'},
+        'brand': 'gravelgod',
+        'race_snapshot': {'name': 'Mid South', 'date': '2027-03-13'},
+        'weeks': [
+            {'number': week, 'phase': 'build', 'sessions': [
+                {'date': f'2027-0{month}-{day:02d}', 'title': 'Endurance',
+                 'sport': 'cycling', 'duration_s': 3600}
+            ]}
+            for week, month, day in [(1, 1, 4), (2, 1, 11), (3, 1, 18)]
+        ],
+    }
+    (tmp_path / 'plan_ir.json').write_text(json.dumps(ir))
+    notes = build_fulfillment_manifest(tmp_path)['native_notes']
+    grit = [note for note in notes if note['title'].startswith('GRAVEL GRIT ')]
+    assert len(grit) == 4
+    assert len({note['date'] for note in grit}) == 4
+    assert min(note['date'] for note in grit) >= '2027-01-04'
+    assert all(len(note['text'].split()) <= 100 for note in grit)
+
+
+def test_matched_a_events_add_distinct_pre_race_intel_notes(tmp_path):
+    ir = {
+        'athlete': {'id': 'johnny', 'name': 'Johnny'},
+        'brand': 'gravelgod',
+        'race_snapshot': {'name': 'Unbound Gravel 100', 'date': '2027-06-05'},
+        'events': [
+            {'name': 'Mid South', 'date': '2027-03-13', 'priority': 'A', 'race_id': 'mid_south'},
+            {'name': 'Unbound Gravel 100', 'date': '2027-06-05', 'priority': 'A', 'race_id': 'unbound_gravel_100'},
+        ],
+        'weeks': [{'number': 1, 'phase': 'build', 'sessions': [
+            {'date': '2027-02-22', 'title': 'Endurance', 'sport': 'cycling', 'duration_s': 3600}
+        ]}],
+    }
+    (tmp_path / 'plan_ir.json').write_text(json.dumps(ir))
+    notes = build_fulfillment_manifest(tmp_path)['native_notes']
+    race = [note for note in notes if note['title'].startswith('RACE INTEL')]
+    assert len(race) == 2
+    assert {note['date'] for note in race} == {'2027-02-27', '2027-05-22'}
+    assert 'sticky' in race[0]['text'].lower()
+    assert 'flint' in race[1]['text'].lower()

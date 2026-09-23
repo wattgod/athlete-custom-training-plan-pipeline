@@ -116,6 +116,15 @@ class TestRoutingTotality:
         overlap = set(ROUTING_TABLE) & SYNTHETIC_ONLY
         assert not overlap
 
+    def test_mixed_interval_slot_can_use_curated_vo2_library(self):
+        # AE-3.1: the synthetic Mixed Intervals fallback becomes one short
+        # 30/30 set. Route the real slot before fallback so a vetted library
+        # workout can satisfy the intended VO2 dose.
+        assert 'vo2_3030_micro' in resolve_library_keys({
+            'canonical_name': 'Mixed Intervals', 'budget_min': 65,
+            'phase': 'build', 'role': 'intensity',
+        })
+
     def test_routing_table_only_names_real_canonical_types(self):
         names = self._canonical_names()
         extra = set(ROUTING_TABLE) - names
@@ -1228,6 +1237,37 @@ def test_curated_vo2_items_must_pass_ae_3_1_proxy_dose():
     assert _passes_role_ceiling(vo2_item(20), gravel_slot)
     assert not _passes_role_ceiling(vo2_item(43), gravel_slot)
     assert not _passes_role_ceiling(vo2_item(8), gravel_slot)
+
+
+def test_final_peak_before_a_keeps_curated_dose_bounded_for_lighter_taper():
+    from library_selector import _passes_role_ceiling
+
+    def session(seconds, power, name):
+        return make_item(
+            1, name_base=name,
+            structure={"primaryIntensityMetric": "percentOfFtp", "structure": [{
+                "length": {"value": 1, "unit": "repetition"},
+                "steps": [{"length": {"value": seconds, "unit": "second"},
+                           "targets": [{"minValue": power}]}],
+            }]},
+        )
+
+    vo2_slot = base_slot(canonical_name="Mixed Intervals", role="intensity",
+                         week_type="load", final_peak_before_a=True)
+    assert _passes_role_ceiling(session(12 * 60, 110, "VO2 30/30"), vo2_slot)
+    assert not _passes_role_ceiling(session(17 * 60, 110, "VO2 30/30"), vo2_slot)
+    sim_slot = {**vo2_slot, "canonical_name": "Race Simulation"}
+    assert _passes_role_ceiling(session(18 * 60, 95, "Race Simulation"), sim_slot)
+    assert not _passes_role_ceiling(session(25 * 60, 95, "Race Simulation"), sim_slot)
+
+
+def test_curated_cadence_change_title_requires_programmed_cadence():
+    from library_selector import _passes_role_ceiling
+    slot = base_slot(canonical_name="Cadence Work", role="intensity")
+    no_cadence = make_item(1, name_base="Tempo w/ cadence changes")
+    assert not _passes_role_ceiling(no_cadence, slot)
+    with_cadence = {**no_cadence, 'has_cadence_targets': True}
+    assert _passes_role_ceiling(with_cadence, slot)
 
 
 def test_vo2_selection_skips_an_overdosed_curated_item():

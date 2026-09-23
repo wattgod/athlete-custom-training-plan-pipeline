@@ -1093,7 +1093,8 @@ def _delivery_role(archetype_id: str, builder_role: str, week_type: str,
 
 def place_strength_days(is_available, requested_sessions: int,
                         blocked_days=None, strength_only_abbrevs=None,
-                        avoid_days=None, preferred_days=None) -> list:
+                        avoid_days=None, preferred_days=None,
+                        strict_only_days=False) -> list:
     """Place the requested sessions without using off/long/blocked days.
 
     ``select_strength_days`` supplies the coach-preferred pair. If an FTP
@@ -1117,7 +1118,10 @@ def place_strength_days(is_available, requested_sessions: int,
                       if d not in preferred]
     else:
         preferred = select_strength_days(is_available, strength_only_abbrevs)
-    candidates = preferred + [
+    # An explicitly strict strength-only day is a hard availability boundary.
+    # If blocked by a race simulation, omit the lift for the week instead of
+    # silently moving it between key bike sessions.
+    candidates = preferred if strict_only_days and strength_only_abbrevs else preferred + [
         day for day in DAY_ORDER if day not in preferred and is_available(day)
     ]
     eligible = [day for day in candidates if day not in blocked]
@@ -1561,7 +1565,8 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
                                excluded_calendar_slots: Optional[set] = None,
                                index=None, discipline: Optional[str] = None,
                                bike_constraints: Optional[list] = None,
-                               excluded_title_patterns: Optional[list] = None) -> list:
+                               excluded_title_patterns: Optional[list] = None,
+                               a_race_weeks: Optional[set] = None) -> list:
     """C4/D1/D2: resolve in-scope block-builder days to curated TP library
     items via ``library_selector.select``.
 
@@ -1692,6 +1697,13 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
                 # R2: week_type ('load'/'recovery'/'taper'/'race') gates the
                 # filler-role intensity ceiling.
                 'week_type': week_type,
+                # A heavy curated race-sim + VO2 pairing three weeks before
+                # an A race can inflate the taper comparator beyond a sane
+                # dose. Keep this final peak week specific but bounded.
+                'final_peak_before_a': bool(
+                    week_type == 'load' and phase in ('peak', 'race_prep')
+                    and any(0 < race_week - plan_week <= 3
+                            for race_week in (a_race_weeks or set()))),
                 'series_key': (block_number, day_abbrev, canonical_name),
                 'week_in_block': week_in_block,
                 # Variety policy (2026-09-18): block spread keys on the
@@ -1999,6 +2011,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     schedule_constraints = profile.get('schedule_constraints', {}) if profile else {}
     preferred_long_day = schedule_constraints.get('preferred_long_day', 'saturday')
     strength_only_days = schedule_constraints.get('strength_only_days', [])
+    _strict_strength_only_days = bool(schedule_constraints.get('strict_strength_only_days'))
     # Opt-in switches (profile schedule_constraints). Both default OFF so
     # every existing profile builds exactly as before.
     #   explicit_interval_days: availability_roles.interval_days are placed
@@ -2382,6 +2395,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 discipline=_bb_discipline,
                 bike_constraints=(derived or {}).get('bike_constraints', []),
                 excluded_title_patterns=((profile or {}).get('library_exclusions') or {}).get('title_regex', []),
+                a_race_weeks={int(d['plan_week']) for d in _bb_descriptors
+                              if d.get('week_type') == 'race'},
             ))
             # NOTE: `athlete_dir` here is the caller's parameter -- in the
             # production authoring flow that's a SHORT-LIVED temp directory
@@ -4952,6 +4967,8 @@ TIPS:
                     float(duration_hours or 0),
                 )
                 course_intel = _course_intel_section(course_race_id)
+                from race_execution_cues import race_card_cues
+                course_choices = race_card_cues(course_race_id)
 
                 # Estimate TSS consistently with how zwo_parser scores this
                 # race-day FreeRide (no power target) — otherwise the header
@@ -4992,6 +5009,7 @@ FUELING PLAN:
 - Start fueling at 20 min, every 20-30 min thereafter
 - Pre-race: 100-150g carbs 3-4 hours before start
 
+{course_choices}
 PACING STRATEGY:
 {pacing_strategy}
 {course_intel}
@@ -5512,6 +5530,7 @@ GO GET IT, {athlete_name.upper()}!
                     else None),
                 avoid_days=(set() if _strength_on_interval_days and not strength_only_abbrevs
                             else _intensity_avoid_day_abbrevs_by_week.get(week_num, set())),
+                strict_only_days=_strict_strength_only_days,
             )
 
             for strength_day in strength_days:
@@ -5573,6 +5592,10 @@ GO GET IT, {athlete_name.upper()}!
             else:
                 rest_line = "Rest 60-90 sec between sets."
             full_description = f"FOCUS: {strength_workout['focus']}\n\nEXERCISES:\n{exercises_text}\n\nEXECUTION:\nComplete all sets with good form. {rest_line}"
+            if ((profile or {}).get('movement_limitations') or {}).get('deep_squat') == 'limited':
+                full_description += ("\n\nKNEE RANGE: Keep squats and split squats inside a comfortable range. "
+                                     "Do not force depth; shorten the range or skip a painful movement. "
+                                     "Tell me if knee soreness returns.")
             # T18: never leave a bike+lift day without an order.
             if str(date_full) in _hard_bike_dates:
                 full_description += ("\n\nSEQUENCING:\nToday also carries your hard ride, so I want "
@@ -5647,6 +5670,30 @@ GO GET IT, {athlete_name.upper()}!
         _manifest_by_stem = {_rec['filename_stem']: _rec for _rec in _tp_manifest_records}
         _manifest_path.write_text(
             json.dumps(_manifest_by_stem, indent=2, sort_keys=True) + '\n')
+
+        # Delivery role is settled only after simulation and recovery passes.
+        # Add the matched race's handling/position objective here so both
+        # curated endurance rides and composed Act simulations receive it.
+        from race_execution_cues import long_ride_dimension_cue
+        _week_by_date = {str(day['date']): week for week in weeks
+                         for day in week.get('days', []) if day.get('date')}
+        for _stem, _rec in _manifest_by_stem.items():
+            if _rec.get('tp_kind') != 'bike' or _rec.get('role') != 'long_ride':
+                continue
+            _when = str(_rec.get('date') or '')
+            _week = _week_by_date.get(_when) or {}
+            if _week.get('is_recovery_week'):
+                _week_type = 'recovery'
+            elif _week.get('phase') in ('taper', 'race'):
+                _week_type = _week['phase']
+            else:
+                _week_type = 'load'
+            _cue = long_ride_dimension_cue((profile or {}).get('a_events') or [],
+                                           _when, 'long_ride', _week_type)
+            _xml = _authored_documents.get(_stem) or ''
+            if _cue and 'RACE PRACTICE:' not in _xml and '<description>' in _xml:
+                _authored_documents[_stem] = _xml.replace(
+                    '<description>', '<description>' + html.escape(_cue) + '\n\n', 1)
 
         # The delivery ladder is calculated from the complete, emitted
         # calendar. Apply it only after all duration caps, race replacements,

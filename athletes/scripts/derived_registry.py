@@ -232,6 +232,7 @@ _CALENDAR_WEEK = {
     "a_race": _optional({
         "date": DERIVED, "priority": DERIVED,
         "name": _optional(DERIVED),
+        "race_id": _optional(DERIVED),
         "distance_miles": _optional(DERIVED),
         "goal": _optional(DERIVED),
         "mandatory": _optional(DERIVED),

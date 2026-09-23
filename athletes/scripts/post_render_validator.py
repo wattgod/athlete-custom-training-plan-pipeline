@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
-from delivery_notes import render_coached_weekly_notes
+from delivery_notes import render_plan_notes
 from voice_lint import lint_notes, lint_rest_cards
 
 INPUT_VERSION = "post_render/transitional-planir-tp-manifest/v1"
@@ -337,7 +337,7 @@ def _athlete_visible_copy_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, An
                 "word_count": word_count, "reasons": reasons,
             })
     if not has_b_event:
-        for note in render_coached_weekly_notes(plan_ir):
+        for note in render_plan_notes(plan_ir):
             body = str(note.get("body") or "")
             if re.search(r"\bB event\b|\bfuel both events\b", body, re.I):
                 violations.append({
@@ -1064,7 +1064,7 @@ def _voice_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
     no blank Day Off cards, no banned phrases/patterns, word caps, and no
     sentence repeated across the plan's weekly notes."""
     findings: List[str] = []
-    findings.extend(lint_notes(render_coached_weekly_notes(plan_ir)))
+    findings.extend(lint_notes(render_plan_notes(plan_ir)))
     findings.extend(lint_rest_cards(session for _, session in _sessions(plan_ir)))
     return [
         _issue("VOICE_CONTRACT", finding,

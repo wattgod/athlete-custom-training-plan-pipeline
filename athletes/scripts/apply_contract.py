@@ -20,9 +20,9 @@ import re
 from jsonschema import Draft202012Validator
 
 if __package__:
-    from .delivery_notes import render_coached_weekly_notes
+    from .delivery_notes import render_plan_notes
 else:  # Direct script execution keeps athletes/scripts on sys.path.
-    from delivery_notes import render_coached_weekly_notes
+    from delivery_notes import render_plan_notes
 
 
 CONTRACT_VERSION = "apply_contract/v1"
@@ -515,7 +515,7 @@ def _desired_resources(
     # overwrite each other in `desired` -- exactly the collision
     # fulfillment_manifest.py's matching fix guards against.
     note_per_date: Dict[str, int] = defaultdict(int)
-    for note in render_coached_weekly_notes(ir):
+    for note in render_plan_notes(ir):
         date = str(note["date"])
         note_per_date[date] += 1
         sequence = note_per_date[date]

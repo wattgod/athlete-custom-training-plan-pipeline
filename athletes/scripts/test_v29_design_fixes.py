@@ -40,6 +40,18 @@ from series_tracker import SeriesTracker
 from tp_library_snapshot import DEFAULT_RAW_PATH, build_index, compute_bookend_intensity_flag
 from workout_mapper import _render_simple_endurance, _render_taper_burst_endurance
 
+
+@pytest.mark.parametrize('variant,period,drill,low,high', [
+    (1, 600, 30, 100, 110),
+    (5, 480, 20, 105, 115),
+])
+def test_endurance_spin_up_dimensions_are_executable(variant, period, drill, low, high):
+    from zwo_parser import parse_zwo_text
+    zwo = _render_simple_endurance(3, variant=variant)
+    assert f'Duration="{drill}" Power="0.70" CadenceLow="{low}" CadenceHigh="{high}"' in zwo
+    assert zwo.count(f'CadenceLow="{low}" CadenceHigh="{high}"') >= 1
+    assert parse_zwo_text(zwo)['duration_sec'] == 130 * 60
+
 REAL_DUMP_AVAILABLE = DEFAULT_RAW_PATH.exists()
 requires_real_dump = pytest.mark.skipif(
     not REAL_DUMP_AVAILABLE, reason=f"real raw dump not present at {DEFAULT_RAW_PATH}"

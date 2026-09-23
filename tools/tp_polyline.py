@@ -49,8 +49,12 @@ from typing import Any, Mapping
 
 _ROOT = Path(__file__).resolve().parents[1]
 _ATHLETES_SCRIPTS = _ROOT / "athletes" / "scripts"
-if str(_ATHLETES_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_ATHLETES_SCRIPTS))
+# A CLI launched from tools/ puts that directory at sys.path[0]. Keep the
+# canonical implementation ahead of this wrapper even when PYTHONPATH already
+# contains athletes/scripts later in the path (otherwise this imports itself).
+if str(_ATHLETES_SCRIPTS) in sys.path:
+    sys.path.remove(str(_ATHLETES_SCRIPTS))
+sys.path.insert(0, str(_ATHLETES_SCRIPTS))
 
 from tp_polyline import compute_polyline  # noqa: E402  -- single source of truth
 

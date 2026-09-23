@@ -385,6 +385,8 @@ def _event_ledger(profile: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "date": event.get("date"),
                 "priority": event.get("priority") or priority,
             }
+            if event.get("race_id"):
+                projected["race_id"] = event["race_id"]
             if event.get("mandatory") is True:
                 projected["mandatory"] = True
             events.append(projected)

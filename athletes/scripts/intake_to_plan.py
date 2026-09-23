@@ -1257,6 +1257,10 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
 
         if matched:
             race_id, info = matched
+            # AE-1.8: every matched A event needs its own demand/course identity.
+            # The race-day renderer previously received an empty ID for the
+            # earlier A race and silently omitted its bundled course intel.
+            event['race_id'] = race_id.split(':', 1)[-1]
             courses = info.get('courses') or []
             facts_omitted_mode = str(
                 goals.get('course_facts_mode') or '').strip().lower()

@@ -38,7 +38,7 @@ from tp_structure_to_zwo import _target_bounds_pct
 # ---------------------------------------------------------------------------
 
 # VO2max 30/30 + Thirty-Fifteens -> vo2_3030_micro
-_VO2_3030_TYPES = ("VO2max 30/30", "Thirty-Fifteens")
+_VO2_3030_TYPES = ("VO2max 30/30", "Thirty-Fifteens", "Mixed Intervals")
 
 # VO2max 40/20 + VO2max Steady Intervals + VO2max Extended -> vo2_classic, vo2_blends
 _VO2_CLASSIC_TYPES = ("VO2max 40/20", "VO2max Steady Intervals", "VO2max Extended")
@@ -133,7 +133,6 @@ SYNTHETIC_ONLY: frozenset[str] = frozenset(
         "VO2 Bookend",
         "Mixed Climbing",
         "Mixed Climbing Variations",
-        "Mixed Intervals",
         "Buffer Workout",
         "Blended 30/30 and SFR",
         "Blended VO2max and G Spot",
@@ -687,6 +686,9 @@ _VO2_CANONICAL_TYPES = frozenset({
 })
 _CYCLING_DISCIPLINES = frozenset({"road", "road_tt", "gravel", "mtb"})
 _SPIN_UP_TITLE_RE = re.compile(r"\bspin[- ]?ups?\b", re.IGNORECASE)
+_CADENCE_TITLE_RE = re.compile(
+    r"\bcadence changes\b|\bbetter late than cadence\b|\bspin[- ]?ups?\b",
+    re.IGNORECASE)
 # Base-phase long rides are aerobic: hard durability long rides are the
 # house signature for BUILD/PEAK only. Without a base ceiling, a curated
 # night-threshold session filed in an endurance library ("Dark is the
@@ -884,9 +886,9 @@ def _has_ae_3_14_violation(structure: Any) -> bool:
 
 def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bool:
     item_name = str(item.get("name_raw") or item.get("name_base") or "")
-    if (_SPIN_UP_TITLE_RE.search(item_name)
+    if (_CADENCE_TITLE_RE.search(item_name)
             and not bool(item.get("has_cadence_targets"))):
-        # A title that promises spin-ups needs an executable cadence target.
+        # A title that promises cadence work needs executable cadence targets.
         # Prose alone is lost when the Endure apply contract condenses a
         # structured workout, so reject the mislabeled curated item instead
         # of delivering four visually identical endurance segments.
@@ -910,7 +912,13 @@ def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bo
         if slot.get("canonical_name") in _VO2_CANONICAL_TYPES or _LINT_VO2_NAME_RE.search(_item_name):
             if not (_VO2_WORK_SECONDS_MIN <= vo2_seconds <= _VO2_WORK_SECONDS_MAX):
                 return False
+            if slot.get('final_peak_before_a') and vo2_seconds > 14 * 60:
+                return False
         elif vo2_seconds > _VO2_WORK_SECONDS_MAX:
+            return False
+        if (slot.get('final_peak_before_a')
+                and slot.get('canonical_name') == 'Race Simulation'
+                and _hard_work_seconds(_structure) > 20 * 60):
             return False
     # AE-2.8 at selection time (2026-09-19): an endurance-type slot never
     # draws an item whose own planned rate exceeds the 50 TSS/h ceiling the

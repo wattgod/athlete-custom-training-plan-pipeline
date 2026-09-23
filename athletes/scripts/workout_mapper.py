@@ -696,6 +696,23 @@ def _endurance_burst_blocks(main_sec: int, base_power: float, gap_sec: int = 720
     return '\n'.join(blocks), burst_count
 
 
+def _endurance_cadence_blocks(main_sec: int, base_power: float, period_sec: int,
+                             drill_sec: int, cadence_low: int,
+                             cadence_high: int) -> str:
+    """Keep Z2 power steady while programming the promised spin-up steps."""
+    if main_sec < period_sec:
+        return f'    <SteadyState Duration="{main_sec}" Power="{base_power:.2f}"/>'
+    blocks = []
+    count, remainder = divmod(main_sec, period_sec)
+    for _ in range(count):
+        blocks.append(f'    <SteadyState Duration="{period_sec - drill_sec}" Power="{base_power:.2f}"/>')
+        blocks.append(f'    <SteadyState Duration="{drill_sec}" Power="{base_power:.2f}" '
+                      f'CadenceLow="{cadence_low}" CadenceHigh="{cadence_high}"/>')
+    if remainder:
+        blocks.append(f'    <SteadyState Duration="{remainder}" Power="{base_power:.2f}"/>')
+    return '\n'.join(blocks)
+
+
 def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
                              author: str = 'Gravel God Training',
                              display_name: Optional[str] = None,
@@ -761,10 +778,7 @@ def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
         else:
             main_set = f"- {main_sec // 60}min @ 66-75% FTP (RPE 3-4)"
     elif variant is not None and variant % len(_ENDURANCE_FOCUS_VARIANTS) == 1:
-        # Cadence Focus: the drill IS the workout. It rides on a preserved
-        # "- Drill:" line (power structure cannot express cadence, and the
-        # duration-fitting rewrite rebuilds the main duration line).
-        main_blocks = f'    <SteadyState Duration="{main_sec}" Power="{power:.2f}"/>'
+        main_blocks = _endurance_cadence_blocks(main_sec, power, 600, 30, 100, 110)
         # No absolute rep count: duration fitting can trim the ride after
         # this text is authored, and a stale "(N total)" would then lie.
         # The period IS the instruction.
@@ -772,7 +786,7 @@ def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
                     f"- Drill: 30sec spin-up @ 100-110rpm every 10min — "
                     f"no extra power, just leg speed")
     elif variant is not None and variant % len(_ENDURANCE_FOCUS_VARIANTS) == 5:
-        main_blocks = f'    <SteadyState Duration="{main_sec}" Power="{power:.2f}"/>'
+        main_blocks = _endurance_cadence_blocks(main_sec, power, 480, 20, 105, 115)
         main_set = (f"- {main_sec // 60}min @ 66-75% FTP (RPE 3-4)\n"
                     f"- Drill: 20sec spin-up @ 105-115rpm every 8min — "
                     f"hold the effort steady, spin the legs faster")

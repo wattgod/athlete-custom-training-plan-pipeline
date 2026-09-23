@@ -1188,6 +1188,84 @@ def render_coached_weekly_notes(plan_ir: dict) -> List[Dict[str, str]]:
     return render_story_notes(plan_ir)
 
 
+def render_plan_notes(plan_ir: dict) -> List[Dict[str, str]]:
+    """AE-9.1: story notes, included Gravel Grit, and matched A-race intel.
+
+    The legacy note renderer already owns the authored Gravel Grit copy and
+    anchors. The plan fulfillment path used only the newer story renderer,
+    dropping an included Gravel God entitlement from TP. Keep the story stream
+    intact and add only its four Grit notes, moving a collision to the next
+    date with fewer than two notes.
+    """
+    notes = list(render_coached_weekly_notes(plan_ir))
+    if str(_get(plan_ir, "brand") or "").lower() != "gravelgod":
+        return notes
+    occupied: Dict[str, int] = {}
+    for note in notes:
+        key = str(note["date"])
+        occupied[key] = occupied.get(key, 0) + 1
+    plan_days = [day for week in _iter_weeks(plan_ir)
+                 if int(_get(week, 'number') or 0) > 0
+                 for session in (_get(week, 'sessions') or [])
+                 if (day := _session_date(session)) is not None]
+    plan_day_one = min(plan_days) if plan_days else None
+    fueling = _get(plan_ir, "fueling") or {}
+    grit = [note for note in render_notes(plan_ir, fueling, "gravelgod", None)
+            if note["type"].startswith("grit_")]
+    # The four authored legacy notes predate the 100-word TP note cap. Keep
+    # their distinct exercises, but deliver concise coach-voice versions.
+    grit_bodies = {
+        "grit_1": ("I want you to practice one reset before hard sessions: breathe in for six, hold for two, "
+                   "out for seven. Repeat for two minutes. When a race start feels too fast, return to the long "
+                   "exhale and settle your effort. Rehearse it on easy days first; race day is no place to learn it."),
+        "grit_2": ("When a ride gets hard, your brain may offer a verdict: I cannot hold this. Notice it as a thought, "
+                   "not a fact. Then return to the next controllable task: a smooth line, a sip, the next ten minutes. "
+                   "Write two short instructions this week—such as ‘eat now’ and ‘ride your own effort’—and use them on long rides."),
+        "grit_3": ("Build a highlight reel from three rides you handled well. Write what you saw, how your legs felt, "
+                   "and what you did next. I want specific evidence, not a vague pep talk. Read it the night before "
+                   "your A race and recall one scene on the start line. Then finish this sentence: ‘I am the kind of rider "
+                   "who ___.’ Make the answer about actions you can repeat."),
+        "grit_4": ("This week, choose your start-morning music if it helps, then leave the plan alone. The night before, "
+                   "read your highlight reel and performance statements once; protect sleep after that. On the line, "
+                   "take two minutes for 6-2-7 breathing. Your first job is to start easier than feels right. After "
+                   "that, eat on time, choose clean lines, and ride your own effort. If the day turns rough, return "
+                   "to the next controllable task."),
+    }
+    for note in grit:
+        note["body"] = grit_bodies.get(note["type"], note["body"])
+    from race_execution_cues import cues_for
+    race_notes = []
+    for event in _get(plan_ir, "events") or []:
+        if str(_get(event, "priority") or "").upper() != "A":
+            continue
+        cues = cues_for(str(_get(event, "race_id") or ""))
+        when = _as_date(_get(event, "date"))
+        if not cues or when is None:
+            continue
+        choices = (cues.get("race_choices") or [])[:2]
+        dimensions = (cues.get("training_dimensions") or [])[:1]
+        body = (
+            f"{_get(event, 'name')}: decisions to rehearse.\n\n"
+            + "PRACTICE\n" + "\n".join(f"- {item}" for item in dimensions)
+            + "\n\nRACE-DAY CHOICES\n" + "\n".join(f"- {item}" for item in choices)
+            + f"\n\nCheck the current {_get(event, 'name')} route and aid briefing."
+        )
+        race_notes.append({"date": (when - timedelta(days=14)).isoformat(),
+                           "title": f"RACE INTEL - {_get(event, 'name')}", "body": body})
+    for note in grit + race_notes:
+        when = _as_date(note["date"])
+        if when is None:
+            continue
+        if plan_day_one is not None and when < plan_day_one:
+            when = plan_day_one
+        while occupied.get(when.isoformat(), 0) >= 2:
+            when += timedelta(days=1)
+        key = when.isoformat()
+        occupied[key] = occupied.get(key, 0) + 1
+        notes.append({"date": key, "title": note["title"], "body": note["body"]})
+    return notes
+
+
 def _render_template_weekly_notes(plan_ir: dict) -> List[Dict[str, str]]:
     """Render one compact directive note per coached calendar week.
 

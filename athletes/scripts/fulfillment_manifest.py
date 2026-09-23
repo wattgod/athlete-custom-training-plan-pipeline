@@ -10,7 +10,7 @@ import hashlib
 from pathlib import Path
 from typing import Any, Dict
 
-from delivery_notes import render_coached_weekly_notes
+from delivery_notes import render_plan_notes
 
 
 MANIFEST_VERSION = 1
@@ -64,7 +64,7 @@ def build_manifest_from_plan_ir(ir: Dict[str, Any], athlete_dir: Path | str) -> 
     # Monday note). Sequence-number the key only when a date is genuinely
     # shared, so the single-note-per-date case keeps its original id shape.
     per_note_date: Dict[str, int] = {}
-    for note in render_coached_weekly_notes(ir):
+    for note in render_plan_notes(ir):
         note_date = str(note['date'])
         per_note_date[note_date] = per_note_date.get(note_date, 0) + 1
         sequence = per_note_date[note_date]

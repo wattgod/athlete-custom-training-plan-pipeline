@@ -958,6 +958,16 @@ class TestRacePriorityAssignment:
         assert by_date['2027-03-13']['goal'] == 'survival'
         assert by_date['2027-06-05']['goal'] == 'finish'
 
+    def test_each_matched_a_event_keeps_its_race_id_for_course_intel(self):
+        races = (
+            'Unbound Gravel 100 (2027-06-05, 100 miles, priority A, goal finish)\n'
+            'Mid South (2027-03-13, 100 miles, priority A, goal survive)'
+        )
+        profile = self._profile_with_races(races)
+        by_date = {event['date']: event for event in profile['a_events']}
+        assert by_date['2027-03-13']['race_id'] == 'mid_south'
+        assert by_date['2027-06-05']['race_id'] == 'unbound_gravel_100'
+
     def test_meta_strip_prevents_overmatch(self):
         # Trailing meta in the race line must not leak into match_race(),
         # which would otherwise return false-positive matches.
