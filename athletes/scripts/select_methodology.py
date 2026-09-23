@@ -520,6 +520,25 @@ def select_methodology(
         "selection_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
 
+    # AE-1.21: a masters athlete carrying two real A peaks needs the
+    # shorter load/recovery rhythm throughout the season. Keep the existing
+    # one-race methodology configuration unchanged.
+    try:
+        athlete_age = int((profile.get('health_factors') or {}).get('age')
+                          or profile.get('age') or 0)
+    except (TypeError, ValueError):
+        athlete_age = 0
+    dated_a_events = [event for event in (profile.get('a_events') or [])
+                      if isinstance(event, dict)
+                      and event.get('date')
+                      and str(event.get('priority') or 'A').upper() == 'A']
+    if athlete_age >= 40 and len(dated_a_events) >= 2:
+        result['configuration'] = dict(result['configuration'])
+        result['configuration']['meso_pattern'] = '2:1'
+        result['reasons'] = list(result['reasons']) + [
+            'Two-A masters season: 2 load weeks per recovery week (AE-1.21).'
+        ]
+
     # Add recommendation confidence
     if selected.score >= 75:
         result["confidence"] = "high"

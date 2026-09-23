@@ -83,6 +83,16 @@ UNKNOWN_RACE = "Joe's Backyard Fondo"
 
 class TestMatchRaceScored:
 
+    def test_2027_joint_a_events_have_current_organizer_provenance(self):
+        for slug, requested in (
+            ('mid_south', '2027-03-13'),
+            ('unbound_gravel_100', '2027-06-05'),
+        ):
+            facts = KNOWN_RACES[slug]
+            assert facts['date'] == requested
+            assert race_provenance_issue(
+                facts, requested, today=date(2026, 9, 23)) is None
+
     def test_edition_mismatch_blocks_even_when_identity_matched(self):
         # Regression fixture for the Heather failure: an old source record
         # cannot become facts for a later requested event merely by name match.

@@ -4823,9 +4823,14 @@ TIPS:
             if is_race_day:
                 # Create RACE DAY PLAN - not a workout, but a race execution guide
                 # Pull from fueling.yaml, race data, and training guide
-                race_plan_name = f"{workout_prefix}_RACE_DAY_{safe_filename_component(race_name)}"
+                event_race = (week.get('a_race') or {})
+                if event_race.get('date') != day_info['date']:
+                    event_race = target_race
+                event_name = event_race.get('name') or race_name
+                is_earlier_a_race = day_info['date'] != race_date
+                race_plan_name = f"{workout_prefix}_RACE_DAY_{safe_filename_component(event_name)}"
                 race_filename = f"{race_plan_name}.zwo"
-                race_display_name = f"Race Day — {race_name}"
+                race_display_name = f"Race Day — {event_name}"
 
                 # The private compiler directory deliberately carries no
                 # athlete artifacts. Use the already-loaded canonical fueling
@@ -4840,17 +4845,48 @@ TIPS:
                 from fueling_policy import prescription_from_fueling
                 prescription = prescription_from_fueling(fueling_data)
 
-                duration_hours = race_info.get('duration_hours', 5)
-                distance_miles = race_info.get('distance_miles', profile.get('target_race', {}).get('distance_miles', 75))
+                if is_earlier_a_race:
+                    # A second peak is its own event. Never reuse the final
+                    # target's distance, duration, course intel, or carb total.
+                    from calculate_fueling import estimate_race_duration
+                    from fueling_policy import (build_fueling_prescription,
+                                                tolerated_intake_from_profile)
+                    distance_miles = event_race.get('distance_miles')
+                    if not distance_miles:
+                        raise ValueError(
+                            f"A event {event_name} needs an explicit distance for its race card")
+                    event_goal = str(event_race.get('goal') or 'finish').lower()
+                    event_goal = {'survive': 'survival'}.get(event_goal, event_goal)
+                    if event_goal not in ('survival', 'finish', 'compete', 'podium'):
+                        event_goal = 'finish'
+                    duration_hours = estimate_race_duration(
+                        distance_miles, event_goal,
+                        event_race.get('elevation_ft') or 0,
+                        target_race.get('discipline') or 'gravel')
+                    fitness = (profile or {}).get('fitness') or (profile or {}).get('fitness_markers') or {}
+                    prescription = build_fueling_prescription(
+                        duration_hours=duration_hours,
+                        weight_kg=float(fitness.get('weight_kg') or 0),
+                        ftp_watts=fitness.get('ftp_watts'),
+                        goal_type=event_goal,
+                        tolerated_g_per_hour=tolerated_intake_from_profile(profile or {}),
+                    ).to_dict()
+                    pacing_goal = event_goal
+                    course_race_id = event_race.get('race_id', '')
+                else:
+                    duration_hours = race_info.get('duration_hours', 5)
+                    distance_miles = race_info.get('distance_miles', profile.get('target_race', {}).get('distance_miles', 75))
+                    pacing_goal = target_race.get('goal_type', target_race.get('goal', ''))
+                    course_race_id = target_race.get('race_id', '')
                 hourly_carbs = prescription.get('race_target_g_per_hour')
                 total_carbs = prescription.get('total_g')
                 hourly_range = prescription.get('race_range_g_per_hour', [])
                 hydration = prescription.get('hydration', {})
                 pacing_strategy = _race_day_pacing_strategy(
-                    target_race.get('goal_type', target_race.get('goal', '')),
+                    pacing_goal,
                     float(duration_hours or 0),
                 )
-                course_intel = _course_intel_section(target_race.get('race_id', ''))
+                course_intel = _course_intel_section(course_race_id)
 
                 # Estimate TSS consistently with how zwo_parser scores this
                 # race-day FreeRide (no power target) — otherwise the header
@@ -4877,7 +4913,7 @@ TIPS:
                 # something an athlete can act on from their race-day card.
 
                 # Build race day plan description
-                race_description = f"""RACE DAY: {race_name}
+                race_description = f"""RACE DAY: {event_name}
 Date: {day_info['date']}
 
 TARGET METRICS:

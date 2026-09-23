@@ -946,6 +946,7 @@ def parse_race_line(line: str) -> Dict[str, Any]:
     date = ''
     distance = 0
     priority = None
+    goal = None
 
     if meta:
         date_match = _RACE_DATE_RE.search(meta)
@@ -956,6 +957,13 @@ def parse_race_line(line: str) -> Dict[str, Any]:
         if priority_match:
             priority = priority_match.group(1).upper()
 
+        goal_match = re.search(
+            r'\bgoal\s+(survive|survival|finish|compete|podium)\b',
+            meta, re.IGNORECASE)
+        if goal_match:
+            goal = {'survive': 'survival'}.get(
+                goal_match.group(1).lower(), goal_match.group(1).lower())
+
         # Numeric distance: accept the production questionnaire's ``75 miles``
         # as well as the historical bare ``75`` form (never inspect the date).
         for part in [p.strip() for p in meta.split(',')]:
@@ -965,13 +973,16 @@ def parse_race_line(line: str) -> Dict[str, Any]:
                 distance = int(distance_match.group(1))
                 break
 
-    return {
+    result = {
         'name': name,
         'date': date,
         'distance_miles': distance,
         'priority': priority,
         'mandatory': bool(re.search(r'\bmandatory\b', meta, re.I)),
     }
+    if goal:
+        result['goal'] = goal
+    return result
 
 
 # ===========================================================================
@@ -1173,7 +1184,8 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     b_events = []
     target_race_info = {}
 
-    goal_type = derive_goal_type(success_text)
+    goal_type = (parsed_races[target_idx].get('goal')
+                 if target_idx >= 0 else None) or derive_goal_type(success_text)
 
     # The customer picked a specific race on the site, so the questionnaire
     # carries its SLUG. For the target race we resolve by slug (exact) — this
@@ -1222,7 +1234,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'name': race_name_clean,
             'date': parsed['date'],
             'distance_miles': parsed['distance_miles'],
-            'goal': goal_type if is_target else 'compete',
+            'goal': parsed.get('goal') or (goal_type if is_target else 'compete'),
             'priority': priority,
         }
         if parsed['mandatory']:

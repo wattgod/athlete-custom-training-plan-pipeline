@@ -84,6 +84,30 @@ def test_valid_fixture_discriminates_generation_from_order_date():
     assert [item['id'] for item in confirmations] == ['SCHEDULE_MISMATCH_CONFIRM']
 
 
+def test_every_dated_a_event_must_render_as_an_a_race_day():
+    document = _document()
+    early_event = {'name': 'Early Gravel 100', 'date': '2026-08-29',
+                   'priority': 'A'}
+    final_event = {'name': 'Three Course Race', 'date': '2026-09-19',
+                   'priority': 'A'}
+    document['context']['profile']['a_events'] = [early_event, final_event]
+    document['plan_ir']['events'] = [early_event, final_event]
+    document['plan_ir']['weeks'][-1]['sessions'][-1]['race'] = {'priority': 'A'}
+    document['tp_manifest']['sessions'][-1]['race'] = {'priority': 'A'}
+    rest = _session('2026-08-29', 'Rest Day', 'day_off', 'rest', 0)
+    document['plan_ir']['weeks'].insert(2, {
+        'number': 3, 'phase': 'race', 'sessions': [rest]})
+    document['tp_manifest']['sessions'].insert(3, copy.deepcopy(rest))
+    document['tp_manifest']['expected']['day_off'] += 1
+    document['tp_manifest']['expected']['total'] += 1
+
+    issues, _ = validate_transitional_input(document)
+
+    assert any(item['id'] == 'A_EVENT_RACE_DAY_MISSING'
+               and item['review_value']['missing_dates'] == ['2026-08-29']
+               for item in issues)
+
+
 def test_targetless_coached_block_needs_no_fake_race_day():
     document = _document()
     sessions = [

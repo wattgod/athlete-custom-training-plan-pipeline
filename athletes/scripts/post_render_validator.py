@@ -266,6 +266,49 @@ def _unresolved_pain_load_findings(
     )]
 
 
+def _a_event_race_day_findings(
+    plan_ir: Dict[str, Any], manifest: Dict[str, Any], profile: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """AE-1.9/1.23: every dated A event must survive into the TP race calendar."""
+    expected = {
+        str(event.get("date")) for event in profile.get("a_events") or []
+        if isinstance(event, dict) and event.get("date")
+        and str(event.get("priority") or "A").upper() == "A"
+    }
+    if not expected:
+        return []
+
+    ledger = {
+        str(event.get("date")) for event in plan_ir.get("events") or []
+        if isinstance(event, dict)
+        and str(event.get("priority") or "").upper() == "A"
+    }
+
+    def rendered_a_dates(sessions: Iterable[Dict[str, Any]]) -> set[str]:
+        return {
+            str(session.get("date")) for session in sessions
+            if isinstance(session, dict) and session.get("tp_kind") == "race"
+            and str((session.get("race") or {}).get("priority") or "").upper() == "A"
+        }
+
+    plan_dates = rendered_a_dates(session for _, session in _sessions(plan_ir))
+    manifest_dates = rendered_a_dates(manifest.get("sessions") or [])
+    missing = sorted(expected - (ledger & plan_dates & manifest_dates))
+    if not missing:
+        return []
+    return [_issue(
+        "A_EVENT_RACE_DAY_MISSING",
+        "A-priority event is absent or downgraded in the generated race calendar.",
+        review_value={
+            "missing_dates": missing,
+            "planir_event_dates": sorted(ledger),
+            "planir_race_dates": sorted(plan_dates),
+            "manifest_race_dates": sorted(manifest_dates),
+        },
+        basis="profile A-event dates compared with PlanIR ledger and both race-session projections",
+    )]
+
+
 def _athlete_visible_copy_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
     violations = []
     has_b_event = any(
@@ -1106,6 +1149,7 @@ def validate_transitional_input(
         ))
 
     profile = context.get("profile") or {}
+    issues.extend(_a_event_race_day_findings(plan_ir, manifest, profile))
     issues.extend(_rpe_semantic_findings(plan_ir))
     issues.extend(_field_test_suppression_findings(plan_ir, profile))
     issues.extend(_unresolved_pain_load_findings(plan_ir, profile))

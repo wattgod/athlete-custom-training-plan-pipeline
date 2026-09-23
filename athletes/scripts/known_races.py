@@ -95,10 +95,17 @@ KNOWN_RACES: Dict[str, Dict[str, Any]] = {
         'elevation_ft': 11000,
     },
     'unbound_gravel_100': {
-        'date': '2026-05-30',
+        # Organizer 2027 event page confirms date/distance; 2027 route and
+        # elevation remain unpublished, so do not carry the 2026 estimate.
+        'date': '2027-06-05',
         'name': 'Unbound Gravel 100',
         'distance_miles': 100,
-        'elevation_ft': 5500,
+        'elevation_ft': 0,
+        'location': 'Emporia, Kansas',
+        'source_urls': ['https://www.unboundgravel.com/events-100/'],
+        'source_type': 'organizer',
+        'verified_at': '2026-09-23',
+        'event_year': 2027,
     },
     'unbound_gravel_50': {
         'date': '2026-05-30',
@@ -155,10 +162,18 @@ KNOWN_RACES: Dict[str, Dict[str, Any]] = {
         'elevation_ft': 7500,
     },
     'mid_south': {
-        'date': '2026-03-14',
+        # Organizer registration lists Saturday 2027-03-13 for cycling.
+        # The athlete's entered 100-mile distance selects their category;
+        # the 2027 route's exact length/elevation are not yet course facts.
+        'date': '2027-03-13',
         'name': 'Mid South',
         'distance_miles': 100,
-        'elevation_ft': 3000,
+        'elevation_ft': 0,
+        'location': 'Stillwater, Oklahoma',
+        'source_urls': ['https://www.movemint.com/events/the_mid_south_2027'],
+        'source_type': 'organizer',
+        'verified_at': '2026-09-23',
+        'event_year': 2027,
     },
     'big_sugar': {
         'date': '2026-10-17',

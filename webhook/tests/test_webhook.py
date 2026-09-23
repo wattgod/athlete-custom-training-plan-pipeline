@@ -5402,6 +5402,19 @@ class TestComputeTouchpoints:
 
 
 class TestTravelDatesPassthrough:
+    def test_markdown_keeps_each_a_race_goal(self):
+        from app import _questionnaire_to_markdown
+        md = _questionnaire_to_markdown({
+            'races': [
+                {'name': 'Summer Gravel', 'date': '2027-06-05',
+                 'distance': '100 miles', 'priority': 'A', 'goal': 'Finish Strong'},
+                {'name': 'Spring Gravel', 'date': '2027-03-13',
+                 'distance': '100 miles', 'priority': 'A', 'goal': 'Survive'},
+            ],
+        }, name='Test Athlete', email='test@example.com')
+        assert 'Spring Gravel (2027-03-13, 100 miles, priority A, goal survive)' in md
+        assert 'Summer Gravel (2027-06-05, 100 miles, priority A, goal finish)' in md
+
     def test_markdown_preserves_complete_race_demand_vector(self):
         import json
         from app import _questionnaire_to_markdown

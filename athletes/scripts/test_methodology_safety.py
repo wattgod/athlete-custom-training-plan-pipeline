@@ -50,3 +50,13 @@ def test_distribution_always_dict_for_any_athlete():
         res = select_methodology(_profile(age, hours), {"plan_weeks": 16}, None)
         dist = res.get("configuration", {}).get("intensity_distribution")
         assert isinstance(dist, dict) and "z1_z2" in dist, (age, hours, dist)
+
+
+def test_masters_two_a_season_uses_two_to_one_recovery():
+    profile = _profile(age=43, hours=6)
+    profile['a_events'] = [
+        {'date': '2027-03-13', 'priority': 'A'},
+        {'date': '2027-06-05', 'priority': 'A'},
+    ]
+    result = select_methodology(profile, {'plan_weeks': 36}, None)
+    assert result['configuration']['meso_pattern'] == '2:1'

@@ -790,6 +790,11 @@ class TestParseRaceLine:
         result = parse_race_line('Race X (2026-07-04, 75, priority b)')
         assert result['priority'] == 'B'
 
+    def test_explicit_goal_is_preserved_per_race(self):
+        result = parse_race_line(
+            'Spring Gravel (2027-03-13, 100 miles, priority A, goal survive)')
+        assert result['goal'] == 'survival'
+
     def test_empty_line(self):
         result = parse_race_line('')
         assert result['name'] == ''
@@ -862,6 +867,16 @@ class TestRacePriorityAssignment:
         b_names = [e['name'] for e in profile.get('b_events', [])]
         assert a_names == ['Race Two']
         assert b_names == ['Race One']
+
+    def test_secondary_a_keeps_its_own_goal(self):
+        races = (
+            'Summer Gravel (2027-06-05, 100 miles, priority A, goal finish)\n'
+            'Spring Gravel (2027-03-13, 100 miles, priority A, goal survive)'
+        )
+        profile = self._profile_with_races(races)
+        by_date = {e['date']: e for e in profile['a_events']}
+        assert by_date['2027-03-13']['goal'] == 'survival'
+        assert by_date['2027-06-05']['goal'] == 'finish'
 
     def test_meta_strip_prevents_overmatch(self):
         # Trailing meta in the race line must not leak into match_race(),

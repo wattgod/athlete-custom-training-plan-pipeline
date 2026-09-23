@@ -2929,8 +2929,16 @@ def _questionnaire_to_markdown(intake_data: dict, name: str = '', email: str = '
     race_lines = []
     for r in races:
         priority = r.get('priority', 'A')
+        stated_goal = str(r.get('goal') or '').strip().lower()
+        race_goal = {
+            'survive': 'survive', 'survival': 'survive',
+            'finish': 'finish', 'finish strong': 'finish',
+            'finish-strong': 'finish',
+            'compete': 'compete', 'podium': 'podium',
+        }.get(stated_goal)
+        goal_part = f", goal {race_goal}" if race_goal else ''
         race_lines.append(f"  {r.get('name', 'Unknown')} ({r.get('date', 'TBD')}, "
-                          f"{r.get('distance', '~100 mi')}, priority {priority})")
+                          f"{r.get('distance', '~100 mi')}, priority {priority}{goal_part})")
 
     # Map long_ride_days/interval_days/off_days
     long_days = ', '.join(intake_data.get('long_ride_days', ['Saturday']))

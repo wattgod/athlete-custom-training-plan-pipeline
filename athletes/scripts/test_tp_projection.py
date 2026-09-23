@@ -418,6 +418,37 @@ def test_a_race_day_is_kind_race(structure_plan):
         assert s['structure'] is None
 
 
+def test_two_a_race_days_keep_event_specific_cards(tmp_path, monkeypatch):
+    """A season's first race must not inherit the final race's name or dose."""
+    monkeypatch.setenv('GG_FIXED_NOW', '2026-01-01')
+    early = {'name': 'Spring Gravel 75', 'date': '2026-03-21',
+             'distance_miles': 75, 'goal': 'survival', 'priority': 'A'}
+    final = {'name': 'Summer Gravel 100', 'date': '2026-05-30',
+             'distance_miles': 100, 'goal': 'finish', 'priority': 'A'}
+    dates = cpd.calculate_plan_dates(final['date'], plan_weeks=20,
+                                     meso_pattern='2:1', a_events=[early, final])
+    profile = _base_profile('tp-two-a-athlete', final['name'], final['date'],
+                            extra={'a_events': [early, final]})
+    profile['target_race']['distance_miles'] = 100
+    derived = {'plan_weeks': 20, 'ability_level': 'Intermediate'}
+    methodology = {'methodology_id': 'polarized_80_20',
+                   'configuration': {'meso_pattern': '2:1',
+                                     'intensity_distribution': {'z2': 0.80, 'z4': 0.15, 'z5': 0.05}}}
+    athlete_dir = tmp_path / 'tp-two-a-athlete'
+    (athlete_dir / 'workouts').mkdir(parents=True)
+    generate_zwo_files(athlete_dir, dates, methodology, derived, profile)
+    _, manifest = _finish_package(athlete_dir, 'tp-two-a-athlete', dates, profile, monkeypatch)
+    races = {s['date']: s for s in manifest['sessions'] if s['tp_kind'] == 'race'}
+    assert set(races) == {early['date'], final['date']}
+    assert races[early['date']]['display_name'] == 'Race Day — Spring Gravel 75'
+    assert races[final['date']]['display_name'] == 'Race Day — Summer Gravel 100'
+    early_card = (athlete_dir / 'workouts' /
+                  (races[early['date']]['filename_stem'] + '.zwo')).read_text()
+    assert 'Distance: 75 miles' in early_card
+    assert 'Spring Gravel 75' in early_card
+    assert 'Summer Gravel 100' not in early_card
+
+
 # ===========================================================================
 # Every session has display_name + filename_stem.
 # ===========================================================================

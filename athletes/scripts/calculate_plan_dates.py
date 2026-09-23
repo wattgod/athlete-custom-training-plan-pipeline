@@ -122,17 +122,33 @@ def validate_plan_dates(plan_dates: dict, race_date_str: str) -> list:
     plan_weeks = plan_dates['plan_weeks']
     weeks = plan_dates.get('weeks', [])
 
-    # 1. Exactly one race week must contain the target event. Recovery may
-    # follow it when the sealed planning horizon explicitly requests that.
+    # 1. The final target retains its own race week. AE-1.9/1.23 permits
+    # earlier, explicitly named A-race weeks with a recovery week after each.
     race_weeks = [week for week in weeks if week.get('is_race_week')]
-    race_week = race_weeks[0] if len(race_weeks) == 1 else None
-    if len(race_weeks) != 1:
+    target_weeks = [
+        week for week in race_weeks
+        if week['monday'] <= race_date_str <= week['sunday']
+    ]
+    race_week = (target_weeks[0] if len(target_weeks) == 1 else
+                 race_weeks[0] if len(race_weeks) == 1 else None)
+    if ((len(target_weeks) != 1 and len(race_weeks) != 1)
+            or any(week is not race_week and not week.get('a_race')
+                   for week in race_weeks)):
         errors.append(f"CRITICAL: Expected exactly one race week, found {len(race_weeks)}")
     if race_week:
         race_week_monday = datetime.strptime(race_week['monday'], '%Y-%m-%d')
         race_week_sunday = datetime.strptime(race_week['sunday'], '%Y-%m-%d')
         if not (race_week_monday <= race_date <= race_week_sunday):
             errors.append(f"CRITICAL: Race date {race_date_str} not in race week ({race_week['monday']} - {race_week['sunday']})")
+    for earlier in race_weeks:
+        if earlier is race_week:
+            continue
+        index = weeks.index(earlier)
+        if (index + 1 >= len(weeks)
+                or not weeks[index + 1].get('is_post_event_recovery')
+                or not weeks[index + 1].get('is_recovery_week')):
+            errors.append(
+                f"CRITICAL: Week {earlier.get('week')} A race lacks post-event recovery")
 
     # 2. Plan start must be before race date
     if plan_start >= race_date:
@@ -347,6 +363,29 @@ def parse_meso_pattern(pattern: str) -> tuple:
         return (3, 1)  # Safe default
 
 
+def _multi_a_segment_phase(position: int, length: int) -> str:
+    """AE-1.1/1.2: bound each A-race prep independently of the season runway."""
+    if position == length - 1:
+        return 'race'
+    if position == length - 2:
+        return 'taper'
+    peak_weeks = min(6, max(3, (length + 4) // 5))
+    hold_weeks = 2 if length >= 16 else 0
+    earlier = max(0, length - peak_weeks - hold_weeks - 2)
+    build_weeks = max(2, earlier // 3) if earlier >= 4 else 0
+    base_weeks = earlier - build_weeks
+    if base_weeks > 16:
+        build_weeks += base_weeks - 16
+        base_weeks = 16
+    if position < base_weeks:
+        return 'base'
+    if position < base_weeks + build_weeks:
+        return 'build'
+    if position < base_weeks + build_weeks + hold_weeks:
+        return 'maintenance'
+    return 'peak'
+
+
 def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
                          preferred_start: str = None,
                          heavy_training_end: str = None,
@@ -356,7 +395,8 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
                          generation_revision: int = 1,
                          derived_at: str = None,
                          clamp_past_start: bool = True,
-                         post_event_recovery_weeks: int = 0) -> dict:
+                         post_event_recovery_weeks: int = 0,
+                         a_events: list = None) -> dict:
     """
     Calculate all plan dates working backwards from race date.
 
@@ -508,6 +548,55 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
             if position_in_cycle >= load_weeks:
                 week_data['is_recovery_week'] = True
 
+    # AE-1.9/1.23: a paid season may contain two distinct A peaks. Re-phase
+    # each uninterrupted prep window, then reserve a full recovery week after
+    # the earlier race. The single-A path above remains unchanged.
+    earlier_a_events = sorted(
+        (event for event in (a_events or [])
+         if isinstance(event, dict)
+         and str(event.get('priority') or 'A').upper() == 'A'
+         and event.get('date') and event['date'] != race_date_str),
+        key=lambda event: event['date'],
+    )
+    if earlier_a_events:
+        segment_start = 0
+        segments = []
+        for event in earlier_a_events:
+            race_index = next(
+                (i for i, week in enumerate(week_dates)
+                 if week['monday'] <= event['date'] <= week['sunday']), None)
+            if race_index is None or race_index < segment_start + 7:
+                continue  # post-render A-event gate flags unsupported spacing/window
+            if race_index + 1 >= len(week_dates) - 7:
+                continue  # preserve room for recovery and another real peak
+            segments.append((segment_start, race_index, event))
+            segment_start = race_index + 2
+        segments.append((segment_start, len(week_dates) - 1, {
+            'date': race_date_str, 'priority': 'A',
+        }))
+
+        for start, end, event in segments:
+            length = end - start + 1
+            for index in range(start, end + 1):
+                week = week_dates[index]
+                local = index - start
+                phase = _multi_a_segment_phase(local, length)
+                week['phase'] = phase
+                week['is_race_week'] = phase == 'race'
+                week['is_recovery_week'] = (
+                    phase in ('base', 'build', 'peak')
+                    and local % cycle_length >= load_weeks)
+                if phase == 'race':
+                    week['a_race'] = dict(event)
+                    for day in week['days']:
+                        day['is_race_day'] = day['date'] == event['date']
+            if end + 1 < len(week_dates) and event['date'] != race_date_str:
+                recovery = week_dates[end + 1]
+                recovery['phase'] = 'recovery'
+                recovery['is_recovery_week'] = True
+                recovery['is_post_event_recovery'] = True
+                recovery['is_race_week'] = False
+
     # A sealed horizon may explicitly add one complete recovery week after
     # the target-event week. The race-week semantics above remain unchanged.
     for offset in range(1, post_event_recovery_weeks + 1):
@@ -646,6 +735,7 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
         'preferred_start': preferred_start,
         'heavy_training_end': heavy_training_end,
         'meso_pattern': effective_pattern,
+        'a_event_count': len(a_events or []),
         'b_event_count': len(b_events or []),
         'travel_date_count': len(travel_dates or []),
         'post_event_recovery_weeks': post_event_recovery_weeks,
@@ -871,7 +961,8 @@ def main():
             if not meso_pattern:
                 meso_pattern = meth_data.get('meso_pattern')
 
-    # Get B-events and travel dates from profile
+    # Get event hierarchy and travel dates from profile
+    a_events = profile.get('a_events', [])
     b_events = profile.get('b_events', [])
     travel_dates = profile.get('travel_dates', [])
 
@@ -893,7 +984,8 @@ def main():
         plan_dates = calculate_plan_dates(
             race_date, plan_weeks, preferred_start, heavy_training_end, b_events,
             meso_pattern, travel_dates, generation_revision, derived_at,
-            post_event_recovery_weeks=post_event_recovery_weeks)
+            post_event_recovery_weeks=post_event_recovery_weeks,
+            a_events=a_events)
 
     # Print summary
     print("=" * 60)
