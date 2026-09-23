@@ -29,10 +29,21 @@ APPLIED = "APPLIED"
 APPLIED_ATTESTED = "APPLIED_ATTESTED"
 CONFIRMED = "CONFIRMED"
 CANCELLED = "CANCELLED"
+# The coach delivered this paid order outside the pipeline (for example a
+# hand-built calendar). Terminal, but NOT CONFIRMED: nothing was sent through
+# the pipeline's confirmation path, so pipeline-delivery copy must not assume
+# the sealed release reached the athlete.
+FULFILLED_EXTERNALLY = "FULFILLED_EXTERNALLY"
 VALID_STATUSES = {
     GENERATED, BLOCKED_REVIEW, APPROVED, APPLYING, APPLIED,
-    APPLIED_ATTESTED, CONFIRMED, CANCELLED,
+    APPLIED_ATTESTED, CONFIRMED, CANCELLED, FULFILLED_EXTERNALLY,
 }
+# No further fulfilment work is owed on these; every other status is open.
+TERMINAL_STATUSES = {CONFIRMED, CANCELLED, FULFILLED_EXTERNALLY}
+# Only states with no application evidence may be closed as external work;
+# anything the pipeline already applied must finish through confirmation or
+# the Phase 5 compensation workflow.
+EXTERNAL_FULFILLMENT_SOURCE_STATUSES = {GENERATED, BLOCKED_REVIEW, APPROVED}
 DELIVERY_PLATFORMS = {"trainingpeaks", "endure", "manual"}
 PHASE1_APPLIED_PLATFORMS = {"trainingpeaks", "manual"}
 RELEASE_STATUSES = {
@@ -621,6 +632,16 @@ def _validate_state(state: Any) -> Dict[str, Any]:
     for key in ("approval", "waiver", "application", "confirmation"):
         if key not in state:
             raise FulfillmentStateError(f"fulfillment state missing {key}")
+    state.setdefault("external_fulfillment", None)
+    external = state["external_fulfillment"]
+    if state["status"] == FULFILLED_EXTERNALLY:
+        if (not isinstance(external, dict)
+                or any(not str(external.get(field) or "").strip()
+                       for field in ("coach", "at", "reason", "from_status"))):
+            raise FulfillmentStateError(
+                "FULFILLED_EXTERNALLY requires external_fulfillment evidence")
+    elif external is not None and not isinstance(external, dict):
+        raise FulfillmentStateError("external_fulfillment must be an object or null")
     state.setdefault("endure_stage", None)
     stage = state["endure_stage"]
     if stage is not None:
@@ -1484,7 +1505,43 @@ def transition(
         current = state["status"]
         if to == CONFIRMED and current == CONFIRMED:
             return copy.deepcopy(state)
-        if to == CANCELLED:
+        if to == FULFILLED_EXTERNALLY:
+            if current == FULFILLED_EXTERNALLY:
+                return copy.deepcopy(state)
+            if current not in EXTERNAL_FULFILLMENT_SOURCE_STATUSES:
+                raise FulfillmentStateError(
+                    f"illegal transition {current} -> {to}; only "
+                    + ", ".join(sorted(EXTERNAL_FULFILLMENT_SOURCE_STATUSES))
+                    + " orders can be closed as fulfilled outside the pipeline"
+                )
+            attempt = state.get("application_attempt")
+            landed = (
+                attempt.get("landed", [])
+                if isinstance(attempt, dict) else []
+            )
+            in_flight = (
+                isinstance(attempt, dict)
+                and attempt.get("status") in {"accepted", "running"}
+            )
+            if state.get("application") or landed or in_flight:
+                raise FulfillmentStateError(
+                    "external fulfilment requires no pipeline application "
+                    "evidence and no in-flight worker attempt"
+                )
+            reason = str((metadata or {}).get("reason") or "").strip()
+            if not reason:
+                raise FulfillmentStateError(
+                    "reason is required: say what was delivered, where, and when"
+                )
+            state["external_fulfillment"] = {
+                "coach": coach.strip(),
+                "at": now_iso(),
+                "reason": reason,
+                "evidence": str(evidence or "").strip(),
+                "from_status": current,
+                "generation_revision": state["generation_revision"],
+            }
+        elif to == CANCELLED:
             if current == CANCELLED:
                 return copy.deepcopy(state)
             attempt = state.get("application_attempt")

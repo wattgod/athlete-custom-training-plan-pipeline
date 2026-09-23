@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -17,11 +18,30 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from webhook.fulfillment_state import external_state_projection  # noqa: E402
+from webhook.fulfillment_state import (  # noqa: E402
+    TERMINAL_STATUSES,
+    external_state_projection,
+)
 
 
 CRITICAL = "CRITICAL"
 WARNING = "WARNING"
+PAID_ORDER_STALE = "PAID_ORDER_STALE"
+# The coach notification tells the coach what the customer was promised: "the
+# plan or a specific blocker update within 24 hours after payment" (webhook
+# app.py, TrainingPeaks timeline copy; the Endure copy promises delivery
+# "within 24 hours"). A paid order still open past that window is overdue.
+PAID_ORDER_SLA_HOURS = 24
+# A stale paid order alerts (CRITICAL) at most once per this window per
+# order+status; runs in between report it as a WARNING repeat.
+STALE_ALERT_REPEAT_WINDOW = timedelta(hours=24)
+# Only real money: live-mode Stripe Checkout sessions and WooCommerce order
+# numbers. Drill (drill-*), canary, manual_*, legacy_*, test_* and cs_test_*
+# identities are synthetic or unpaid and never page anyone.
+PAID_ORDER_ID_KINDS = (
+    ("stripe_live_checkout", re.compile(r"cs_live_[A-Za-z0-9]+")),
+    ("woocommerce_order", re.compile(r"[0-9]+")),
+)
 RESOURCE_KEYS = {
     "grant", "execution_grant", "active_grant", "last_grant",
     "lease", "worker_lease", "active_lease",
@@ -63,9 +83,13 @@ def _default_out(now: datetime) -> Path:
     return REPO_ROOT / "reports" / "audits" / f"fulfillment-states-{stamp}.json"
 
 
+def order_ref(order_id: str) -> str:
+    """Stable, non-reversible 12-hex reference for an order id."""
+    return hashlib.sha256(str(order_id).encode("utf-8")).hexdigest()[:12]
+
+
 def _state_ref(state: Mapping[str, Any], path: Path) -> str:
-    source = str(state.get("order_id") or path.parent.name or path.name)
-    return hashlib.sha256(source.encode("utf-8")).hexdigest()[:12]
+    return order_ref(str(state.get("order_id") or path.parent.name or path.name))
 
 
 def _anomaly(
@@ -122,6 +146,104 @@ def _worker_stop_acknowledged(state: Mapping[str, Any]) -> bool:
     return any(value is True or (isinstance(value, str) and bool(value.strip())) for value in values)
 
 
+def paid_order_kind(state: Mapping[str, Any]) -> str | None:
+    """Return the payment source for a real paid order, else ``None``."""
+    if state.get("legacy") is True:
+        # Quarantined v1 records carry an opaque legacy_* id and cannot be
+        # transitioned; BLOCKED_REVIEW_OLD already covers them.
+        return None
+    order_id = str(state.get("order_id") or "").strip()
+    for kind, pattern in PAID_ORDER_ID_KINDS:
+        if pattern.fullmatch(order_id):
+            return kind
+    return None
+
+
+def payment_clock(state: Mapping[str, Any]) -> datetime | None:
+    """Earliest durable state event: a lower bound on time since payment.
+
+    The state file is first written when generation finishes, minutes after
+    the paid checkout webhook; history survives regeneration.
+    """
+    times = [
+        parsed for parsed in (
+            _parse_time(event.get("at"))
+            for event in (state.get("history") or [])
+            if isinstance(event, dict)
+        ) if parsed is not None
+    ]
+    if times:
+        return min(times)
+    return _parse_time(state.get("updated_at"))
+
+
+def open_paid_order(
+    state: Mapping[str, Any], *, now: datetime,
+    stale_after_hours: int = PAID_ORDER_SLA_HOURS,
+) -> dict[str, Any] | None:
+    """Facts for a paid order not yet in a terminal status, else ``None``."""
+    status = str(state.get("status") or "")
+    kind = paid_order_kind(state)
+    if kind is None or status in TERMINAL_STATUSES:
+        return None
+    paid_at = payment_clock(state)
+    blockers = state.get("blocking_issues")
+    blockers = blockers if isinstance(blockers, list) else []
+    return {
+        "order_kind": kind,
+        "status": status,
+        "hours_since_payment": (
+            int((now - paid_at).total_seconds() // 3600)
+            if paid_at is not None else None),
+        "payment_clock": "first_state_event",
+        "blocker_count": len(blockers),
+        "blocker_ids": sorted(
+            str(item.get("id")) for item in blockers
+            if isinstance(item, dict) and item.get("id")),
+        "sla_hours": stale_after_hours,
+        "stale": bool(
+            paid_at is not None
+            and now - paid_at > timedelta(hours=stale_after_hours)),
+    }
+
+
+def stale_paid_order(
+    state: Mapping[str, Any], *, now: datetime,
+    stale_after_hours: int = PAID_ORDER_SLA_HOURS,
+) -> dict[str, Any] | None:
+    """Facts for a paid, still-open order past the SLA, else ``None``."""
+    facts = open_paid_order(
+        state, now=now, stale_after_hours=stale_after_hours)
+    return facts if facts is not None and facts["stale"] else None
+
+
+def list_open_paid_orders(
+    root: Path, *, now: datetime,
+    stale_after_hours: int = PAID_ORDER_SLA_HOURS,
+) -> list[dict[str, Any]]:
+    """Every paid order still owed fulfilment, oldest first, hashed refs only."""
+    found = []
+    for path in _state_paths(Path(root)):
+        try:
+            state = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(state, dict):
+            continue
+        facts = open_paid_order(
+            state, now=now, stale_after_hours=stale_after_hours)
+        if facts is None:
+            continue
+        facts.pop("blocker_ids")
+        found.append({
+            "order_ref": _state_ref(state, path),
+            "delivery_platform": str(state.get("delivery_platform") or ""),
+            **facts,
+        })
+    found.sort(key=lambda item: -(item["hours_since_payment"] or 0))
+    return found
+
+
 def _approval_is_sealed(state: Mapping[str, Any]) -> bool:
     approval = state.get("approval")
     if not isinstance(approval, dict) or not approval:
@@ -138,6 +260,7 @@ def _approval_is_sealed(state: Mapping[str, Any]) -> bool:
 
 def audit_state(
     state: Mapping[str, Any], *, path: Path, now: datetime, max_age_days: int,
+    stale_after_hours: int = PAID_ORDER_SLA_HOURS,
 ) -> list[dict[str, Any]]:
     anomalies: list[dict[str, Any]] = []
     ref = _state_ref(state, path)
@@ -145,6 +268,22 @@ def audit_state(
     threshold = timedelta(days=max_age_days)
     updated = _parse_time(state.get("updated_at"))
     is_drill_order = str(state.get("order_id") or "").startswith("drill-")
+
+    stale = stale_paid_order(
+        state, now=now, stale_after_hours=stale_after_hours)
+    if stale is not None:
+        anomaly = _anomaly(
+            ref, PAID_ORDER_STALE, CRITICAL,
+            (f"paid order is still {stale['status']} "
+             f"{stale['hours_since_payment']}h after payment "
+             f"(SLA {stale_after_hours}h, {stale['blocker_count']} blockers)"),
+        )
+        anomaly.update({
+            key: stale[key] for key in (
+                "status", "hours_since_payment", "blocker_count",
+                "sla_hours", "order_kind", "payment_clock")
+        })
+        anomalies.append(anomaly)
 
     if (
         status == "BLOCKED_REVIEW"
@@ -203,7 +342,15 @@ def _state_paths(root: Path) -> list[Path]:
 
 def audit_states(
     root: Path, *, now: datetime, max_age_days: int,
+    stale_after_hours: int = PAID_ORDER_SLA_HOURS,
+    stale_orders: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
+    """Audit every state under ``root``.
+
+    ``stale_orders`` (optional) receives one private record per stale paid
+    order, including the raw order id the coach needs to act. It never
+    enters the redacted artifact.
+    """
     if not root.exists():
         return [
             _anomaly(
@@ -228,7 +375,20 @@ def audit_states(
             ))
             continue
         anomalies.extend(audit_state(
-            state, path=path, now=now, max_age_days=max_age_days))
+            state, path=path, now=now, max_age_days=max_age_days,
+            stale_after_hours=stale_after_hours))
+        if stale_orders is not None:
+            stale = stale_paid_order(
+                state, now=now, stale_after_hours=stale_after_hours)
+            if stale is not None:
+                stale_orders.append({
+                    **stale,
+                    "state_ref": _state_ref(state, path),
+                    "order_id": str(state.get("order_id") or ""),
+                    "athlete_id": str(state.get("athlete_id") or ""),
+                    "delivery_platform": str(
+                        state.get("delivery_platform") or ""),
+                })
     return anomalies, scanned
 
 
@@ -236,35 +396,127 @@ def _artifact(
     *, root: Path, now: datetime, max_age_days: int,
     anomalies: list[dict[str, Any]], scanned: int,
 ) -> dict[str, Any]:
-    critical = sum(item["severity"] == CRITICAL for item in anomalies)
     return {
         "artifact_type": "fulfillment_state_audit/v1",
         "generated_at": _timestamp(now),
         "root_configured": True,
         "max_age_days": max_age_days,
         "states_scanned": scanned,
-        "summary": {
-            "anomalies": len(anomalies),
-            "critical": critical,
-            "warning": len(anomalies) - critical,
-        },
+        "summary": _summary(anomalies),
         "anomalies": anomalies,
     }
 
 
-def build_audit_artifact(
+def _summary(anomalies: list[dict[str, Any]]) -> dict[str, int]:
+    critical = sum(item["severity"] == CRITICAL for item in anomalies)
+    return {
+        "anomalies": len(anomalies),
+        "critical": critical,
+        "warning": len(anomalies) - critical,
+        "stale_paid_orders": sum(
+            item["code"] == PAID_ORDER_STALE for item in anomalies),
+    }
+
+
+def build_audit_report(
     root: Path, *, now: datetime | None = None, max_age_days: int = 3,
-) -> dict[str, Any]:
-    """Run one audit and return the same redacted artifact used by the CLI."""
+    stale_after_hours: int = PAID_ORDER_SLA_HOURS,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Return ``(redacted artifact, private stale paid order records)``."""
     if max_age_days < 1:
         raise ValueError("max_age_days must be at least 1")
     generated_at = now or _utc_now()
+    stale_orders: list[dict[str, Any]] = []
     anomalies, scanned = audit_states(
-        Path(root).resolve(), now=generated_at, max_age_days=max_age_days)
-    return external_state_projection(_artifact(
+        Path(root).resolve(), now=generated_at, max_age_days=max_age_days,
+        stale_after_hours=stale_after_hours, stale_orders=stale_orders)
+    artifact = external_state_projection(_artifact(
         root=Path(root).resolve(), now=generated_at,
         max_age_days=max_age_days, anomalies=anomalies, scanned=scanned,
     ))
+    return artifact, stale_orders
+
+
+def build_audit_artifact(
+    root: Path, *, now: datetime | None = None, max_age_days: int = 3,
+    stale_after_hours: int = PAID_ORDER_SLA_HOURS,
+) -> dict[str, Any]:
+    """Run one audit and return the same redacted artifact used by the CLI."""
+    artifact, _ = build_audit_report(
+        root, now=now, max_age_days=max_age_days,
+        stale_after_hours=stale_after_hours)
+    return artifact
+
+
+def load_alert_ledger(path: Path) -> dict[str, Any]:
+    """Read the stale-order alert ledger; unreadable means nothing alerted."""
+    try:
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    alerts = raw.get("alerts") if isinstance(raw, dict) else None
+    if not isinstance(alerts, dict):
+        return {}
+    return {
+        str(ref): dict(entry) for ref, entry in alerts.items()
+        if isinstance(entry, dict)
+    }
+
+
+def apply_alert_ledger(
+    artifact: dict[str, Any], ledger: Mapping[str, Any], *, now: datetime,
+) -> tuple[list[str], dict[str, Any]]:
+    """Throttle stale paid-order alerts to one per order+status per window.
+
+    A stale order alerts when it has no ledger entry, its status changed
+    since the last alert, or the last alert is at least
+    ``STALE_ALERT_REPEAT_WINDOW`` old. Otherwise the anomaly stays in the
+    artifact, downgraded to a WARNING repeat, so the hourly workflow goes red
+    once per order per state per day instead of every hour. Returns the
+    state refs that alert now and the next ledger (entries for orders that
+    are no longer stale are dropped). Keys are hashed state refs only.
+    """
+    new_refs: list[str] = []
+    next_ledger: dict[str, Any] = {}
+    for item in artifact.get("anomalies") or []:
+        if item.get("code") != PAID_ORDER_STALE:
+            continue
+        ref = str(item["state_ref"])
+        previous = ledger.get(ref) if isinstance(ledger.get(ref), dict) else None
+        last = _parse_time((previous or {}).get("alerted_at"))
+        repeat = bool(
+            previous
+            and previous.get("status") == item.get("status")
+            and last is not None
+            and now - last < STALE_ALERT_REPEAT_WINDOW
+        )
+        if repeat:
+            item["severity"] = WARNING
+            item["alert"] = "repeat_within_24h"
+            item["last_alerted_at"] = _timestamp(last)
+            next_ledger[ref] = dict(previous)
+        else:
+            item["severity"] = CRITICAL
+            item["alert"] = "new"
+            new_refs.append(ref)
+            next_ledger[ref] = {
+                "status": item.get("status"),
+                "alerted_at": _timestamp(now),
+            }
+    artifact["summary"] = _summary(artifact.get("anomalies") or [])
+    return new_refs, next_ledger
+
+
+def save_alert_ledger(path: Path, ledger: Mapping[str, Any]) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(
+        json.dumps({"version": 1, "alerts": dict(ledger)}, indent=2,
+                   sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(tmp, path)
 
 
 def _print_table(artifact: Mapping[str, Any]) -> None:
@@ -276,6 +528,8 @@ def _print_table(artifact: Mapping[str, Any]) -> None:
         return
     for item in anomalies:
         age = f" ({item['age_days']}d)" if "age_days" in item else ""
+        if "hours_since_payment" in item:
+            age = f" ({item['hours_since_payment']}h since payment)"
         print(
             f"{item['severity']:8}  {item['state_ref']:12}  "
             f"{item['code']:31}  {item['detail']}{age}"
@@ -286,6 +540,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, help="orders root or one state file")
     parser.add_argument("--max-age-days", type=int, default=3)
+    parser.add_argument(
+        "--stale-after-hours", type=int, default=PAID_ORDER_SLA_HOURS,
+        help="paid orders still open after this many hours are CRITICAL")
     parser.add_argument("--out", type=Path, help="JSON artifact path")
     return parser
 
@@ -297,8 +554,11 @@ def main(argv: list[str] | None = None) -> int:
     now = _utc_now()
     root = (args.root or _configured_root(os.environ)).resolve()
     out = args.out or _default_out(now)
+    if args.stale_after_hours < 1:
+        build_parser().error("--stale-after-hours must be at least 1")
     projected = build_audit_artifact(
-        root, now=now, max_age_days=args.max_age_days)
+        root, now=now, max_age_days=args.max_age_days,
+        stale_after_hours=args.stale_after_hours)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         json.dumps(projected, indent=2, sort_keys=True, allow_nan=False) + "\n",
