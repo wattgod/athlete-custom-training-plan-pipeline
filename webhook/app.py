@@ -312,10 +312,11 @@ SEASON_PLAN_PRICE_DISPLAY = '$499'
 SEASON_PLAN_NAME = 'Season Plan'
 SEASON_PLAN_OFFER_FAMILY = 'season_plan'
 SEASON_PLAN_MAX_WEEKS = 52
-# Three quarterly rebuilds, then a 4th targeting the A-race if one was given
-# at checkout, else +52 weeks from purchase. See _season_plan_rebuild_dates.
-SEASON_PLAN_REBUILD_OFFSETS_WEEKS = (13, 26, 39)
-SEASON_PLAN_FALLBACK_REBUILD_WEEKS = 52
+# Four fixed rebuild dates from purchase date. Twin of
+# compute_season_plan_rebuild_dates in gravel-race-automation
+# wordpress/pricing.py (mirrored again in mission_control/services/
+# pricing.py) — keep these offsets in sync with that function by hand.
+SEASON_PLAN_REBUILD_OFFSETS_WEEKS = (10, 23, 36, 49)
 
 # Pre-built Stripe price IDs (from scripts/create_stripe_products.py)
 # Training plan prices keyed by weeks (4–16, plus 17+ cap)
@@ -1437,8 +1438,16 @@ def _build_plan_notification_details(order_data: dict, result: dict,
     }
 
 
-def _log_product_event(product_type: str, order_id: str, **details):
-    """Write a product event to the order log. Shared by coaching/consulting handlers."""
+def _log_product_event(product_type: str, order_id: str,
+                       raise_on_error: bool = False, **details):
+    """Write a product event to the order log. Shared by coaching/consulting/
+    season_plan handlers.
+
+    raise_on_error=True (season_plan) propagates a write failure to the
+    caller instead of swallowing it, so the caller can refuse to mark the
+    order processed and let Stripe retry. Default False preserves the
+    original swallow-and-log behavior every other caller relies on.
+    """
     log_dir = Path(DATA_DIR) / '.logs'
     log_dir.mkdir(exist_ok=True)
     log_file = log_dir / f"{datetime.now().strftime('%Y-%m')}.jsonl"
@@ -1456,6 +1465,8 @@ def _log_product_event(product_type: str, order_id: str, **details):
             fcntl.flock(f.fileno(), fcntl.LOCK_UN)
     except IOError as e:
         logger.error(f"Failed to write {product_type} log: {e}")
+        if raise_on_error:
+            raise
 
 
 def validate_order_data(order_data: dict) -> tuple:
@@ -5902,10 +5913,17 @@ def create_checkout():
         return jsonify({'error': 'Name is required'}), 400
 
     # The questionnaire tells this endpoint apart with a top-level `product`
-    # field. Anything other than the literal 'season_plan' — including the
-    # field being absent, which is every existing caller — falls straight
-    # through to the unchanged race-plan path below.
-    product = str(data.get('product') or 'race_plan').strip().lower()
+    # field. Absent — every existing caller — means race plan, exactly as
+    # today. Any other value must be one of the two known products: falling
+    # through to the race-plan path on an unrecognized value (a client typo
+    # like 'season-plan') would silently charge $249 for a $499 product.
+    raw_product = data.get('product')
+    if raw_product is None or str(raw_product).strip() == '':
+        product = 'race_plan'
+    else:
+        product = str(raw_product).strip().lower()
+        if product not in ('race_plan', 'season_plan'):
+            return jsonify({'error': f"Unknown product: {raw_product!r}"}), 400
     if product == 'season_plan':
         return _create_season_plan_checkout(
             data, email, name, ga4_client_id, ga4_session_id, analytics_consent)
@@ -6091,17 +6109,6 @@ def _create_season_plan_checkout(data: dict, email: str, name: str,
     brand = _brand_from_origin(request.headers.get('Origin', ''))
     brand_cfg = _brand_config(brand)
 
-    # Races are optional at checkout for this product (a season buyer may
-    # not have entered their full calendar yet). If an A-race is present,
-    # its date becomes the 4th scheduled rebuild (see
-    # _season_plan_rebuild_dates); otherwise the webhook falls back to
-    # purchase date + 52 weeks.
-    races = data.get('races') or []
-    a_race = next(
-        (r for r in races if isinstance(r, dict) and r.get('priority') == 'A'),
-        None)
-    a_race_date_str = str((a_race or {}).get('date') or '')
-
     intake_id = str(uuid.uuid4())
     data['computed_price_cents'] = SEASON_PLAN_PRICE_CENTS
     data['brand'] = brand
@@ -6125,8 +6132,6 @@ def _create_season_plan_checkout(data: dict, email: str, name: str,
         'brand': brand,
         'price_cents': str(SEASON_PLAN_PRICE_CENTS),
     }
-    if a_race_date_str:
-        checkout_metadata['a_race_date'] = a_race_date_str
     _apply_ga4_metadata(
         checkout_metadata, ga4_client_id, ga4_session_id, analytics_consent)
 
@@ -6167,16 +6172,24 @@ def _create_season_plan_checkout(data: dict, email: str, name: str,
         success_url=f"{brand_cfg['site']}/training-plans/success/?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=cancel_url,
         expires_at=expires_at,
+        # No promo codes on this branch — Stripe's native recovery link
+        # still gets created (`enabled: True`) so an expired session can be
+        # resumed, but never offers a coupon field. Our own recovery EMAIL
+        # is skipped for season_plan entirely (_handle_checkout_expired).
         after_expiration={
             'recovery': {
                 'enabled': True,
-                'allow_promotion_codes': True,
+                'allow_promotion_codes': False,
             }
         },
         consent_collection={
             'promotions': 'auto',
         },
     )
+    # Tax handling identical to the race plan above: automatic_tax is added
+    # only when ENABLE_AUTOMATIC_TAX is on (Railway env var, off by default
+    # until Stripe Tax is configured) — same flag, same behavior, no
+    # season-specific branch.
     if ENABLE_AUTOMATIC_TAX:
         session_kwargs['automatic_tax'] = {'enabled': True}
 
@@ -7811,6 +7824,19 @@ def _handle_checkout_expired(data: dict):
         email = session.get('customer_details', {}).get('email', '')
         metadata = session.get('metadata', {})
         product_type = metadata.get('product_type', 'training_plan')
+
+        # Season Plan has no recovery copy of its own yet — _send_recovery_email
+        # would otherwise fall through to its generic consulting-session
+        # wording, which is wrong for a $499 season purchase. Skip recovery
+        # entirely for this product until dedicated copy exists.
+        if product_type == 'season_plan':
+            logger.info(
+                f"Expired checkout {session_id} — Season Plan, recovery email skipped")
+            return jsonify({
+                'status': 'ignored',
+                'reason': 'Season Plan recovery email not sent',
+            })
+
         athlete_name = metadata.get('athlete_name', '')
         consent = session.get('consent', {})
         intake_id = metadata.get('intake_id', '')
@@ -8064,25 +8090,15 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
     })
 
 
-def _season_plan_rebuild_dates(purchase_date: date, a_race_date_str: str = '') -> list:
-    """Four scheduled-rebuild dates for a Season Plan order, spread across
-    the year from the purchase date. Three are quarterly (+13/+26/+39
-    weeks); the 4th targets the athlete's A-race if one was given at
-    checkout, else falls back to purchase date + 52 weeks. Deliberately
-    simple — no attempt to nudge a rebuild off race week itself."""
-    dates = [purchase_date + timedelta(weeks=w)
-             for w in SEASON_PLAN_REBUILD_OFFSETS_WEEKS]
-    a_race_date = None
-    if a_race_date_str:
-        try:
-            a_race_date = datetime.strptime(a_race_date_str, '%Y-%m-%d').date()
-        except (ValueError, TypeError):
-            a_race_date = None
-    if a_race_date:
-        dates.append(a_race_date)
-    else:
-        dates.append(purchase_date + timedelta(weeks=SEASON_PLAN_FALLBACK_REBUILD_WEEKS))
-    return dates
+def _season_plan_rebuild_dates(purchase_date: date) -> list:
+    """Four fixed scheduled-rebuild dates for a Season Plan order: weeks
+    10/23/36/49 from the purchase date. Twin of
+    compute_season_plan_rebuild_dates in gravel-race-automation
+    wordpress/pricing.py — keep the two in sync by hand (this repo can't
+    read across repos at runtime). No A-race-relative date: fixed offsets
+    only, deliberately simple."""
+    return [purchase_date + timedelta(weeks=w)
+            for w in SEASON_PLAN_REBUILD_OFFSETS_WEEKS]
 
 
 def _build_season_plan_email(details: dict) -> tuple:
@@ -8093,7 +8109,6 @@ def _build_season_plan_email(details: dict) -> tuple:
     email = details.get('email', '')
     order_id = details.get('order_id', '')
     rebuild_dates = details.get('rebuild_dates', [])
-    a_race_date = details.get('a_race_date', '')
     brand = normalize_brand(details.get('brand'))
     subject_prefix = _brand_config(brand).get('subject_prefix', '[GG]')
 
@@ -8112,7 +8127,6 @@ def _build_season_plan_email(details: dict) -> tuple:
     <table style="font-size: 14px; border-collapse: collapse; width: 100%;">
       <tr><td style="padding: 4px 12px 4px 0; color: #888; width: 120px;">Name</td><td style="padding: 4px 0;"><strong>{name}</strong></td></tr>
       <tr><td style="padding: 4px 12px 4px 0; color: #888;">Email</td><td style="padding: 4px 0;"><a href="mailto:{email}">{email}</a></td></tr>
-      {'<tr><td style="padding: 4px 12px 4px 0; color: #888;">A-race date</td><td style="padding: 4px 0;">' + a_race_date + '</td></tr>' if a_race_date else ''}
     </table>
     <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Scheduled rebuilds</h3>
     <table style="font-size: 14px; border-collapse: collapse; width: 100%;">
@@ -8133,20 +8147,80 @@ def _handle_season_plan_webhook(session: dict, metadata: dict, order_id: str):
     does not run the ZWO generation pipeline — building the actual 52-week
     plan is out of scope for this checkout branch (see the labour_budget
     note on data/pricing.json in gravel-race-automation).
+
+    Two guards sol found missing on first review:
+    - Payment verification: payment_status must be 'paid' and
+      amount_subtotal must equal the $499 constant exactly. A checkout that
+      completed without either is not recorded as a sale; the coach gets a
+      loud alert instead so a human checks Stripe directly.
+    - Record-before-mark: the order log write happens first and must
+      succeed (raise_on_error=True) before mark_order_processed runs. If
+      the write fails, this returns 500 so Stripe retries the whole event
+      rather than silently losing the order.
     """
     name = metadata.get('athlete_name', 'Unknown')
     email = (session.get('customer_details') or {}).get('email', '')
     brand = normalize_brand(metadata.get('brand'))
-    a_race_date = str(metadata.get('a_race_date') or '')
+
+    payment_status = str(session.get('payment_status') or '')
+    amount_subtotal = session.get('amount_subtotal')
+    if payment_status != 'paid' or amount_subtotal != SEASON_PLAN_PRICE_CENTS:
+        logger.critical(
+            f"SEASON PLAN PAYMENT MISMATCH: order={order_id} "
+            f"payment_status={payment_status!r} amount_subtotal={amount_subtotal!r} "
+            f"expected_cents={SEASON_PLAN_PRICE_CENTS}")
+        subject = f"[GG] Season Plan payment mismatch: {name} ({order_id})"
+        text = (
+            f"Season Plan checkout {order_id} for {name} completed but did "
+            f"not pass verification: payment_status={payment_status!r}, "
+            f"amount_subtotal={amount_subtotal!r} (expected 'paid' / "
+            f"{SEASON_PLAN_PRICE_CENTS}). NOT recorded as a sale — check "
+            "Stripe directly before treating this order as paid."
+        )
+        if NOTIFICATION_EMAIL:
+            _send_email(NOTIFICATION_EMAIL, subject, text, brand=brand)
+        else:
+            logger.critical(f"{subject}\n{text}")
+        return jsonify({
+            'status': 'payment_mismatch',
+            'product_type': 'season_plan',
+            'message': 'Payment not confirmed or amount mismatch; order not recorded',
+        })
+
+    purchase_date = date.today()
+    rebuild_dates = _season_plan_rebuild_dates(purchase_date)
+    rebuild_dates_iso = [d.isoformat() for d in rebuild_dates]
+
+    # Order record FIRST — the same JSONL order log coaching/consulting/
+    # consult_addon already write via _log_product_event (no dedicated DB
+    # table exists in this repo — everything here is file-based — so the
+    # rebuild dates live as a field on that existing record rather than a
+    # new store). raise_on_error propagates a write failure so we refuse to
+    # mark the order processed and let Stripe retry.
+    try:
+        _log_product_event('season_plan', order_id, name=name, email=email,
+                           brand=brand, price_cents=SEASON_PLAN_PRICE_CENTS,
+                           purchase_date=purchase_date.isoformat(),
+                           rebuild_dates=rebuild_dates_iso,
+                           raise_on_error=True)
+    except IOError:
+        logger.exception(
+            f"Failed to record season_plan order {order_id} — not marking processed")
+        return jsonify({'error': 'Failed to record order'}), 500
+
+    # Idempotency mark: same check-then-mark file (.processed_orders.json,
+    # single fcntl.LOCK_EX per open) every product type in this app uses.
+    # There is no additional cross-worker lock spanning check_idempotency()
+    # (called once, centrally, in stripe_webhook()) through this mark —
+    # none of the existing handlers (training_plan/coaching/consulting)
+    # have one either, so this matches them rather than inventing a new
+    # primitive.
+    mark_order_processed(order_id, sanitize_athlete_id(name))
 
     logger.info(f"Season Plan order: {name} ({_mask_email(email)})")
 
-    purchase_date = date.today()
-    rebuild_dates = _season_plan_rebuild_dates(purchase_date, a_race_date)
-    rebuild_dates_iso = [d.isoformat() for d in rebuild_dates]
-
-    mark_order_processed(order_id, sanitize_athlete_id(name))
-
+    # Best-effort from here — GA4/email failures are swallowed, matching
+    # every other webhook handler in this file.
     try:
         _send_ga4_purchase(order_id, session.get('amount_total'),
                            'season_plan', SEASON_PLAN_NAME, brand=brand,
@@ -8157,23 +8231,10 @@ def _handle_season_plan_webhook(session: dict, metadata: dict, order_id: str):
     except Exception:
         logger.exception("GA4 purchase event failed for season_plan")
 
-    # Order record: the same JSONL order log coaching/consulting/consult_addon
-    # already write via _log_product_event (no dedicated DB table exists in
-    # this repo — everything here is file-based — so the rebuild dates live
-    # as a field on that existing record rather than a new store).
-    try:
-        _log_product_event('season_plan', order_id, name=name, email=email,
-                           brand=brand, price_cents=SEASON_PLAN_PRICE_CENTS,
-                           purchase_date=purchase_date.isoformat(),
-                           a_race_date=a_race_date or None,
-                           rebuild_dates=rebuild_dates_iso)
-    except Exception:
-        logger.exception("Failed to log season_plan product event")
-
     try:
         subject, text, html = _build_season_plan_email({
             'name': name, 'email': email, 'order_id': order_id, 'brand': brand,
-            'rebuild_dates': rebuild_dates_iso, 'a_race_date': a_race_date,
+            'rebuild_dates': rebuild_dates_iso,
         })
         if NOTIFICATION_EMAIL:
             _send_email(NOTIFICATION_EMAIL, subject, text, html=html, brand=brand)
