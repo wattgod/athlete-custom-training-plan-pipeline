@@ -106,6 +106,44 @@ def test_story_notes_never_repeat_a_sentence_across_weeks():
     assert not [s for s, c in sentences.items() if c > 1]
 
 
+def _long_plan(weeks=35):
+    """A 3:1 load/recovery season: base, build, peak, taper, race -- long
+    enough that every phrase pool and fixed position line comes round again."""
+    plan = _plan(8)
+    template = plan["weeks"][1]["sessions"]
+    start = date(2026, 9, 28)
+    plan["weeks"] = []
+    for w in range(1, weeks + 1):
+        if w == weeks:
+            week_type, phase = "race", "race"
+        elif w == weeks - 1:
+            week_type, phase = "taper", "taper"
+        else:
+            week_type = "recovery" if w % 4 == 0 else "load"
+            phase = "base" if w <= 17 else ("build" if w <= 26 else "peak")
+        shift = timedelta(days=7 * (w - 1))
+        sessions = [{**s, "date": (date.fromisoformat(s["date"]) - date(2026, 8, 31)
+                                   + start + shift).isoformat()} for s in template]
+        plan["weeks"].append({"number": w, "phase": phase, "week_type": week_type,
+                              "sessions": sessions})
+    return plan
+
+
+def test_long_plan_story_notes_pass_the_voice_lint():
+    """2026-09-22 order: a 34-week plan repeated 32 sentences ("Last load
+    week of this block.", "Back into peak with fresh legs." ...) because
+    the position lines recur every block and the notice pools wrap. Once a
+    sentence is on the calendar it is not said again."""
+    notes = render_story_notes(_long_plan())
+    assert lint_notes(notes, rules=RULES) == []
+    mondays = [n for n in notes if re.match(r"Week \d+: ", n["title"])
+               and "Midweek" not in n["title"] and "Fuel" not in n["title"]]
+    assert all(n["body"].strip() for n in mondays)
+    # Nothing is invented to fill the gap: every Monday note still opens
+    # with its week position.
+    assert all(re.match(r"(Week \d+ of \d+\.|Race week\.)", n["body"]) for n in mondays)
+
+
 def test_story_notes_are_deterministic():
     assert render_story_notes(_plan()) == render_story_notes(_plan())
 

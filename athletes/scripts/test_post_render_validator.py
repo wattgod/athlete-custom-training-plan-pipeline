@@ -789,3 +789,17 @@ def test_optional_days_prefixes_only_prescribed_work():
     # session loop, and a local-only datetime import raises NameError there
     # (which fails the whole canonical build, not just the prefix).
     assert 'from datetime import date\n' in src
+
+
+def test_voice_contract_keeps_every_finding_through_the_id_dedup(monkeypatch):
+    """Findings used to be one issue each under the shared VOICE_CONTRACT id,
+    so the final id dedup kept only the last: 32 repeated sentences on a
+    34-week plan reached the coach as one."""
+    import post_render_validator as prv
+    findings = ['sentence repeated in 7 weeks: "a"', 'sentence repeated in 2 weeks: "b"']
+    monkeypatch.setattr(prv, 'lint_notes', lambda notes: list(findings))
+    issues, _ = validate_transitional_input(_document())
+    voice = [issue for issue in issues if issue['id'] == 'VOICE_CONTRACT']
+    assert len(voice) == 1
+    assert voice[0]['review_value'] == {'findings': findings}
+    assert voice[0]['message'].startswith('2 voice-contract findings')

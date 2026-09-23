@@ -994,11 +994,17 @@ def _voice_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
     findings: List[str] = []
     findings.extend(lint_notes(render_coached_weekly_notes(plan_ir)))
     findings.extend(lint_rest_cards(session for _, session in _sessions(plan_ir)))
-    return [
-        _issue("VOICE_CONTRACT", finding,
-               basis="athletes/config/voice_rules.yaml applied to rendered notes and Day Off cards")
-        for finding in findings
-    ]
+    if not findings:
+        return []
+    # One issue carrying every finding. One issue per finding under the same
+    # id was collapsed by validate_transitional_input's id dedup to the LAST
+    # finding only: a 34-week plan with 32 repeated sentences reported one.
+    message = findings[0] if len(findings) == 1 else (
+        f"{len(findings)} voice-contract findings; first: {findings[0]}")
+    return [_issue(
+        "VOICE_CONTRACT", message,
+        review_value=findings[0] if len(findings) == 1 else {"findings": findings},
+        basis="athletes/config/voice_rules.yaml applied to rendered notes and Day Off cards")]
 
 
 def validate_transitional_input(

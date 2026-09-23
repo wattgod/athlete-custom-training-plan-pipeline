@@ -29,6 +29,8 @@ import re
 from datetime import date, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from voice_lint import is_real_sentence, split_sentences
+
 # ---------------------------------------------------------------------------
 # Family-level coaching lines. Keyed on archetype_id / title patterns. Each
 # family has several phrasings; the plan cycles through them so the same
@@ -536,6 +538,28 @@ def _self_review_note(dated: List[Any]) -> Dict[str, str]:
     }
 
 
+def _unsaid(line: str, said: set) -> str:
+    """``line`` up to its first sentence already on the calendar.
+
+    The position lines ("Last load week of this block ...", "Back into base
+    with fresh legs ...") recur every block, and the notice pools wrap, so a
+    34-week plan repeated 30+ sentences and failed the voice contract. Same
+    choice the family lines and mid-week notes already make: once said,
+    say nothing new. Cutting at the first repeat (not dropping it alone)
+    keeps a follow-on sentence from losing the sentence it refers to."""
+    sentences = split_sentences(line)
+    kept: List[str] = []
+    for sentence in sentences:
+        if is_real_sentence(sentence) and sentence in said:
+            break
+        kept.append(sentence)
+    return line if len(kept) == len(sentences) else " ".join(kept)
+
+
+def _remember(text: str, said: set) -> None:
+    said.update(s for s in split_sentences(text) if is_real_sentence(s))
+
+
 def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, str]]:
     """One Monday note per plan week. Deterministic for a given PlanIR."""
     weeks = [w for w in (_get(plan_ir, "weeks") or []) if _get(w, "sessions")]
@@ -557,6 +581,7 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
     phase_use: Dict[str, int] = {}
     midweek_feel_use = 0
     midweek_fuel_use = 0
+    said: set = set()  # real sentences already in an earlier note (voice_lint)
     notes: List[Dict[str, str]] = []
 
     # AE-9.4 (2026-08-24 TP review, addendum): Day 1 of the plan -- the
@@ -662,10 +687,19 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
         notice_use[week_type] = n_use + 1
         lines.append(pool[n_use % len(pool)])
 
+        seen = set(said)
+        kept_lines: List[str] = []
+        for line in lines:
+            line = _unsaid(line, seen)
+            if line:
+                kept_lines.append(line)
+                _remember(line, seen)
+        lines = kept_lines
         body = "\n\n".join(lines)
         while _word_count(body) > max_words and len(lines) > 2:
             lines.pop(-2)  # drop the aside, then key sessions from the end; keep the closing rule
             body = "\n\n".join(lines)
+        _remember(body, said)
 
         label = {"pre_plan": "Pre-Plan", "testing": "Testing", "recovery": "Recovery", "taper": "Taper", "race": "Race Week"}.get(
             week_type, phase.replace("_", " ").title() or "Training")
@@ -690,6 +724,7 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
                     "title": f"Week {number}: Midweek",
                     "body": _MIDWEEK_LOAD_FEEL[midweek_feel_use],
                 })
+                _remember(_MIDWEEK_LOAD_FEEL[midweek_feel_use], said)
                 midweek_feel_use += 1
                 used_dates.add(feel_date.isoformat())
                 if thread["legs_heavy_setup_week"] is None:
@@ -705,6 +740,7 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
                         "title": f"Week {number}: Fuel The Long Ride",
                         "body": _MIDWEEK_LONG_RIDE_FUEL[midweek_fuel_use],
                     })
+                    _remember(_MIDWEEK_LONG_RIDE_FUEL[midweek_fuel_use], said)
                     midweek_fuel_use += 1
                     used_dates.add(fuel_date.isoformat())
 
