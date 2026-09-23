@@ -200,17 +200,45 @@ def test_growing_an_endurance_ride_still_extends_its_z2_block():
 
 
 # ---------------------------------------------------------------------------
-# Field tests -- the generator reads the gate's pain predicate
+# Field tests -- retests follow the gate's pain predicate, W1 follows reanchor
 # ---------------------------------------------------------------------------
 
-def test_unresolved_pain_means_no_initial_field_test():
+_ACTIVE = 'Mountain bike crash last year with a concussion; still easing back in'
+_HEALED = 'Broke my wrist in 2023, fully healed and cleared'
+
+
+def _injured(text):
+    # Intake stamps every current-injury answer 'active' (the healed case too).
+    return {'injury_history': {'current_injuries': [
+        {'area': 'general', 'description': text, 'status': 'active'}]}}
+
+
+def test_healed_language_keeps_the_injury_with_the_coach():
+    from post_render_validator import genuinely_unresolved_pain, unresolved_pain_evidence
+    for text in (_HEALED, 'Knee pain from 2024, resolved', 'Old back tweak, pain-free now',
+                 'Not yet cleared by my doctor'):
+        assert unresolved_pain_evidence(_injured(text)), text  # the gate still fires
+        assert genuinely_unresolved_pain(_injured(text)) == [], text
+    assert genuinely_unresolved_pain(_injured(_ACTIVE))
+    assert genuinely_unresolved_pain({'movement_limitations': {'squat': 'painful'}})
+
+
+def test_only_genuinely_unresolved_pain_withholds_retests():
+    from generate_athlete_package import _field_retests_withheld_for_pain
+    assert _field_retests_withheld_for_pain(_injured(_ACTIVE)) is True
+    assert _field_retests_withheld_for_pain(_injured(_HEALED)) is False
+    assert _field_retests_withheld_for_pain({}) is False
+
+
+def test_pain_never_withdraws_the_promised_week_one_reanchor():
+    """The W1 re-anchor is promised by the profile, canonical model, TP
+    manifest and guide. Pain leaves it scheduled; the gate puts it in front
+    of the coach."""
     from generate_athlete_package import _initial_field_test_required
-    profile = {'fitness_markers': {'reanchor': {'required': True}},
-               'injury_history': {'current_injuries': [
-                   {'area': 'general', 'description': 'Concussion', 'status': 'active'}]}}
-    assert _initial_field_test_required(profile) is False
-    profile['injury_history']['current_injuries'][0]['status'] = 'cleared'
-    assert _initial_field_test_required(profile) is True
+    for text in (_ACTIVE, _HEALED):
+        profile = {**_injured(text),
+                   'fitness_markers': {'reanchor': {'required': True, 'week': 1}}}
+        assert _initial_field_test_required(profile) is True
 
 
 def test_b_race_easy_spin_is_published_as_recovery():
@@ -223,11 +251,9 @@ def test_b_race_easy_spin_is_published_as_recovery():
 # End to end: the synthetic order through the real intake path
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope='module')
-def low_volume_order(tmp_path_factory):
-    root = tmp_path_factory.mktemp('low-volume-order')
+def _run_intake(root, intake_text):
     intake = root / 'intake.md'
-    intake.write_text(LOW_VOLUME_INTAKE)
+    intake.write_text(intake_text)
     env = {key: value for key, value in os.environ.items()
            if key not in ('GG_AUTO_EMAIL', 'GG_STRICT_COMPLIANCE', 'GG_STRICT_QUALITY')}
     env.update({
@@ -240,11 +266,20 @@ def low_volume_order(tmp_path_factory):
         [sys.executable, 'intake_to_plan.py', '--file', str(intake)],
         cwd=str(SCRIPTS_DIR), capture_output=True, text=True, timeout=600, env=env)
     assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-3000:]
-    athlete_dir = root / 'athletes' / 'synthetic-lowvol'
+    athlete_dir = next((root / 'athletes').iterdir())
+    import yaml
     return {
         'state': json.loads((athlete_dir / 'fulfillment_status.json').read_text()),
         'plan_ir': json.loads((athlete_dir / 'plan_ir.json').read_text()),
+        'profile': yaml.safe_load((athlete_dir / 'profile.yaml').read_text()),
+        'canonical': json.loads((athlete_dir / 'canonical_training_model.json').read_text()),
+        'manifest': json.loads((athlete_dir / 'tp_manifest.json').read_text()),
     }
+
+
+@pytest.fixture(scope='module')
+def low_volume_order(tmp_path_factory):
+    return _run_intake(tmp_path_factory.mktemp('low-volume-order'), LOW_VOLUME_INTAKE)
 
 
 def test_low_volume_plan_has_none_of_the_fixed_finding_classes(low_volume_order):
@@ -285,3 +320,57 @@ def test_b_race_easy_spin_carries_its_recovery_role(low_volume_order):
     easy = [s for week in low_volume_order['plan_ir']['weeks'] for s in week['sessions']
             if s.get('date') == '2027-03-11' and s.get('tp_kind') == 'bike']
     assert easy and all(s.get('role') == 'recovery' for s in easy)
+
+
+# ---------------------------------------------------------------------------
+# End to end: field tests and their promises agree, injured or not
+# ---------------------------------------------------------------------------
+
+def _test_control_intake(injury, ftp='240', testing=''):
+    text = (LOW_VOLUME_INTAKE
+            .replace('- Current Injuries: ' + _ACTIVE, '- Current Injuries: ' + injury)
+            .replace('- FTP: 240', '- FTP: ' + ftp)
+            # One A race, ~24 weeks: long enough for both retests.
+            .replace('  Unbound 100 (2027-05-29, 100 mi, priority A)\n', '')
+            .replace('priority B)', 'priority A)'))
+    if testing:
+        text = text.replace('## Work & Life', '## Testing\n- Include Field Tests: '
+                            + testing + '\n\n## Work & Life')
+    return text
+
+
+TEST_CONTROL_CASES = {
+    # healed + no FTP: everything as on main -- W1 re-anchor and retests stay,
+    # the gate still flags them (intake calls the injury active), coach decides.
+    'healed_no_ftp': dict(intake=_test_control_intake(_HEALED, ftp='unknown'),
+                          week_one=True, retests=True, pain_finding=True),
+    # genuinely unresolved + no FTP: the promised W1 re-anchor stays, retests go.
+    'active_no_ftp': dict(intake=_test_control_intake(_ACTIVE, ftp='unknown'),
+                          week_one=True, retests=False, pain_finding=True),
+    # declined tests: no retests either (FIELD_TEST_SUPPRESSION_BREACH on main).
+    'declined': dict(intake=_test_control_intake('None', testing='no'),
+                     week_one=False, retests=False, pain_finding=False),
+}
+
+
+@pytest.fixture(scope='module', params=sorted(TEST_CONTROL_CASES))
+def test_control_order(request, tmp_path_factory):
+    case = TEST_CONTROL_CASES[request.param]
+    built = _run_intake(tmp_path_factory.mktemp(request.param), case['intake'])
+    return {**case, **built}
+
+
+def test_field_tests_match_what_the_deliverable_promises(test_control_order):
+    order = test_control_order
+    reanchor = order['profile']['fitness_markers']['reanchor']
+    assert order['canonical']['athlete']['reanchor'] == reanchor
+    assert order['manifest']['control']['reanchor'] == reanchor
+    tests = sorted((int(week['number']), s['date'])
+                   for week in order['plan_ir']['weeks'] for s in week['sessions']
+                   if s.get('is_field_test'))
+    assert bool(reanchor['required']) is order['week_one']
+    assert any(week == 1 for week, _ in tests) is order['week_one'], tests
+    assert any(week > 1 for week, _ in tests) is order['retests'], tests
+    ids = {item['id'] for item in order['state']['blocking_issues']}
+    assert 'FIELD_TEST_SUPPRESSION_BREACH' not in ids
+    assert ('UNRESOLVED_PAIN_MAX_PRESCRIPTION' in ids) is order['pain_finding']

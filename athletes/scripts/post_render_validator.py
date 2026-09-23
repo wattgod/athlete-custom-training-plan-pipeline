@@ -210,9 +210,7 @@ def _field_test_suppression_findings(
 
 
 def unresolved_pain_evidence(profile: Dict[str, Any]) -> List[str]:
-    """Current injury/pain entries not marked cleared. The generator reads
-    the same predicate to keep field tests off such a plan, so the gate and
-    the plan it judges cannot disagree about who is unresolved."""
+    """Current injury/pain entries not marked cleared."""
     evidence = []
     for injury in (profile.get("injury_history") or {}).get("current_injuries") or []:
         if isinstance(injury, dict):
@@ -232,6 +230,27 @@ def unresolved_pain_evidence(profile: Dict[str, Any]) -> List[str]:
     if bike_fit.get("pain") is True:
         evidence.append(str(bike_fit.get("pain_description") or "bike pain"))
     return evidence
+
+
+# Intake stamps every current-injury answer status "active"
+# (intake_to_plan.py, "Current Injuries"), so "Broke my wrist in 2023, fully
+# healed and cleared" reaches the predicate above as unresolved. Any of this
+# language keeps the entry with the coach instead.
+_RESOLUTION_LANGUAGE = re.compile(
+    r"\b(?:healed|cleared|resolved|recovered|pain[- ]free|back to normal"
+    r"|no (?:more |longer )?(?:pain|issues?|problems?|symptoms)"
+    r"|no longer (?:an issue|a problem|bothers?|hurts?))\b|\b100 ?%",
+    re.I,
+)
+
+
+def genuinely_unresolved_pain(profile: Dict[str, Any]) -> List[str]:
+    """The part of ``unresolved_pain_evidence`` the generator may act on by
+    itself: entries that say nothing about being healed, cleared or
+    resolved. The gate keeps using the wider predicate, so an injury the
+    athlete calls healed still reaches the coach as before."""
+    return [text for text in unresolved_pain_evidence(profile)
+            if not _RESOLUTION_LANGUAGE.search(text)]
 
 
 def _unresolved_pain_load_findings(

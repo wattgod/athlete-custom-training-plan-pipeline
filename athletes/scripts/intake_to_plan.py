@@ -2833,6 +2833,17 @@ def generate_coaching_brief(
             f"Medications: {meds}" if meds and meds.lower() not in ('none', 'n/a', '') else "No medications listed",
         )
 
+    # Unresolved pain -> no FTP retests (generate_athlete_package). Said
+    # here so the coach knows the retests were left off, not lost.
+    from post_render_validator import genuinely_unresolved_pain
+    unresolved = genuinely_unresolved_pain(profile)
+    if unresolved:
+        md += _add_row(
+            f"Current injury/pain: {unresolved[0][:120]}",
+            "No mid- or late-plan FTP retests",
+            "No sign it is healed or cleared; add a retest once you clear the athlete",
+        )
+
     # Indoor tolerance -> workout design
     indoor_tol = profile.get('training_environment', {}).get('indoor_riding_tolerance', '?')
     longest_indoor = profile.get('workout_preferences', {}).get('longest_indoor_tolerable', '?')

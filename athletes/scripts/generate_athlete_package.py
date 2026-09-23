@@ -1046,20 +1046,23 @@ def _initial_field_test_required(profile: Optional[dict]) -> bool:
     markers = ((profile or {}).get('fitness_markers') or {})
     if markers.get('field_testing_allowed', True) is False:
         return False
-    if _unresolved_pain(profile):
-        return False
     reanchor = markers.get('reanchor')
     if isinstance(reanchor, dict) and 'required' in reanchor:
         return bool(reanchor.get('required'))
     return True
 
 
-def _unresolved_pain(profile: Optional[dict]) -> bool:
-    """True when the post-render gate would block field tests for this
-    athlete (UNRESOLVED_PAIN_MAX_PRESCRIPTION). Same predicate, so the plan
-    never schedules a test its own gate rejects."""
-    from post_render_validator import unresolved_pain_evidence
-    return bool(unresolved_pain_evidence(profile or {}))
+def _field_retests_withheld_for_pain(profile: Optional[dict]) -> bool:
+    """Mid- and late-plan FTP retests are left off when the intake reports
+    pain or injury with no sign it is healed or cleared -- the tests the
+    post-render gate would block (UNRESOLVED_PAIN_MAX_PRESCRIPTION).
+
+    Retests only. The Week 1 re-anchor is a promise the whole deliverable
+    makes (profile reanchor, canonical model, TP manifest, guide), so it
+    stays as scheduled and the gate's finding puts it in front of the coach.
+    No deliverable surface promises a retest."""
+    from post_render_validator import genuinely_unresolved_pain
+    return bool(genuinely_unresolved_pain(profile or {}))
 
 
 def _mark_initial_testing_week(plan_dates: dict, profile: Optional[dict],
@@ -3275,16 +3278,18 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     #   - Never schedule on B-race weeks, taper, or race weeks
     #   - Fallback: try adjacent weeks if preferred week is unavailable
     # ---------------------------------------------------------------
-    # An explicit no-test directive and unresolved pain/clearance context
-    # both mean no field test anywhere in the plan -- retests included. The
-    # retest scheduling below used to ignore both, so a returning-from-
-    # concussion athlete got two FTP tests the post-render gate then blocked
-    # (2026-09-22 order).
     field_testing_allowed = (
         (profile.get('fitness_markers') or {}).get(
             'field_testing_allowed', True) is not False
-        and not _unresolved_pain(profile)
     )
+    # The retest scheduling below used to ignore both an explicit no-test
+    # directive (FIELD_TEST_SUPPRESSION_BREACH on every >=10-week plan) and
+    # unresolved pain (a returning-from-concussion athlete got two FTP
+    # retests the gate then blocked, 2026-09-22 order).
+    retests_allowed = (field_testing_allowed
+                       and not _field_retests_withheld_for_pain(profile))
+    if field_testing_allowed and not retests_allowed:
+        log.info("FTP retests withheld: intake reports unresolved pain/injury")
     initial_field_test_required = _initial_field_test_required(profile)
     ftp_test_target_weeks = [1] if initial_field_test_required else []
 
@@ -3344,7 +3349,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             return w
         return 0
 
-    if field_testing_allowed and total_weeks >= 10:
+    if retests_allowed and total_weeks >= 10:
         # Mid-plan retest: prefer the week before build starts
         mid_target = first_build_week - 1 if first_build_week and first_build_week > 2 else total_weeks // 2
         mid_week = _find_ftp_week(mid_target, min_gap_from=1,
@@ -3352,7 +3357,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         if mid_week > 0:
             ftp_test_target_weeks.append(mid_week)
 
-    if field_testing_allowed and total_weeks >= 16:
+    if retests_allowed and total_weeks >= 16:
         # Third test: prefer the week before peak starts
         late_target = first_peak_week - 1 if first_peak_week and first_peak_week > 2 else (total_weeks * 3) // 4
         previous_test_week = ftp_test_target_weeks[-1]
