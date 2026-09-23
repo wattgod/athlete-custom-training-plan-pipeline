@@ -18,7 +18,7 @@ import uuid
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -3640,6 +3640,33 @@ class TestSeasonPlanCheckout:
             assert pi_metadata['offer_family'] == 'season_plan'
             assert pi_metadata['product_type'] == 'season_plan'
 
+    def test_season_plan_checkout_routes_to_season_success_page(
+            self, client, temp_athletes_dir):
+        """success_url must go to the Season Plan's own success page
+        (gravel-race-automation wordpress/generate_success_pages.py,
+        'season-plan-success' entry, canonical /season-plan/success/) —
+        NOT the race plan's /training-plans/success/ page, which has no
+        season-aware branching and promises ZWO files + a 24h automated
+        build, neither true for Season Plan."""
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_season_success_url'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={'name': 'Season Buyer', 'email': 'season@test.com',
+                      'product': 'season_plan'},
+                content_type='application/json',
+            )
+            assert response.status_code == 200
+
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert '{CHECKOUT_SESSION_ID}' in call_kwargs['success_url']
+            assert '/season-plan/success/' in call_kwargs['success_url']
+            assert '/training-plans/success/' not in call_kwargs['success_url']
+
     def test_season_plan_checkout_disables_promotion_codes(
             self, client, temp_athletes_dir):
         """sol NO-GO #2: Season Plan never offers a promo code, unlike the
@@ -3753,13 +3780,15 @@ class TestSeasonPlanWebhook:
     """Tests for the Season Plan branch of POST /webhook/stripe."""
 
     def _event(self, order_id='cs_season_1', payment_status='paid',
-               amount_subtotal=49900):
+               amount_subtotal=49900, intake_id=''):
         metadata = {
             'product_type': 'season_plan',
             'offer_family': 'season_plan',
             'athlete_name': 'Season Athlete',
             'brand': 'gravelgod',
         }
+        if intake_id:
+            metadata['intake_id'] = intake_id
         return {
             'type': 'checkout.session.completed',
             'data': {
@@ -3922,6 +3951,332 @@ class TestSeasonPlanWebhook:
                 content_type='application/json')
         assert response.status_code == 200
         mock_tp.assert_not_called()
+
+    def test_season_plan_webhook_never_auto_runs_pipeline(
+            self, client, temp_athletes_dir):
+        """No automated-delivery promise: a Season Plan order never spawns
+        the ZWO generation pipeline. A human runs Motoren from the
+        recorded intake."""
+        with patch('app._spawn_plan_job') as mock_spawn, \
+             patch('app.run_pipeline') as mock_run:
+            response = client.post(
+                '/webhook/stripe', json=self._event(order_id='cs_season_nopipeline'),
+                content_type='application/json')
+        assert response.status_code == 200
+        mock_spawn.assert_not_called()
+        mock_run.assert_not_called()
+
+    def test_season_plan_webhook_loads_races_from_intake_into_order_log(
+            self, client, temp_athletes_dir):
+        """Fulfilment hand-off: the races captured at checkout (stored via
+        store_intake, keyed by intake_id on the session metadata) land on
+        the order-log record, the same intake mechanism race plans use
+        (load_intake in _handle_training_plan_webhook)."""
+        import app as app_module
+        intake_id = str(uuid.uuid4())
+        app_module.store_intake(intake_id, {
+            'name': 'Season Athlete', 'email': 'season@test.com',
+            'races': [
+                {'name': 'Unbound 200', 'date': '2027-06-01', 'priority': 'A'},
+                {'name': 'Mid South', 'date': '2027-03-15', 'priority': 'B'},
+            ],
+        })
+        response = client.post(
+            '/webhook/stripe',
+            json=self._event(order_id='cs_season_races', intake_id=intake_id),
+            content_type='application/json')
+        assert response.status_code == 200
+
+        log_dir = Path(app_module.ATHLETES_DIR) / '.logs'
+        log_files = list(log_dir.glob('*.jsonl'))
+        with open(log_files[0]) as f:
+            entries = [json.loads(line) for line in f.readlines()]
+        entry = next(e for e in entries if e.get('order_id') == 'cs_season_races')
+        assert entry['intake_id'] == intake_id
+        assert len(entry['races']) == 2
+        assert entry['races'][0]['name'] == 'Unbound 200'
+
+    def test_season_plan_webhook_no_intake_logs_empty_races(
+            self, client, temp_athletes_dir):
+        """Season Plan checkout does not require races
+        (test_season_plan_does_not_require_races) — the hand-off must
+        degrade to an empty list, never crash, when there's no intake_id
+        or the intake has no races."""
+        response = client.post(
+            '/webhook/stripe',
+            json=self._event(order_id='cs_season_noraces'),
+            content_type='application/json')
+        assert response.status_code == 200
+
+        import app as app_module
+        log_dir = Path(app_module.ATHLETES_DIR) / '.logs'
+        log_files = list(log_dir.glob('*.jsonl'))
+        with open(log_files[0]) as f:
+            entries = [json.loads(line) for line in f.readlines()]
+        entry = next(e for e in entries if e.get('order_id') == 'cs_season_noraces')
+        assert entry['races'] == []
+
+    def test_season_plan_webhook_survives_malformed_stored_intake(
+            self, client, temp_athletes_dir):
+        """sol review: load_intake() does not guarantee its stored `data`
+        value is a dict — a corrupted or malformed intake file could hold
+        a list/string there. A paid $499 order must still be recorded
+        (status 200, order logged) rather than 500ing before it's ever
+        written."""
+        import app as app_module
+        intake_id = str(uuid.uuid4())
+        # Bypass store_intake()'s normal dict shape to simulate a
+        # corrupted/malformed intake file directly.
+        intake_dir = app_module.get_intake_dir()
+        with open(intake_dir / f'{intake_id}.json', 'w') as f:
+            json.dump({'intake_id': intake_id, 'data': ['not', 'a', 'dict']}, f)
+
+        response = client.post(
+            '/webhook/stripe',
+            json=self._event(order_id='cs_season_malformed_intake', intake_id=intake_id),
+            content_type='application/json')
+        assert response.status_code == 200
+        assert response.get_json()['status'] == 'success'
+
+        log_dir = Path(app_module.ATHLETES_DIR) / '.logs'
+        entries = [json.loads(line) for log_file in log_dir.glob('*.jsonl')
+                   for line in log_file.read_text().strip().split('\n') if line]
+        entry = next(e for e in entries if e.get('order_id') == 'cs_season_malformed_intake')
+        assert entry['races'] == []
+
+    def test_season_plan_coach_notification_states_build_window_and_races(
+            self, client, temp_athletes_dir, monkeypatch):
+        """Coach notification must clearly say Season Plan, the build-due
+        window (same as race plans), and the races captured — so Matti can
+        run Motoren from the intake without hunting for it."""
+        import app as app_module
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        intake_id = str(uuid.uuid4())
+        app_module.store_intake(intake_id, {
+            'races': [{'name': 'Unbound 200', 'date': '2027-06-01', 'priority': 'A'}],
+        })
+        with patch('app._send_email') as mock_send:
+            mock_send.return_value = True
+            response = client.post(
+                '/webhook/stripe',
+                json=self._event(order_id='cs_season_buildwindow', intake_id=intake_id),
+                content_type='application/json')
+        assert response.status_code == 200
+        # First _send_email call is the coach notification.
+        call_args = mock_send.call_args_list[0]
+        subject, text = call_args[0][1], call_args[0][2]
+        assert 'Season Plan' in subject
+        assert '24 hours' in text
+        assert 'Unbound 200' in text
+
+    def test_season_plan_webhook_sends_customer_confirmation(
+            self, client, temp_athletes_dir):
+        """The buyer gets more than Stripe's receipt: a confirmation email
+        via the same Resend send path (_send_email) race plans use."""
+        with patch('app._send_email') as mock_send:
+            mock_send.return_value = True
+            response = client.post(
+                '/webhook/stripe',
+                json=self._event(order_id='cs_season_confirm'),
+                content_type='application/json')
+        assert response.status_code == 200
+        # Second _send_email call is the customer confirmation (first is
+        # the coach notification, since NOTIFICATION_EMAIL isn't set here
+        # only the customer send happens — check by recipient instead).
+        recipients = [c[0][0] for c in mock_send.call_args_list]
+        assert 'season@test.com' in recipients
+        customer_call = next(c for c in mock_send.call_args_list if c[0][0] == 'season@test.com')
+        subject, text = customer_call[0][1], customer_call[0][2]
+        assert 'Season Plan' in subject
+        assert 'Matti' in text
+        assert 'I build every plan myself' in text
+        assert '!' not in text
+        assert 'refund' not in text.lower()
+
+    def test_season_plan_confirmation_email_states_rebuild_months(
+            self, client, temp_athletes_dir):
+        from datetime import date
+        response = client.post(
+            '/webhook/stripe',
+            json=self._event(order_id='cs_season_months'),
+            content_type='application/json')
+        assert response.status_code == 200
+
+        import app as app_module
+        rebuild_dates = app_module._season_plan_rebuild_dates(date.today())
+        # Call the confirmation sender directly for a stable assertion on
+        # its month formatting.
+        with patch('app._send_email') as mock_send:
+            mock_send.return_value = True
+            app_module._send_season_plan_confirmation(
+                'season@test.com', 'Season Athlete', rebuild_dates, brand='gravelgod')
+        call_args = mock_send.call_args
+        text = call_args[0][2]
+        for d in rebuild_dates:
+            assert d.strftime('%B %Y') in text
+
+
+class TestSeasonPlanRebuildReminders:
+    """Tests for POST /api/cron/season-plan-rebuild-reminders — the daily
+    reminder that emails Matti on each of a Season Plan's four scheduled
+    rebuild dates. Reuses the same .logs/YYYY-MM.jsonl order log
+    process_followup_emails() reads; never touches the athlete's plan."""
+
+    def _write_season_order(self, app_module, order_id, rebuild_dates,
+                             name='Season Athlete', email='season@test.com'):
+        app_module._log_product_event(
+            'season_plan', order_id, name=name, email=email,
+            brand='gravelgod', price_cents=49900,
+            purchase_date=date.today().isoformat(),
+            rebuild_dates=rebuild_dates, intake_id='', races=[])
+
+    def test_requires_cron_secret(self, client, temp_athletes_dir):
+        response = client.post('/api/cron/season-plan-rebuild-reminders')
+        assert response.status_code in (401, 503)
+
+    def test_rejects_wrong_secret(self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        response = client.post(
+            '/api/cron/season-plan-rebuild-reminders',
+            headers={'X-Cron-Secret': 'wrong'})
+        assert response.status_code == 401
+
+    def test_sends_reminder_for_order_due_today(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        today = date.today().isoformat()
+        self._write_season_order(
+            app_module, 'cs_rebuild_due',
+            [today, '2099-01-01', '2099-02-01', '2099-03-01'])
+
+        with patch('app._send_email') as mock_send:
+            mock_send.return_value = True
+            response = client.post(
+                '/api/cron/season-plan-rebuild-reminders',
+                headers={'X-Cron-Secret': 'coach-secret'})
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status'] == 'ok'
+        assert data['due_today'] == 1
+        assert data['sent'] == 1
+        mock_send.assert_called_once()
+        call_args = mock_send.call_args
+        assert call_args[0][0] == 'coach@test.com'
+        assert 'Season Plan rebuild' in call_args[0][1]
+        assert 'cs_rebuild_due' in call_args[0][2]
+
+    def test_does_not_send_when_no_date_is_due(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        self._write_season_order(
+            app_module, 'cs_rebuild_not_due',
+            ['2099-01-01', '2099-02-01', '2099-03-01', '2099-04-01'])
+
+        with patch('app._send_email') as mock_send:
+            response = client.post(
+                '/api/cron/season-plan-rebuild-reminders',
+                headers={'X-Cron-Secret': 'coach-secret'})
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['due_today'] == 0
+        assert data['sent'] == 0
+        mock_send.assert_not_called()
+
+    def test_is_idempotent_across_repeated_runs(
+            self, client, temp_athletes_dir, monkeypatch):
+        """The same rebuild date on the same order must only ever send
+        once, however many times the daily cron fires that day."""
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        today = date.today().isoformat()
+        self._write_season_order(
+            app_module, 'cs_rebuild_twice',
+            [today, '2099-01-01', '2099-02-01', '2099-03-01'])
+
+        with patch('app._send_email') as mock_send:
+            mock_send.return_value = True
+            first = client.post(
+                '/api/cron/season-plan-rebuild-reminders',
+                headers={'X-Cron-Secret': 'coach-secret'})
+            second = client.post(
+                '/api/cron/season-plan-rebuild-reminders',
+                headers={'X-Cron-Secret': 'coach-secret'})
+        assert first.status_code == 200 and second.status_code == 200
+        assert first.get_json()['sent'] == 1
+        assert second.get_json()['sent'] == 0
+        assert second.get_json()['skipped'] == 1
+        mock_send.assert_called_once()
+
+    def test_catches_up_on_an_overdue_date_not_just_exact_today(
+            self, client, temp_athletes_dir, monkeypatch):
+        """sol review: eligibility used to require rebuild_date == today
+        exactly, so a date that passed on a day the cron never ran (or a
+        day the send failed) could never fire again. A past, unclaimed
+        date must still be picked up."""
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        self._write_season_order(
+            app_module, 'cs_rebuild_overdue',
+            [yesterday, '2099-01-01', '2099-02-01', '2099-03-01'])
+
+        with patch('app._send_email') as mock_send:
+            mock_send.return_value = True
+            response = client.post(
+                '/api/cron/season-plan-rebuild-reminders',
+                headers={'X-Cron-Secret': 'coach-secret'})
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['sent'] == 1
+        mock_send.assert_called_once()
+
+    def test_send_failure_releases_the_claim_for_retry(
+            self, client, temp_athletes_dir, monkeypatch):
+        """sol review: a real _send_email() failure (Resend error) used to
+        still mark the reminder as sent, losing it forever. The claim must
+        release so the next run retries."""
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        today = date.today().isoformat()
+        self._write_season_order(
+            app_module, 'cs_rebuild_retry',
+            [today, '2099-01-01', '2099-02-01', '2099-03-01'])
+
+        with patch('app._send_email') as mock_send:
+            mock_send.return_value = False
+            first = client.post(
+                '/api/cron/season-plan-rebuild-reminders',
+                headers={'X-Cron-Secret': 'coach-secret'})
+        assert first.get_json()['sent'] == 0
+        assert first.get_json()['errors'] == 1
+
+        with patch('app._send_email') as mock_send:
+            mock_send.return_value = True
+            second = client.post(
+                '/api/cron/season-plan-rebuild-reminders',
+                headers={'X-Cron-Secret': 'coach-secret'})
+        assert second.get_json()['sent'] == 1
+        assert second.get_json()['skipped'] == 0
+
+    def test_concurrent_claims_only_one_wins(self, temp_athletes_dir):
+        """sol review: the atomic claim must not let two callers both
+        "win" the same key — the read-then-write race the old snapshot
+        approach had."""
+        import app as app_module
+        with patch('app.DATA_DIR', str(temp_athletes_dir)):
+            key = 'cs_concurrent:2099-01-01'
+            first = app_module._claim_season_plan_reminder(key)
+            second = app_module._claim_season_plan_reminder(key)
+        assert first is True
+        assert second is False
 
 
 class TestPastDateRejection:

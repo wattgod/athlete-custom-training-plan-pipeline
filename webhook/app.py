@@ -317,6 +317,14 @@ SEASON_PLAN_MAX_WEEKS = 52
 # wordpress/pricing.py (mirrored again in mission_control/services/
 # pricing.py) — keep these offsets in sync with that function by hand.
 SEASON_PLAN_REBUILD_OFFSETS_WEEKS = (10, 23, 36, 49)
+# Coach-facing build SLA — the same window race plans promise
+# (RACE_PLAN_DELIVERY_HOURS / data/pricing.json products.race_plan.
+# delivery_hours in gravel-race-automation). Season Plan has no separate
+# delivery_hours field of its own, so it inherits the race-plan window.
+# This is an internal "build due by" clock for the coach notification, not
+# an automated-delivery promise to the athlete — nothing here triggers a
+# pipeline run; a human runs Motoren from the recorded intake.
+SEASON_PLAN_BUILD_WINDOW_HOURS = 24
 
 # Pre-built Stripe price IDs (from scripts/create_stripe_products.py)
 # Training plan prices keyed by weeks (4–16, plus 17+ cap)
@@ -1266,6 +1274,105 @@ Questions? Reply to this email.
         logger.info(f"Payment confirmation sent to {_mask_email(customer_email)}")
     else:
         logger.error(f"Failed to send payment confirmation to {_mask_email(customer_email)}")
+
+
+def _send_season_plan_confirmation(customer_email: str, customer_name: str,
+                                   rebuild_dates: list, brand: str = DEFAULT_BRAND) -> bool:
+    """Confirm a Season Plan purchase to the buyer.
+
+    What they bought, that Matti builds it himself (never implies automated
+    generation or a team), when it lands in TrainingPeaks (same build window
+    race plans promise), and the four rebuild months. No refund line — sales
+    surfaces don't carry one. Same Resend send path every other confirmation
+    in this file uses.
+    """
+    if not customer_email:
+        logger.warning("Cannot send Season Plan confirmation — customer email missing")
+        return False
+
+    brand_cfg = _brand_config(brand)
+    brand_name = brand_cfg['name']
+    brand_site = brand_cfg['site'].replace('https://', '')
+    first_name = customer_name.split()[0] if customer_name else 'there'
+    tp_connect_url = 'https://home.trainingpeaks.com/attachtocoach?sharedKey=2OTEPC6BXNVQU'
+    rebuild_months = [d.strftime('%B %Y') for d in rebuild_dates]
+
+    subject = 'Payment confirmed — your Season Plan'
+
+    text = f"""Hey {first_name},
+
+Payment received — thank you.
+
+You bought the Season Plan: up to 52 weeks, every A/B/C race on your calendar periodised, four scheduled rebuilds across the year.
+
+YOUR ONE ACTION ITEM:
+Connect to my coaching account on TrainingPeaks so I can push your workouts there:
+{tp_connect_url}
+
+If you don't have a TrainingPeaks account, create a free one first at trainingpeaks.com, then click the link above.
+
+WHAT HAPPENS NEXT:
+I build every plan myself. Yours will be in your TrainingPeaks calendar within {SEASON_PLAN_BUILD_WINDOW_HOURS} hours of payment, your complete questionnaire, and your TrainingPeaks connection all being in place.
+
+YOUR REBUILD MONTHS:
+{', '.join(rebuild_months)}
+
+I rebuild the plan around those months as your season plays out. Email support is included the whole way.
+
+Questions? Reply to this email.
+
+— Matti, {brand_name}
+{brand_site}
+"""
+
+    rebuild_months_html = ''.join(
+        f'<li>{html_escape(m)}</li>' for m in rebuild_months)
+    html = f"""
+<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+  <div style="background: #59473c; color: white; padding: 24px; border-radius: 4px 4px 0 0;">
+    <h1 style="margin: 0; font-size: 22px;">Payment confirmed</h1>
+    <p style="margin: 6px 0 0; opacity: 0.9; font-size: 15px;">Season Plan</p>
+  </div>
+
+  <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
+    <p style="font-size: 15px; line-height: 1.6;">Hey {html_escape(first_name)},</p>
+
+    <p style="font-size: 15px; line-height: 1.6;">Payment received — thank you.</p>
+
+    <p style="font-size: 15px; line-height: 1.6;">You bought the Season Plan: up to 52 weeks, every A/B/C race on your calendar periodised, four scheduled rebuilds across the year.</p>
+
+    <div style="margin: 20px 0; padding: 20px; background: #fff; border: 2px solid #1A8A82; border-radius: 6px;">
+      <h3 style="margin: 0 0 8px; font-size: 16px; color: #59473c;">Your one action item</h3>
+      <p style="margin: 0 0 16px; font-size: 14px; color: #555;">Connect to my coaching account on TrainingPeaks so I can push your workouts there:</p>
+      <div style="text-align: center;">
+        <a href="{tp_connect_url}" style="display: inline-block; background: #1A8A82; color: white; padding: 14px 32px; text-decoration: none; border-radius: 4px; font-size: 15px; font-weight: bold;">Connect on TrainingPeaks</a>
+      </div>
+      <p style="margin: 12px 0 0; font-size: 12px; color: #999; text-align: center;">Don't have a TrainingPeaks account? <a href="https://www.trainingpeaks.com/athlete-edition/" style="color: #1A8A82;">Create a free one first</a>, then click above.</p>
+    </div>
+
+    <h3 style="margin: 24px 0 12px; font-size: 15px; color: #59473c;">What happens next</h3>
+    <p style="font-size: 14px; line-height: 1.6;">I build every plan myself. Yours will be in your TrainingPeaks calendar within {SEASON_PLAN_BUILD_WINDOW_HOURS} hours of payment, your complete questionnaire, and your TrainingPeaks connection all being in place.</p>
+
+    <h3 style="margin: 24px 0 12px; font-size: 15px; color: #59473c;">Your rebuild months</h3>
+    <ul style="font-size: 14px; padding-left: 20px; line-height: 1.8;">
+      {rebuild_months_html}
+    </ul>
+    <p style="font-size: 14px; line-height: 1.6; color: #666;">I rebuild the plan around those months as your season plays out. Email support is included the whole way.</p>
+
+    <p style="font-size: 14px; line-height: 1.6;">Questions? Reply to this email.</p>
+
+    <p style="font-size: 14px; margin-top: 24px; color: #666;">— Matti, {html_escape(brand_name)}<br>
+    <a href="{brand_cfg['site']}" style="color: #1A8A82;">{html_escape(brand_site)}</a></p>
+  </div>
+</div>"""
+
+    ok = _send_email(customer_email, subject, text, html=html,
+                     reply_to=NOTIFICATION_EMAIL, brand=brand)
+    if ok:
+        logger.info(f"Season Plan confirmation sent to {_mask_email(customer_email)}")
+    else:
+        logger.error(f"Failed to send Season Plan confirmation to {_mask_email(customer_email)}")
+    return ok
 
 
 def _send_coaching_payment_confirmation(customer_email: str, customer_name: str,
@@ -6169,7 +6276,16 @@ def _create_season_plan_checkout(data: dict, email: str, name: str,
         client_reference_id=intake_id,
         metadata=checkout_metadata,
         payment_intent_data={'metadata': payment_intent_metadata},
-        success_url=f"{brand_cfg['site']}/training-plans/success/?session_id={{CHECKOUT_SESSION_ID}}",
+        # Its own success page, not the race plan's — gravel-race-automation
+        # wordpress/generate_success_pages.py's 'season-plan-success' entry
+        # (canonical /season-plan/success/), which never promises ZWO files
+        # or 24h automated generation. The race plan's /training-plans/
+        # success/ page has no season-aware branching, so this must not
+        # reuse that URL with a query flag.
+        success_url=(
+            f"{brand_cfg['site']}/season-plan/success/"
+            "?session_id={CHECKOUT_SESSION_ID}"
+        ),
         cancel_url=cancel_url,
         expires_at=expires_at,
         # No promo codes on this branch — Stripe's native recovery link
@@ -8090,6 +8206,36 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
     })
 
 
+def _extract_season_plan_races(intake_data: dict) -> list:
+    """Pull whatever race data a Season Plan questionnaire submission
+    captured, from whichever key the frontend used to send it. The Season
+    Plan questionnaire isn't built yet (checkout doesn't require races —
+    test_season_plan_does_not_require_races), so this is defensive: try the
+    known shapes (a `races` list, same as the race plan's own checkout
+    body; a singular `race_name`/`race_slug` pair), and fall back to
+    nothing rather than guessing. Never drops data — the full intake stays
+    on disk (get_intake_dir()) and its id is always in the coach email, so
+    a shape this function doesn't recognize is still one click away.
+
+    sol review: load_intake() does not guarantee the stored `data` value is
+    a dict (a corrupted or malformed intake file could hold a list/string
+    under that key). A paid Season Plan order must never fail to be
+    recorded because of that — isinstance guard, not a crash."""
+    if not intake_data or not isinstance(intake_data, dict):
+        return []
+    races = intake_data.get('races')
+    if isinstance(races, list) and races:
+        return races
+    race_name = intake_data.get('race_name')
+    if race_name:
+        return [{
+            'name': race_name,
+            'date': intake_data.get('race_date', ''),
+            'priority': intake_data.get('race_priority', 'A'),
+        }]
+    return []
+
+
 def _season_plan_rebuild_dates(purchase_date: date) -> list:
     """Four fixed scheduled-rebuild dates for a Season Plan order: weeks
     10/23/36/49 from the purchase date. Twin of
@@ -8104,11 +8250,16 @@ def _season_plan_rebuild_dates(purchase_date: date) -> list:
 def _build_season_plan_email(details: dict) -> tuple:
     """Build the coach notification for a new Season Plan order. Subject
     and body say 'Season Plan' explicitly so it's never mistaken for the
-    $15/week race plan in the inbox."""
+    $15/week race plan in the inbox. States the build-due window (same
+    window as race plans — SEASON_PLAN_BUILD_WINDOW_HOURS), the races
+    captured at checkout (if any — Season Plan checkout does not require
+    them), and where the full intake lives so Motoren can be run from it."""
     name = details.get('name', 'Unknown')
     email = details.get('email', '')
     order_id = details.get('order_id', '')
     rebuild_dates = details.get('rebuild_dates', [])
+    races = details.get('races') or []
+    intake_id = details.get('intake_id', '')
     brand = normalize_brand(details.get('brand'))
     subject_prefix = _brand_config(brand).get('subject_prefix', '[GG]')
 
@@ -8117,6 +8268,26 @@ def _build_season_plan_email(details: dict) -> tuple:
         f'<tr><td style="padding: 4px 12px 4px 0; color: #888;">Rebuild {i + 1}</td>'
         f'<td style="padding: 4px 0;">{d}</td></tr>'
         for i, d in enumerate(rebuild_dates))
+    if races:
+        races_rows = ''.join(
+            '<li>' + html_escape(
+                f"{r.get('name', 'Unnamed race')} — {r.get('date', 'no date')} "
+                f"({r.get('priority', '?')})" if isinstance(r, dict) else str(r)
+            ) + '</li>'
+            for r in races)
+        races_html = f'<ul style="font-size: 14px; padding-left: 20px; margin: 8px 0;">{races_rows}</ul>'
+        races_text = '; '.join(
+            (f"{r.get('name', 'Unnamed race')} {r.get('date', 'no date')} "
+             f"({r.get('priority', '?')})" if isinstance(r, dict) else str(r))
+            for r in races)
+    else:
+        races_html = '<p style="font-size: 14px; color: #999; margin: 8px 0;">None captured yet — get the season calendar from the athlete before building.</p>'
+        races_text = 'None captured yet — get the season calendar from the athlete before building.'
+    intake_note_html = (
+        f'<p style="font-size: 13px; color: #888; margin: 8px 0 0;">Intake: {html_escape(intake_id)} '
+        f'(DATA_DIR/.intake/{html_escape(intake_id)}.json)</p>' if intake_id else '')
+    intake_note_text = f" Intake: {intake_id} (DATA_DIR/.intake/{intake_id}.json)." if intake_id else ''
+
     html = f"""
 <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
   <div style="background: #1A8A82; color: white; padding: 16px 24px; border-radius: 4px 4px 0 0;">
@@ -8128,6 +8299,10 @@ def _build_season_plan_email(details: dict) -> tuple:
       <tr><td style="padding: 4px 12px 4px 0; color: #888; width: 120px;">Name</td><td style="padding: 4px 0;"><strong>{name}</strong></td></tr>
       <tr><td style="padding: 4px 12px 4px 0; color: #888;">Email</td><td style="padding: 4px 0;"><a href="mailto:{email}">{email}</a></td></tr>
     </table>
+    <p style="font-size: 14px; margin: 16px 0 0; color: #B7950B;"><strong>Build due within {SEASON_PLAN_BUILD_WINDOW_HOURS} hours</strong> — same window as race plans. Run Motoren (intake_to_plan.py) from the intake below; this order was not auto-generated.</p>
+    <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Races captured</h3>
+    {races_html}
+    {intake_note_html}
     <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Scheduled rebuilds</h3>
     <table style="font-size: 14px; border-collapse: collapse; width: 100%;">
       {rebuild_rows}
@@ -8135,6 +8310,10 @@ def _build_season_plan_email(details: dict) -> tuple:
   </div>
 </div>"""
     text = (f"New Season Plan order: {name} ({email}), order {order_id}. "
+            f"Build due within {SEASON_PLAN_BUILD_WINDOW_HOURS} hours (same window as race plans) — "
+            f"run Motoren from the intake, this was not auto-generated. "
+            f"Races: {races_text}."
+            f"{intake_note_text} "
             f"Scheduled rebuilds: {', '.join(str(d) for d in rebuild_dates)}")
     return subject, text, html
 
@@ -8191,6 +8370,17 @@ def _handle_season_plan_webhook(session: dict, metadata: dict, order_id: str):
     rebuild_dates = _season_plan_rebuild_dates(purchase_date)
     rebuild_dates_iso = [d.isoformat() for d in rebuild_dates]
 
+    # Fulfilment hand-off: load the questionnaire intake this checkout
+    # session stored (same mechanism _handle_training_plan_webhook uses —
+    # store_intake() at checkout, load_intake() here) so the order record
+    # carries whatever races were captured and Matti/an agent can run
+    # Motoren from the intake. Season Plan checkout does not require a
+    # races list (test_season_plan_does_not_require_races), so this can
+    # come back empty — that's surfaced to the coach, not hidden.
+    intake_id = metadata.get('intake_id', '')
+    intake_data = load_intake(intake_id) if intake_id else {}
+    races = _extract_season_plan_races(intake_data)
+
     # Order record FIRST — the same JSONL order log coaching/consulting/
     # consult_addon already write via _log_product_event (no dedicated DB
     # table exists in this repo — everything here is file-based — so the
@@ -8202,6 +8392,7 @@ def _handle_season_plan_webhook(session: dict, metadata: dict, order_id: str):
                            brand=brand, price_cents=SEASON_PLAN_PRICE_CENTS,
                            purchase_date=purchase_date.isoformat(),
                            rebuild_dates=rebuild_dates_iso,
+                           intake_id=intake_id, races=races,
                            raise_on_error=True)
     except IOError:
         logger.exception(
@@ -8234,7 +8425,8 @@ def _handle_season_plan_webhook(session: dict, metadata: dict, order_id: str):
     try:
         subject, text, html = _build_season_plan_email({
             'name': name, 'email': email, 'order_id': order_id, 'brand': brand,
-            'rebuild_dates': rebuild_dates_iso,
+            'rebuild_dates': rebuild_dates_iso, 'races': races,
+            'intake_id': intake_id,
         })
         if NOTIFICATION_EMAIL:
             _send_email(NOTIFICATION_EMAIL, subject, text, html=html, brand=brand)
@@ -8243,12 +8435,226 @@ def _handle_season_plan_webhook(session: dict, metadata: dict, order_id: str):
     except Exception:
         logger.exception("Failed to send Season Plan coach notification")
 
+    try:
+        if not _send_season_plan_confirmation(email, name, rebuild_dates, brand=brand):
+            logger.critical(
+                f"SEASON PLAN CONFIRMATION NOT SENT to {_mask_email(email)} "
+                f"(order {order_id})")
+    except Exception:
+        logger.exception("Failed to send Season Plan customer confirmation")
+
     return jsonify({
         'status': 'success',
         'product_type': 'season_plan',
         'rebuild_dates': rebuild_dates_iso,
         'message': f'Season Plan order recorded for {name}'
     })
+
+
+# =============================================================================
+# SEASON PLAN REBUILD REMINDERS
+# =============================================================================
+# Four scheduled rebuilds per Season Plan order (weeks 10/23/36/49 from
+# purchase, recorded on the order log by _handle_season_plan_webhook). This
+# is the coach-facing reminder only — it emails Matti on each rebuild date,
+# it does NOT run Motoren or touch the athlete's plan. Reuses the same
+# .logs/YYYY-MM.jsonl order log process_followup_emails() already reads,
+# rather than inventing a second store.
+
+def _get_season_plan_reminder_ledger_path() -> Path:
+    """Path to the dedup ledger — one entry per (order_id, rebuild_date)
+    ever sent, so a cron re-run (or a retried request) never double-emails
+    Matti for the same rebuild."""
+    log_dir = Path(DATA_DIR) / '.logs'
+    log_dir.mkdir(exist_ok=True)
+    return log_dir / '.season_plan_rebuild_reminders.json'
+
+
+def _claim_season_plan_reminder(key: str) -> bool:
+    """Atomically claim an "order_id:rebuild_date" key under one exclusive
+    lock — check-and-append in a single critical section, not a separate
+    read then a separate write. Returns True if this call newly claimed the
+    key (the caller should proceed to send), False if it was already
+    claimed (by an earlier run or a concurrent one — the caller must skip).
+
+    sol review: the earlier shape (load a snapshot of "already sent" once,
+    then write the mark after sending) had a TOCTOU window — two
+    invocations of the cron endpoint running close together could both
+    pass the check before either wrote its mark, double-emailing Matti.
+    Locking the whole check+append closes that window."""
+    path = _get_season_plan_reminder_ledger_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, 'a+') as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        f.seek(0)
+        try:
+            data = json.load(f)
+            if not isinstance(data, list):
+                data = []
+        except json.JSONDecodeError:
+            data = []
+        if key in data:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            return False
+        data.append(key)
+        f.seek(0)
+        f.truncate()
+        json.dump(data, f)
+        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        return True
+
+
+def _release_season_plan_reminder(key: str):
+    """Undo a claim after the send it guarded actually failed, so the next
+    cron run retries it instead of the reminder being permanently lost.
+
+    sol review: the earlier shape marked a key "sent" as soon as it was
+    attempted, even when _send_email() returned False (a real Resend
+    failure, not just NOTIFICATION_EMAIL being unset) — that reminder could
+    then never fire again, because eligibility keyed off "date == today"
+    and today only happens once."""
+    path = _get_season_plan_reminder_ledger_path()
+    if not path.exists():
+        return
+    with open(path, 'r+') as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        f.seek(0)
+        try:
+            data = json.load(f)
+            if not isinstance(data, list):
+                data = []
+        except json.JSONDecodeError:
+            data = []
+        if key in data:
+            data.remove(key)
+        f.seek(0)
+        f.truncate()
+        json.dump(data, f)
+        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+
+def _season_plan_orders_from_logs() -> list:
+    """Every successfully-recorded season_plan order across every
+    .logs/YYYY-MM.jsonl file — the same glob process_followup_emails()
+    reads, so this never depends on a separate index."""
+    log_dir = Path(DATA_DIR) / '.logs'
+    if not log_dir.exists():
+        return []
+    orders = []
+    for log_file in sorted(log_dir.glob('20*.jsonl')):
+        for line in log_file.read_text().strip().split('\n'):
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if entry.get('product_type') != 'season_plan':
+                continue
+            if not entry.get('success', True):
+                continue
+            orders.append(entry)
+    return orders
+
+
+def process_season_plan_rebuild_reminders() -> dict:
+    """Email Matti once for every Season Plan order whose rebuild date is
+    due — today, or earlier and never claimed (catch-up: a cron day that
+    never ran, or a run whose send genuinely failed, must not permanently
+    lose the reminder, since a date only equals "today" once). Returns a
+    stats dict; never raises — one bad order record must not take the
+    whole cron run down.
+
+    Idempotency is enforced by _claim_season_plan_reminder's atomic
+    check-and-append, not by a separately-loaded snapshot (sol review: the
+    earlier snapshot-then-write shape had a race across concurrent
+    invocations)."""
+    today_iso = date.today().isoformat()
+    stats = {'checked': 0, 'due_today': 0, 'sent': 0, 'skipped': 0, 'errors': 0}
+
+    for order in _season_plan_orders_from_logs():
+        stats['checked'] += 1
+        order_id = order.get('order_id', '')
+        rebuild_dates = order.get('rebuild_dates') or []
+        if not order_id or not rebuild_dates:
+            continue
+        due = [(i, d) for i, d in enumerate(rebuild_dates) if d <= today_iso]
+        if not due:
+            continue
+        stats['due_today'] += len(due)
+
+        name = order.get('name', 'Unknown')
+        email = order.get('email', '')
+        brand = normalize_brand(order.get('brand'))
+        athlete_id = sanitize_athlete_id(name) or order_id
+        subject_prefix = _brand_config(brand).get('subject_prefix', '[GG]')
+
+        for due_index, rebuild_date in due:
+            key = f"{order_id}:{rebuild_date}"
+            if not _claim_season_plan_reminder(key):
+                stats['skipped'] += 1
+                continue
+
+            subject = (f"{subject_prefix} Season Plan rebuild {due_index + 1}/4 "
+                       f"due: {name}")
+            body = (
+                f"Season Plan rebuild {due_index + 1} of 4 was due "
+                f"{rebuild_date} for {name} ({_mask_email(email)}).\n\n"
+                f"Order: {order_id}\n"
+                f"Intake: {order.get('intake_id', '(none captured)')} "
+                f"(DATA_DIR/.intake/{order.get('intake_id', '')}.json)\n"
+                f"Profile, if already built: DATA_DIR/{athlete_id}/\n"
+                f"Order record: .logs/*.jsonl, order_id={order_id}\n\n"
+                f"Run Motoren (intake_to_plan.py) against the athlete's current "
+                f"data to produce the rebuilt weeks. This reminder does not "
+                f"rebuild anything itself."
+            )
+            try:
+                if NOTIFICATION_EMAIL:
+                    if _send_email(NOTIFICATION_EMAIL, subject, body, brand=brand):
+                        stats['sent'] += 1
+                    else:
+                        # Real send failure (Resend error, not missing
+                        # config) — release the claim so the next cron run
+                        # retries instead of losing this reminder for good.
+                        _release_season_plan_reminder(key)
+                        stats['errors'] += 1
+                        logger.error(
+                            f"Season plan rebuild reminder send failed for "
+                            f"{order_id}, will retry next run")
+                else:
+                    # No NOTIFICATION_EMAIL configured is a standing config
+                    # issue, not a transient failure — retrying tomorrow
+                    # won't fix it either, so this stays claimed and loud.
+                    logger.critical(f"SEASON PLAN REBUILD DUE: {subject}\n{body}")
+                    stats['sent'] += 1
+            except Exception:
+                logger.exception(
+                    f"Failed to send season plan rebuild reminder for {order_id}")
+                _release_season_plan_reminder(key)
+                stats['errors'] += 1
+
+    return stats
+
+
+@app.route('/api/cron/season-plan-rebuild-reminders', methods=['POST'])
+@limiter.limit("5/minute")
+def cron_season_plan_rebuild_reminders():
+    """Daily cron endpoint — email Matti for every Season Plan rebuild due
+    today. Secured by CRON_SECRET header, same as every other cron route."""
+    secret = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not hmac.compare_digest(secret, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        stats = process_season_plan_rebuild_reminders()
+        logger.info(f"Season plan rebuild reminder cron complete: {stats}")
+        return jsonify({'status': 'ok', **stats})
+    except Exception as e:
+        logger.exception(f"Season plan rebuild reminder cron error: {e}")
+        return jsonify({'error': 'Internal error'}), 500
 
 
 def _handle_coaching_webhook(session: dict, metadata: dict, order_id: str):
