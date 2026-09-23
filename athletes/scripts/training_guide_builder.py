@@ -3250,6 +3250,11 @@ def _css(brand="gravel"):
     # charcoal monochrome identity; gravel/MTB keep Gravel God brown. Fonts are
     # shared (Sometype Mono + Source Serif), so this is a pure palette swap.
     if (brand or "gravel").lower() == "road":
+        # Greyscale, but every token keeps its own step on the ink ramp:
+        # aliasing two tokens onto one value collapses the components keyed to
+        # them (base/build phases, tactical/info callouts). Steps are ~17/255
+        # apart so they survive a greyscale print, and each stays >= 4.5:1 on
+        # the paper tones.
         _colors = """  --gg-color-dark-brown: #000000;
   --gg-color-primary-brown: #1a1a1a;
   --gg-color-secondary-brown: #333333;
@@ -3257,11 +3262,11 @@ def _css(brand="gravel"):
   --gg-color-tan: #d0d0c8;
   --gg-color-sand: #e8e8e2;
   --gg-color-warm-paper: #f5f5f0;
-  --gg-color-gold: #1a1a1a;
+  --gg-color-gold: #666666;
   --gg-color-light-gold: #777777;
-  --gg-color-teal: #333333;
-  --gg-color-light-teal: #555555;
-  --gg-color-near-black: #1a1a1a;
+  --gg-color-teal: #444444;
+  --gg-color-light-teal: #262626;
+  --gg-color-near-black: #0d0d0d;
   --gg-color-white: #ffffff;
   --gg-color-error: #8b1a1a;"""
     else:
