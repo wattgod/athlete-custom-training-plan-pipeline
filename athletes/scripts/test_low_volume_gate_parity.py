@@ -125,3 +125,9 @@ def test_unresolved_pain_means_no_initial_field_test():
     assert _initial_field_test_required(profile) is False
     profile['injury_history']['current_injuries'][0]['status'] = 'cleared'
     assert _initial_field_test_required(profile) is True
+
+
+def test_b_race_easy_spin_is_published_as_recovery():
+    from generate_athlete_package import _b_race_overlay_role
+    assert _b_race_overlay_role(True) == {'role': 'recovery'}
+    assert _b_race_overlay_role(False) == {}

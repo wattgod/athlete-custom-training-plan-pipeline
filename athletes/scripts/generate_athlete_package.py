@@ -1078,6 +1078,14 @@ def _mark_initial_testing_week(plan_dates: dict, profile: Optional[dict],
             return
 
 
+def _b_race_overlay_role(is_b_race_easy: bool) -> dict:
+    """AE-1.9 keeps the B-race overlay's easy spin two days out; it is a
+    recovery spin, which AE-2.7 exempts from the session floor. The legacy
+    path records no role, so without this the post-render floor check read
+    the 40-minute spin as a truncated ride (2026-09-22 order)."""
+    return {'role': 'recovery'} if is_b_race_easy else {}
+
+
 def _delivery_role(archetype_id: str, builder_role: str, week_type: str,
                    *, post_sim_recovery: bool = False) -> str:
     """Give downstream review rules the session's athlete-facing purpose.
@@ -5075,7 +5083,8 @@ GO GET IT, {athlete_name.upper()}!
                         _emit_authored_document(filepath, zwo_content)
                         generated_files.append(filepath)
                         _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
-                                            display_name=display_name)
+                                            display_name=display_name,
+                                            **_b_race_overlay_role(is_b_race_easy))
                         continue  # Skip the standard generation below
                 except Exception as e:
                     # Fall back to standard generation if Nate generator fails
@@ -5148,7 +5157,8 @@ GO GET IT, {athlete_name.upper()}!
 
             generated_files.append(filepath)
             _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
-                                display_name=display_name)
+                                display_name=display_name,
+                                **_b_race_overlay_role(is_b_race_easy))
 
     # ===================================================================
     # SERIES SUFFIX PATCH (D2): block-builder intensity days that belong
