@@ -719,6 +719,40 @@ def test_hard_minutes_below_floor_reports_every_offending_week_distinctly():
     assert matches['HARD_MINUTES_BELOW_FLOOR_W02']['review_value']['hard_minutes'] == 10.0
 
 
+def _load_week_with_thirty_hard_minutes(document):
+    document['plan_ir']['weeks'][1]['week_type'] = 'load'
+    document['plan_ir']['weeks'][1]['sessions'] = [
+        _bike_session('2026-08-11', 'Threshold Intervals', [
+            _step(1800, 95, 100),  # 30 min hard
+        ]),
+    ]
+    _mirror_to_manifest(document)
+
+
+def test_hard_minutes_floor_does_not_apply_under_six_weekly_hours():
+    """AE-2.1 sets the 90-minute floor 'for any athlete training >=6 h/wk'.
+    A 5 h/wk, 2-3 ride athlete (2026-09-22 order) got a WARNING on all 26
+    load weeks under a rule that does not cover them."""
+    document = _document()
+    document['context']['profile']['weekly_availability'] = {
+        'cycling_hours_target': 5}
+    _load_week_with_thirty_hard_minutes(document)
+    issues, _ = validate_transitional_input(document)
+    assert not any(issue['id'].startswith('HARD_MINUTES_BELOW_FLOOR')
+                   for issue in issues)
+
+
+def test_hard_minutes_floor_applies_from_six_weekly_hours_and_when_unknown():
+    for hours in (6, None):
+        document = _document()
+        if hours is not None:
+            document['context']['profile']['weekly_availability'] = {
+                'cycling_hours_target': hours}
+        _load_week_with_thirty_hard_minutes(document)
+        issues, _ = validate_transitional_input(document)
+        assert 'HARD_MINUTES_BELOW_FLOOR_W01' in {issue['id'] for issue in issues}, hours
+
+
 def test_locked_run_sessions_project_as_tp_run_not_bike():
     """A dual-sport athlete declares a fixed run with `sport: run` on a
     recurring session. Both compilers (canonical_training_model and plan_ir)

@@ -556,6 +556,10 @@ _HARD_MINUTES_FLOOR = 90.0
 # 90-minute weekly floor structurally impossible there; race week is its
 # own thing entirely.
 _HARD_MINUTES_EXEMPT_WEEK_TYPES = {"recovery", "taper", "race"}
+# AE-2.1 scopes the floor by volume: "90-120 min of genuinely hard work per
+# week, minimum, for any athlete training >=6 h/wk". Below that the ratified
+# rule is silent, so the gate is too.
+_HARD_MINUTES_MIN_WEEKLY_HOURS = 6.0
 _VO2_FTP_THRESHOLD = 106.0
 _VO2_SECONDS_MIN = 5 * 60
 _VO2_SECONDS_MAX = 18 * 60
@@ -689,14 +693,35 @@ def _vo2_dose_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
     return findings
 
 
-def _hard_minutes_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _weekly_hours(profile: Dict[str, Any] | None) -> float | None:
+    """The athlete's stated weekly cycling hours, or None when unknown."""
+    raw = ((profile or {}).get("weekly_availability") or {}).get(
+        "cycling_hours_target")
+    try:
+        hours = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return hours if hours > 0 else None
+
+
+def _hard_minutes_findings(
+    plan_ir: Dict[str, Any], profile: Dict[str, Any] | None = None,
+) -> List[Dict[str, Any]]:
     """AE-2.1 (phase-scoped, sol programming review 2026-08-24): a LOAD week
     needs >=90 structured hard minutes (>=92% FTP, test efforts counted per
     the ratified scoping addendum); recovery/taper/race weeks are governed
     by their own rules and exempt. WARNING severity: the plan still ships,
     but a real offender (W3's 26.7 hard minutes in the sol review, the
     plan's only true build/load week) surfaces for coach review instead of
-    shipping silently."""
+    shipping silently.
+
+    The floor applies only to athletes training >=6 h/wk, as AE-2.1 is
+    written. A 5 h/wk, 2-3 ride athlete got a WARNING on every load week of
+    a 34-week plan (2026-09-22 order) under a rule that does not cover them.
+    Unknown hours keep the floor on."""
+    hours = _weekly_hours(profile)
+    if hours is not None and hours < _HARD_MINUTES_MIN_WEEKLY_HOURS:
+        return []
     totals: Dict[int, float] = {}
     for week_num, session in _sessions(plan_ir):
         if session.get("tp_kind") != "bike":
@@ -1117,7 +1142,7 @@ def validate_transitional_input(
     confirmations.extend(_day_cap_findings(plan_ir, profile))
     issues.extend(_short_quality_findings(plan_ir, profile))
     issues.extend(_endurance_tss_rate_findings(plan_ir))
-    issues.extend(_hard_minutes_findings(plan_ir))
+    issues.extend(_hard_minutes_findings(plan_ir, profile))
     issues.extend(_vo2_dose_findings(plan_ir))
 
     fueling = context.get("fueling") or {}
