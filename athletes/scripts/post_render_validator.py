@@ -209,7 +209,10 @@ def _field_test_suppression_findings(
     )]
 
 
-def _unresolved_pain_evidence(profile: Dict[str, Any]) -> List[str]:
+def unresolved_pain_evidence(profile: Dict[str, Any]) -> List[str]:
+    """Current injury/pain entries not marked cleared. The generator reads
+    the same predicate to keep field tests off such a plan, so the gate and
+    the plan it judges cannot disagree about who is unresolved."""
     evidence = []
     for injury in (profile.get("injury_history") or {}).get("current_injuries") or []:
         if isinstance(injury, dict):
@@ -234,7 +237,7 @@ def _unresolved_pain_evidence(profile: Dict[str, Any]) -> List[str]:
 def _unresolved_pain_load_findings(
     plan_ir: Dict[str, Any], profile: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
-    evidence = _unresolved_pain_evidence(profile)
+    evidence = unresolved_pain_evidence(profile)
     if not evidence:
         return []
     unsafe = []

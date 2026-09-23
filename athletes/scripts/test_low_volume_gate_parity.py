@@ -111,3 +111,17 @@ def test_growing_an_endurance_ride_still_extends_its_z2_block():
                  "    </workout></workout_file>")
     grown = scale_zwo_to_target_duration(endurance, 90, 'Endurance', snap_to=60)
     assert _durations(grown) == [5100, 10, 300]
+
+
+# ---------------------------------------------------------------------------
+# Field tests -- the generator reads the gate's pain predicate
+# ---------------------------------------------------------------------------
+
+def test_unresolved_pain_means_no_initial_field_test():
+    from generate_athlete_package import _initial_field_test_required
+    profile = {'fitness_markers': {'reanchor': {'required': True}},
+               'injury_history': {'current_injuries': [
+                   {'area': 'general', 'description': 'Concussion', 'status': 'active'}]}}
+    assert _initial_field_test_required(profile) is False
+    profile['injury_history']['current_injuries'][0]['status'] = 'cleared'
+    assert _initial_field_test_required(profile) is True
