@@ -20,7 +20,7 @@ MAX_PAGES = 1000
 _ALLOWED_BRANDS = {"gravelgod", "roadielabs", "xcskilabs"}
 _ALLOWED_OFFERS = {
     "training_plan", "coaching", "consulting", "consult_addon", "membership",
-    "unknown",
+    "season_plan", "unknown",
 }
 
 
@@ -176,6 +176,8 @@ def _catalog_offer(product_name: str) -> str:
         return "consulting"
     if "coaching" in normalized:
         return "coaching"
+    if "season plan" in normalized:
+        return "season_plan"
     if "training plan" in normalized or "custom plan" in normalized:
         return "training_plan"
     if any(token in normalized for token in ("membership", "subscription", "supporter")):

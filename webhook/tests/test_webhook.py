@@ -3474,6 +3474,333 @@ class TestConsultingWebhook:
         assert r2.get_json()['status'] == 'duplicate'
 
 
+class TestRacePlanPriceParityUnchanged:
+    """Season Plan checkout is a new branch inside create_checkout(), keyed
+    off a `product` field no existing caller sends. Every request shaped
+    like today's — no `product` field — must resolve to EXACTLY the same
+    price and the same pre-built Stripe price ID as before that branch
+    existed. Golden IDs below are copied verbatim from the unmodified
+    TRAINING_PLAN_PRICE_IDS table."""
+
+    _GOLDEN_PRICE_IDS = {
+        4: 'price_1T2ekOLoaHDbEqSqRbpy02qh',
+        12: 'price_1T2ekQLoaHDbEqSqScrmfxRF',
+        17: 'price_1T2ekRLoaHDbEqSqgQVjT7FI',   # 17+ weeks (cap)
+    }
+
+    def _future_date(self, weeks_ahead):
+        d = datetime.now() + timedelta(weeks=weeks_ahead)
+        return d.strftime('%Y-%m-%d')
+
+    @pytest.mark.parametrize('weeks,expected_cents', [
+        (4, 6000), (12, 18000), (17, 24900), (40, 24900),
+    ])
+    def test_compute_plan_price_unchanged(self, weeks, expected_cents):
+        from app import compute_plan_price
+        result = compute_plan_price(self._future_date(weeks))
+        assert result['weeks'] == weeks
+        assert result['price_cents'] == expected_cents
+
+    @pytest.mark.parametrize('weeks', [4, 12, 17, 40])
+    def test_checkout_resolves_same_price_id_as_before(
+            self, client, temp_athletes_dir, weeks):
+        """A plain race-plan request — no `product` field, matching every
+        existing caller — still resolves to the pre-existing pre-built
+        Stripe price ID for its week count. The Season Plan branch never
+        executes for this request."""
+        import app as app_module
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = f'cs_test_parity_{weeks}'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={
+                    'name': 'Parity Test',
+                    'email': 'parity@test.com',
+                    'races': [{'name': 'Race', 'date': self._future_date(weeks),
+                              'priority': 'A'}],
+                },
+                content_type='application/json',
+            )
+
+            assert response.status_code == 200
+            data = response.get_json()
+            assert data['price']['weeks'] == weeks
+
+            expected_price_id = app_module.TRAINING_PLAN_PRICE_IDS[min(weeks, 17)]
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            line_item = call_kwargs['line_items'][0]
+            assert line_item == {'price': expected_price_id, 'quantity': 1}
+            assert call_kwargs['metadata']['product_type'] == 'training_plan'
+            # Season Plan's tagging/payment_intent_data additions never leak
+            # onto the unmodified race-plan path.
+            assert 'offer_family' not in call_kwargs['metadata']
+            assert 'payment_intent_data' not in call_kwargs
+
+    def test_golden_price_ids_are_unchanged(self):
+        """Direct check that the price-ID table itself was not touched."""
+        import app as app_module
+        for weeks, price_id in self._GOLDEN_PRICE_IDS.items():
+            assert app_module.TRAINING_PLAN_PRICE_IDS[weeks] == price_id
+
+
+class TestSeasonPlanCheckout:
+    """Tests for the Season Plan branch of POST /api/create-checkout."""
+
+    def test_season_plan_rejects_missing_email(self, client):
+        response = client.post(
+            '/api/create-checkout',
+            json={'name': 'Test', 'product': 'season_plan'},
+            content_type='application/json',
+        )
+        assert response.status_code == 400
+        assert 'email' in response.get_json()['error'].lower()
+
+    def test_season_plan_rejects_missing_name(self, client):
+        response = client.post(
+            '/api/create-checkout',
+            json={'email': 'test@test.com', 'product': 'season_plan'},
+            content_type='application/json',
+        )
+        assert response.status_code == 400
+        assert 'name' in response.get_json()['error'].lower()
+
+    def test_season_plan_does_not_require_races(self, client, temp_athletes_dir):
+        """Unlike the race plan, Season Plan checkout does not require a
+        races list — a season buyer may not have entered their full
+        calendar yet."""
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_season_norace'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={'name': 'Season Buyer', 'email': 'season@test.com',
+                      'product': 'season_plan'},
+                content_type='application/json',
+            )
+            assert response.status_code == 200
+
+    def test_season_plan_charges_flat_499_via_price_data(
+            self, client, temp_athletes_dir):
+        """$499 flat, via inline price_data — never compute_plan_price() or
+        TRAINING_PLAN_PRICE_IDS, which would silently cap this at $249."""
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_season'
+            mock_session.url = 'https://checkout.stripe.com/pay/cs_test_season'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={'name': 'Season Buyer', 'email': 'season@test.com',
+                      'product': 'season_plan'},
+                content_type='application/json',
+            )
+
+            assert response.status_code == 200
+            data = response.get_json()
+            assert data['price']['price_cents'] == 49900
+            assert data['price']['price_display'] == '$499'
+
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            line_item = call_kwargs['line_items'][0]
+            assert 'price' not in line_item
+            price_data = line_item['price_data']
+            assert price_data['unit_amount'] == 49900
+            assert price_data['currency'] == 'usd'
+            assert 'Season Plan' in price_data['product_data']['name']
+
+    def test_season_plan_tags_offer_family_on_session_and_payment_intent(
+            self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_season_tag'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={'name': 'Season Buyer', 'email': 'season@test.com',
+                      'product': 'season_plan'},
+                content_type='application/json',
+            )
+            assert response.status_code == 200
+
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert call_kwargs['metadata']['offer_family'] == 'season_plan'
+            assert call_kwargs['metadata']['product_type'] == 'season_plan'
+            assert call_kwargs['metadata']['product_name'] == 'Season Plan'
+            pi_metadata = call_kwargs['payment_intent_data']['metadata']
+            assert pi_metadata['offer_family'] == 'season_plan'
+            assert pi_metadata['product_type'] == 'season_plan'
+
+    def test_season_plan_passes_a_race_date_through_metadata(
+            self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_season_arace'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={
+                    'name': 'Season Buyer', 'email': 'season@test.com',
+                    'product': 'season_plan',
+                    'races': [{'name': 'A Race', 'date': '2027-08-01', 'priority': 'A'}],
+                },
+                content_type='application/json',
+            )
+            assert response.status_code == 200
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert call_kwargs['metadata']['a_race_date'] == '2027-08-01'
+
+    def test_season_plan_checkout_handles_stripe_error(self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe:
+            class MockStripeError(Exception):
+                pass
+            mock_stripe.error.StripeError = MockStripeError
+            mock_stripe.checkout.Session.create.side_effect = MockStripeError('API down')
+
+            response = client.post(
+                '/api/create-checkout',
+                json={'name': 'Season Buyer', 'email': 'season@test.com',
+                      'product': 'season_plan'},
+                content_type='application/json',
+            )
+            assert response.status_code == 502
+
+    def test_season_plan_checkout_options_preflight(self, client):
+        response = client.options('/api/create-checkout')
+        assert response.status_code == 204
+
+
+class TestSeasonPlanWebhook:
+    """Tests for the Season Plan branch of POST /webhook/stripe."""
+
+    def _event(self, order_id='cs_season_1', a_race_date=''):
+        metadata = {
+            'product_type': 'season_plan',
+            'offer_family': 'season_plan',
+            'athlete_name': 'Season Athlete',
+            'brand': 'gravelgod',
+        }
+        if a_race_date:
+            metadata['a_race_date'] = a_race_date
+        return {
+            'type': 'checkout.session.completed',
+            'data': {
+                'object': {
+                    'id': order_id,
+                    'amount_total': 49900,
+                    'customer_details': {'email': 'season@test.com'},
+                    'metadata': metadata,
+                }
+            }
+        }
+
+    def test_season_plan_webhook_processes_payment(self, client, temp_athletes_dir):
+        with patch('app._send_ga4_purchase') as ga4_purchase:
+            response = client.post(
+                '/webhook/stripe', json=self._event(),
+                content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status'] == 'success'
+        assert data['product_type'] == 'season_plan'
+        assert len(data['rebuild_dates']) == 4
+        ga4_purchase.assert_called_once()
+
+    def test_season_plan_webhook_rebuild_dates_are_quarterly_plus_fallback(
+            self, client, temp_athletes_dir):
+        from datetime import date
+        response = client.post(
+            '/webhook/stripe', json=self._event(order_id='cs_season_2'),
+            content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        today = date.today()
+        rebuild_dates = [datetime.strptime(d, '%Y-%m-%d').date()
+                         for d in data['rebuild_dates']]
+        assert rebuild_dates[0] == today + timedelta(weeks=13)
+        assert rebuild_dates[1] == today + timedelta(weeks=26)
+        assert rebuild_dates[2] == today + timedelta(weeks=39)
+        # No A-race date given at checkout -> fallback to +52 weeks.
+        assert rebuild_dates[3] == today + timedelta(weeks=52)
+
+    def test_season_plan_webhook_uses_a_race_date_for_4th_rebuild(
+            self, client, temp_athletes_dir):
+        response = client.post(
+            '/webhook/stripe',
+            json=self._event(order_id='cs_season_3', a_race_date='2027-08-01'),
+            content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['rebuild_dates'][3] == '2027-08-01'
+
+    def test_season_plan_webhook_logs_event(self, client, temp_athletes_dir):
+        import app as app_module
+        response = client.post(
+            '/webhook/stripe', json=self._event(order_id='cs_season_log'),
+            content_type='application/json')
+        assert response.status_code == 200
+
+        log_dir = Path(app_module.ATHLETES_DIR) / '.logs'
+        log_files = list(log_dir.glob('*.jsonl'))
+        assert len(log_files) > 0
+        with open(log_files[0]) as f:
+            entries = [json.loads(line) for line in f.readlines()]
+        season_entries = [
+            e for e in entries
+            if e.get('product_type') == 'season_plan' and e.get('order_id') == 'cs_season_log'
+        ]
+        assert len(season_entries) == 1
+        assert len(season_entries[0]['rebuild_dates']) == 4
+        assert season_entries[0]['price_cents'] == 49900
+
+    def test_season_plan_webhook_idempotent(self, client, temp_athletes_dir):
+        event = self._event(order_id='cs_season_dup')
+        r1 = client.post('/webhook/stripe', json=event, content_type='application/json')
+        assert r1.status_code == 200
+        assert r1.get_json()['status'] == 'success'
+
+        r2 = client.post('/webhook/stripe', json=event, content_type='application/json')
+        assert r2.status_code == 200
+        assert r2.get_json()['status'] == 'duplicate'
+
+    def test_season_plan_coach_notification_says_season_plan(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        with patch('app._send_email') as mock_send:
+            mock_send.return_value = True
+            response = client.post(
+                '/webhook/stripe', json=self._event(order_id='cs_season_notify'),
+                content_type='application/json')
+        assert response.status_code == 200
+        call_args = mock_send.call_args
+        # _send_email(to, subject, text, html=..., brand=...)
+        assert 'Season Plan' in call_args[0][1]   # subject
+        assert 'Season Plan' in call_args[0][2]   # text body
+
+    def test_season_plan_webhook_routes_separately_from_training_plan(
+            self, client, temp_athletes_dir):
+        """A season_plan event must never fall into the ZWO-pipeline
+        training-plan handler, which expects a full athlete profile."""
+        with patch('app._handle_training_plan_webhook') as mock_tp:
+            response = client.post(
+                '/webhook/stripe', json=self._event(order_id='cs_season_route'),
+                content_type='application/json')
+        assert response.status_code == 200
+        mock_tp.assert_not_called()
+
+
 class TestPastDateRejection:
     """Tests for past race date validation."""
 

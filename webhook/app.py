@@ -302,6 +302,21 @@ PRICE_CAP_CENTS = 24900       # $249 max
 MIN_WEEKS = 4                 # Minimum 4 weeks ($60)
 STRIPE_PRODUCT_NAME = 'Custom Training Plan'
 
+# Season Plan — flat $499, a distinct product from the $15/wk-capped-at-$249
+# race plan above. Source of truth for this number is gravel-race-automation
+# data/pricing.json -> products.season_plan.price_cents; this repo cannot
+# read across repos at runtime, so the figure is duplicated here and must be
+# kept in sync by hand if that file changes.
+SEASON_PLAN_PRICE_CENTS = 49900        # $499
+SEASON_PLAN_PRICE_DISPLAY = '$499'
+SEASON_PLAN_NAME = 'Season Plan'
+SEASON_PLAN_OFFER_FAMILY = 'season_plan'
+SEASON_PLAN_MAX_WEEKS = 52
+# Three quarterly rebuilds, then a 4th targeting the A-race if one was given
+# at checkout, else +52 weeks from purchase. See _season_plan_rebuild_dates.
+SEASON_PLAN_REBUILD_OFFSETS_WEEKS = (13, 26, 39)
+SEASON_PLAN_FALLBACK_REBUILD_WEEKS = 52
+
 # Pre-built Stripe price IDs (from scripts/create_stripe_products.py)
 # Training plan prices keyed by weeks (4–16, plus 17+ cap)
 TRAINING_PLAN_PRICE_IDS = {
@@ -5886,6 +5901,15 @@ def create_checkout():
     if not name:
         return jsonify({'error': 'Name is required'}), 400
 
+    # The questionnaire tells this endpoint apart with a top-level `product`
+    # field. Anything other than the literal 'season_plan' — including the
+    # field being absent, which is every existing caller — falls straight
+    # through to the unchanged race-plan path below.
+    product = str(data.get('product') or 'race_plan').strip().lower()
+    if product == 'season_plan':
+        return _create_season_plan_checkout(
+            data, email, name, ga4_client_id, ga4_session_id, analytics_consent)
+
     # Validate at least one race
     races = data.get('races', [])
     if not races:
@@ -6049,6 +6073,136 @@ def create_checkout():
         return jsonify({'error': 'Payment service error. Please try again.'}), 502
     except Exception as e:
         logger.exception(f"Checkout creation error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+def _create_season_plan_checkout(data: dict, email: str, name: str,
+                                 ga4_client_id: str, ga4_session_id: str,
+                                 analytics_consent: str):
+    """Create a Stripe Checkout Session for the flat-price Season Plan.
+
+    $499, up to 52 weeks, every A/B/C race of the year periodised, four
+    scheduled rebuilds — a distinct product from the $15/week-capped-at-$249
+    race plan above `create_checkout` computes. Always prices with
+    `price_data` — never `compute_plan_price()` and never
+    `TRAINING_PLAN_PRICE_IDS`, which are the race plan's per-week table and
+    would silently charge $249 (the cap) for a $499 product.
+    """
+    brand = _brand_from_origin(request.headers.get('Origin', ''))
+    brand_cfg = _brand_config(brand)
+
+    # Races are optional at checkout for this product (a season buyer may
+    # not have entered their full calendar yet). If an A-race is present,
+    # its date becomes the 4th scheduled rebuild (see
+    # _season_plan_rebuild_dates); otherwise the webhook falls back to
+    # purchase date + 52 weeks.
+    races = data.get('races') or []
+    a_race = next(
+        (r for r in races if isinstance(r, dict) and r.get('priority') == 'A'),
+        None)
+    a_race_date_str = str((a_race or {}).get('date') or '')
+
+    intake_id = str(uuid.uuid4())
+    data['computed_price_cents'] = SEASON_PLAN_PRICE_CENTS
+    data['brand'] = brand
+    data['product'] = 'season_plan'
+    store_intake(intake_id, data)
+
+    expires_at = int((datetime.now() + timedelta(minutes=CHECKOUT_EXPIRY_MINUTES)).timestamp())
+
+    # `product_type` drives this app's own webhook dispatch (same field
+    # race plans use for 'training_plan'); `offer_family` is the label the
+    # revenue-reconciliation reader (provider_revenue.py's _offer(), and
+    # gravel-race-automation's reconciliation registry) keys off of. Set on
+    # both the session and the payment intent so a reader of either object
+    # finds the same tag.
+    checkout_metadata = {
+        'intake_id': intake_id,
+        'product_type': 'season_plan',
+        'offer_family': SEASON_PLAN_OFFER_FAMILY,
+        'product_name': SEASON_PLAN_NAME,
+        'athlete_name': name,
+        'brand': brand,
+        'price_cents': str(SEASON_PLAN_PRICE_CENTS),
+    }
+    if a_race_date_str:
+        checkout_metadata['a_race_date'] = a_race_date_str
+    _apply_ga4_metadata(
+        checkout_metadata, ga4_client_id, ga4_session_id, analytics_consent)
+
+    payment_intent_metadata = {
+        'offer_family': SEASON_PLAN_OFFER_FAMILY,
+        'product_name': SEASON_PLAN_NAME,
+        'product_type': 'season_plan',
+    }
+
+    plan_line_item = {
+        'price_data': {
+            'currency': 'usd',
+            'unit_amount': SEASON_PLAN_PRICE_CENTS,
+            'product_data': {
+                'name': f"{brand_cfg['name']} {SEASON_PLAN_NAME}",
+                'description': (
+                    'Up to 52 weeks, every A/B/C race of the year '
+                    'periodised, four scheduled rebuilds across the year'
+                ),
+            },
+        },
+        'quantity': 1,
+    }
+
+    race_slug = data.get('race_slug') if isinstance(data.get('race_slug'), str) else ''
+    cancel_url = f"{brand_cfg['site']}{brand_cfg['questionnaire_path']}"
+    if re.match(r'^[a-z0-9-]{1,80}$', race_slug):
+        cancel_url = f"{cancel_url}?race={race_slug}"
+
+    session_kwargs = dict(
+        line_items=[plan_line_item],
+        mode='payment',
+        customer_email=email,
+        customer_creation='always',
+        client_reference_id=intake_id,
+        metadata=checkout_metadata,
+        payment_intent_data={'metadata': payment_intent_metadata},
+        success_url=f"{brand_cfg['site']}/training-plans/success/?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=cancel_url,
+        expires_at=expires_at,
+        after_expiration={
+            'recovery': {
+                'enabled': True,
+                'allow_promotion_codes': True,
+            }
+        },
+        consent_collection={
+            'promotions': 'auto',
+        },
+    )
+    if ENABLE_AUTOMATIC_TAX:
+        session_kwargs['automatic_tax'] = {'enabled': True}
+
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            api_key=stripe_api_key_for_brand(brand), **session_kwargs)
+
+        logger.info(
+            f"Created season plan checkout session {checkout_session.id} "
+            f"for intake {intake_id} "
+            f"({SEASON_PLAN_PRICE_DISPLAY}, {_mask_email(email)})")
+
+        return jsonify({
+            'checkout_url': checkout_session.url,
+            'intake_id': intake_id,
+            'price': {
+                'price_cents': SEASON_PLAN_PRICE_CENTS,
+                'price_display': SEASON_PLAN_PRICE_DISPLAY,
+            },
+        })
+
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error creating season plan checkout: {e}")
+        return jsonify({'error': 'Payment service error. Please try again.'}), 502
+    except Exception as e:
+        logger.exception(f"Season plan checkout creation error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
 
@@ -7475,6 +7629,8 @@ def stripe_webhook():
             return _handle_consulting_webhook(session, metadata, order_id)
         elif product_type == 'consult_addon':
             return _handle_consult_addon_webhook(session, metadata, order_id)
+        elif product_type == 'season_plan':
+            return _handle_season_plan_webhook(session, metadata, order_id)
         else:
             return _handle_training_plan_webhook(data, order_id)
 
@@ -7905,6 +8061,132 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
         'athlete_id': athlete_id,
         'job_status': job.get('status', 'queued'),
         'message': 'Training plan generation queued'
+    })
+
+
+def _season_plan_rebuild_dates(purchase_date: date, a_race_date_str: str = '') -> list:
+    """Four scheduled-rebuild dates for a Season Plan order, spread across
+    the year from the purchase date. Three are quarterly (+13/+26/+39
+    weeks); the 4th targets the athlete's A-race if one was given at
+    checkout, else falls back to purchase date + 52 weeks. Deliberately
+    simple — no attempt to nudge a rebuild off race week itself."""
+    dates = [purchase_date + timedelta(weeks=w)
+             for w in SEASON_PLAN_REBUILD_OFFSETS_WEEKS]
+    a_race_date = None
+    if a_race_date_str:
+        try:
+            a_race_date = datetime.strptime(a_race_date_str, '%Y-%m-%d').date()
+        except (ValueError, TypeError):
+            a_race_date = None
+    if a_race_date:
+        dates.append(a_race_date)
+    else:
+        dates.append(purchase_date + timedelta(weeks=SEASON_PLAN_FALLBACK_REBUILD_WEEKS))
+    return dates
+
+
+def _build_season_plan_email(details: dict) -> tuple:
+    """Build the coach notification for a new Season Plan order. Subject
+    and body say 'Season Plan' explicitly so it's never mistaken for the
+    $15/week race plan in the inbox."""
+    name = details.get('name', 'Unknown')
+    email = details.get('email', '')
+    order_id = details.get('order_id', '')
+    rebuild_dates = details.get('rebuild_dates', [])
+    a_race_date = details.get('a_race_date', '')
+    brand = normalize_brand(details.get('brand'))
+    subject_prefix = _brand_config(brand).get('subject_prefix', '[GG]')
+
+    subject = f"{subject_prefix} New Season Plan order: {name}"
+    rebuild_rows = ''.join(
+        f'<tr><td style="padding: 4px 12px 4px 0; color: #888;">Rebuild {i + 1}</td>'
+        f'<td style="padding: 4px 0;">{d}</td></tr>'
+        for i, d in enumerate(rebuild_dates))
+    html = f"""
+<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+  <div style="background: #1A8A82; color: white; padding: 16px 24px; border-radius: 4px 4px 0 0;">
+    <h2 style="margin: 0; font-size: 18px;">Season Plan: {name}</h2>
+    <p style="margin: 4px 0 0; opacity: 0.9; font-size: 14px;">{SEASON_PLAN_PRICE_DISPLAY} &middot; Order {order_id}</p>
+  </div>
+  <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
+    <table style="font-size: 14px; border-collapse: collapse; width: 100%;">
+      <tr><td style="padding: 4px 12px 4px 0; color: #888; width: 120px;">Name</td><td style="padding: 4px 0;"><strong>{name}</strong></td></tr>
+      <tr><td style="padding: 4px 12px 4px 0; color: #888;">Email</td><td style="padding: 4px 0;"><a href="mailto:{email}">{email}</a></td></tr>
+      {'<tr><td style="padding: 4px 12px 4px 0; color: #888;">A-race date</td><td style="padding: 4px 0;">' + a_race_date + '</td></tr>' if a_race_date else ''}
+    </table>
+    <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Scheduled rebuilds</h3>
+    <table style="font-size: 14px; border-collapse: collapse; width: 100%;">
+      {rebuild_rows}
+    </table>
+  </div>
+</div>"""
+    text = (f"New Season Plan order: {name} ({email}), order {order_id}. "
+            f"Scheduled rebuilds: {', '.join(str(d) for d in rebuild_dates)}")
+    return subject, text, html
+
+
+def _handle_season_plan_webhook(session: dict, metadata: dict, order_id: str):
+    """Handle Season Plan checkout completion.
+
+    A distinct, simpler path from _handle_training_plan_webhook: it logs the
+    order with its four scheduled-rebuild dates and notifies the coach, but
+    does not run the ZWO generation pipeline — building the actual 52-week
+    plan is out of scope for this checkout branch (see the labour_budget
+    note on data/pricing.json in gravel-race-automation).
+    """
+    name = metadata.get('athlete_name', 'Unknown')
+    email = (session.get('customer_details') or {}).get('email', '')
+    brand = normalize_brand(metadata.get('brand'))
+    a_race_date = str(metadata.get('a_race_date') or '')
+
+    logger.info(f"Season Plan order: {name} ({_mask_email(email)})")
+
+    purchase_date = date.today()
+    rebuild_dates = _season_plan_rebuild_dates(purchase_date, a_race_date)
+    rebuild_dates_iso = [d.isoformat() for d in rebuild_dates]
+
+    mark_order_processed(order_id, sanitize_athlete_id(name))
+
+    try:
+        _send_ga4_purchase(order_id, session.get('amount_total'),
+                           'season_plan', SEASON_PLAN_NAME, brand=brand,
+                           client_id=metadata.get('ga4_client_id', ''),
+                           session_id=metadata.get('ga4_session_id', ''),
+                           analytics_consent=metadata.get(
+                               'analytics_consent', 'unknown'))
+    except Exception:
+        logger.exception("GA4 purchase event failed for season_plan")
+
+    # Order record: the same JSONL order log coaching/consulting/consult_addon
+    # already write via _log_product_event (no dedicated DB table exists in
+    # this repo — everything here is file-based — so the rebuild dates live
+    # as a field on that existing record rather than a new store).
+    try:
+        _log_product_event('season_plan', order_id, name=name, email=email,
+                           brand=brand, price_cents=SEASON_PLAN_PRICE_CENTS,
+                           purchase_date=purchase_date.isoformat(),
+                           a_race_date=a_race_date or None,
+                           rebuild_dates=rebuild_dates_iso)
+    except Exception:
+        logger.exception("Failed to log season_plan product event")
+
+    try:
+        subject, text, html = _build_season_plan_email({
+            'name': name, 'email': email, 'order_id': order_id, 'brand': brand,
+            'rebuild_dates': rebuild_dates_iso, 'a_race_date': a_race_date,
+        })
+        if NOTIFICATION_EMAIL:
+            _send_email(NOTIFICATION_EMAIL, subject, text, html=html, brand=brand)
+        else:
+            logger.critical(f"NEW ORDER: {subject}\n{text}")
+    except Exception:
+        logger.exception("Failed to send Season Plan coach notification")
+
+    return jsonify({
+        'status': 'success',
+        'product_type': 'season_plan',
+        'rebuild_dates': rebuild_dates_iso,
+        'message': f'Season Plan order recorded for {name}'
     })
 
 
