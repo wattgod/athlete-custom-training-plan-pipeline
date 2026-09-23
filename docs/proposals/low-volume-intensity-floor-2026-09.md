@@ -14,18 +14,18 @@ with 26 `HARD_MINUTES_BELOW_FLOOR` warnings (5-44 hard minutes per load
 week against 90) and an `R05` critical on every load week (1 intensity
 session, gate wants 2).
 
-The PR that carries this file fixes the two places where the gate applied a
-rule more broadly than the rule is written:
+The PR that carries this file fixes one place where the gate applied a
+rule more broadly than the rule is written: **AE-2.1 is scoped to athletes
+training at least 6 h/wk.** The gate applied it to everyone; it now skips
+athletes whose stated weekly hours are under 6.
 
-- **AE-2.1 is scoped to athletes training at least 6 h/wk.** The gate
-  applied it to everyone. It now skips athletes whose stated weekly hours
-  are under 6.
-- **R05's registry row allows one quality day when an athlete has 3 or
-  fewer available cycling days.** The gate ignored that clause. It now
-  honors it. See "The R05 judgment call" below.
+Three decisions are left for Matti:
 
-What is left is a real conflict between ratified rules and what a
-low-frequency calendar can hold.
+1. **Decision 1:** the AE-2.1 floor for athletes at 6 h/wk or more who have
+   only 2-3 riding days (the main body of this proposal).
+2. **Decision 2:** whether R05 allows one quality day on low-availability
+   calendars. It is not changed in this PR.
+3. **Decision 3:** what "maximal" means in the unresolved-pain gate.
 
 ## The rules involved
 
@@ -40,7 +40,7 @@ low-frequency calendar can hold.
 | R01 | registry, ACTIVE/CRITICAL | No back-to-back intensity days | same |
 | Long-ride buffer | house pattern, not an AE rule | Intensity days are never placed next to the long ride unless the athlete asked for that | `CLAUDE.md` ("Intensity days prefer Tue/Thu") |
 
-## Why 90 minutes is out of reach for these calendars
+## Decision 1: why 90 minutes is out of reach for these calendars
 
 The floor counts minutes at or above 92% FTP.
 
@@ -71,7 +71,7 @@ AE-2.2 does not settle it. Its 30% "hard" at 7 h is 126 minutes, but that
 share counts tempo and sweet spot. AE-2.1 counts only work at 92% FTP and
 up. The two rules use different rulers.
 
-## Options
+## Decision 1: options
 
 **A. Scale the floor by how many quality days the calendar can hold.** For
 example, 45 minutes per quality day, capped at the current 90-120 band. The
@@ -84,8 +84,10 @@ with one plan-level coach confirmation.** For example: "Low-frequency
 athlete: the AE-2.1 floor is not reachable at N riding days. Confirm the
 intensity dose." Measure everyone else over a rolling two-load-week window
 (180 minutes) so one light week does not flag. Cost: the per-week signal
-goes away for low-frequency athletes, and AE-2.1 would need the same
-3-day line R05 already has. That is a ruling, not a code change.
+goes away for low-frequency athletes, and AE-2.1 would need a
+low-availability line. Ideally it is the same line Decision 2 draws for
+R05, so the two rules agree on who counts as low-frequency. That is a
+ruling, not a code change.
 
 **C. Keep the floor and make the generator reach it.** Put 92%-plus blocks
 into the long ride and allow a second quality day next to the long ride.
@@ -100,39 +102,89 @@ decision is the coach's, made once per plan, not 26 warnings that get
 waived by reflex. The testing-week half of §12 C2 still needs its own
 ruling. Option B does not settle it.
 
-## The R05 judgment call in this PR
+## Decision 2: R05 on low-availability calendars
 
-The PR's R05 change implements the "<=3 available cycling days allows 1-3"
-clause from the registry row that AE-2.1 cites as the active R05. Two
-things could make that the wrong call:
+The order's other repeated blocker was `R05` on every load week: "1
+intensity (need 2-2)". The generator placed one quality day because, with
+three riding days and a Saturday long ride, the only way to a second one
+is to put it next to the long ride (the house buffer) or the day after it.
+That makes every ride hard, for an athlete who asked not to be blasted.
 
-1. `SPEC_EARNED_SELECTION.md` is DRAFT r6. Its A3.0 table keeps the legacy
-   verdict (`min(2, max_intensity)`) for R05 until the E3 cutover and
-   labels the A3.6 row as the E3 target. AE-2.1 itself says any R05
-   revision needs owner review and a version bump.
-2. The residual case: four available days with a Saturday long ride (for
-   example Wed/Thu/Fri/Sat). The long-ride buffer and R01 leave one quality
-   slot, so the generator schedules one and R05 still wants two. The same
-   reasoning as the three-day clause applies, but the registry row does not
-   cover it. If R05's availability clause counted days where a quality
-   session can go (available days not next to the long ride) instead of
-   raw available days, this case would be covered.
+What the documents say:
 
-If the registry row is not in force yet, revert the R05 commit and treat
-R05 as part of this proposal.
+- **Ratified:** only AE-2.1's migration note. It calls R05 the active
+  registry rule and says changing it needs "an R05 revision (owner review
+  + version bump per registry rules)".
+- **Draft:** `SPEC_EARNED_SELECTION.md` (DRAFT r6), A3.6, R05 row, target
+  column (`algorithm_since: E3`): "training age <1 or <=3 available
+  cycling days allows 1-3".
+- **Frozen production verdict:** the same spec's A3.0 keeps production
+  R05 at `min(2, max_intensity)..max_intensity` until the E3 cutover.
+  That is what `block_compliance.r05_intensity_count` does.
 
-## A related conflict from the same order
+The first version of this PR implemented the draft clause. Review caught
+that it was a rule change, and it was reverted. The parity tests now assert R05 fires on the
+Thu/Sat/Sun fixture, marked as pending this decision.
+
+Options:
+
+- **A. Adopt the registry clause now (<=3 available cycling days allows
+  1).** This fixes the order's layout. It does not fix four available
+  days with a Saturday long ride (for example Wed/Thu/Fri/Sat): R01 and
+  the long-ride buffer still leave one quality slot, so the generator
+  schedules one and R05 still wants two.
+- **B. Count quality-eligible days instead of available days.** A
+  quality-eligible day is an available day that is neither the long ride
+  nor next to it. Allow 1 when there is only one such day. This covers
+  the 4-day case and says what the 3-day clause is trying to say.
+- **C. Keep R05 at 2 and let the generator put a quality day next to the
+  long ride** on low-availability calendars. This breaks the house buffer
+  and goes against the athlete's request.
+
+**Recommendation: B.** Either A or B needs the R05 revision (owner review
+and a version bump) that AE-2.1 names.
+
+## Decision 3: what the pain gate calls "maximal"
 
 `UNRESOLVED_PAIN_MAX_PRESCRIPTION` treats any structured step at or above
 105% FTP as "maximal". That covers every VO2 session, the race simulations
 and the race-week openers. R02 (VO2 every 14 days, critical) and the
-race-week opener and activation checks require exactly those sessions. The
-intake also marks any non-"none" injury text as `status: active`, so "crash
-last year, easing back in" reads as unresolved pain. This PR removes the
-part the generator can honor (no field tests on such a plan). The rest
-cannot be fixed in code without breaking R02. Options: ask a clearance
-question at intake (cleared by a clinician? when?), and define "maximal" as
-RPE 9+, all-out, sprints and tests rather than 105% FTP. Recommendation:
-both.
+race-week opener and activation checks require exactly those sessions. So
+for an athlete with injury text, the gate fires on most of the plan, and
+the generator cannot fix that without breaking R02.
+
+Intake also marks any non-"none" current-injury answer `status: active`,
+so "broke my wrist in 2023, fully healed and cleared" reads as unresolved
+pain.
+
+What this PR does, and does not do:
+
+- It leaves off only the mid- and late-plan FTP retests, and only when the
+  injury text says nothing about being healed, cleared or resolved. No
+  deliverable surface promises a retest.
+- The Week 1 re-anchor, which the profile, canonical model, TP manifest
+  and guide all promise, stays scheduled.
+- The gate still fires as before, so the coach decides.
+
+Options:
+
+- Ask a clearance question at intake: cleared by a clinician, and when?
+- Define "maximal" as RPE 9 or higher, all-out efforts, sprints and tests,
+  not 105% FTP.
+
+Recommendation: both.
+
+## Known gap: VOICE_CONTRACT on long plans
+
+The weekly-note phrase pools are sized for plans of roughly 12-16 weeks.
+The position lines ("Last load week of this block.", "Back into peak with
+fresh legs.") recur every block, and the notice pool wraps. A 34-week plan
+repeats about 32 sentences, so `VOICE_CONTRACT` fires on every long plan.
+
+This PR now reports all the repeats in one finding. Before, only the last
+one reached the coach. It does not remove the repeats: dropping them left
+11 of 36 Monday notes as a bare "Week N of M." The fix is more phrasings,
+which is copy work under `docs/AI_WRITING_POLICY.md`. Until then, the
+finding keeps firing on long plans.
 
 **Blocked on:** Matti.
