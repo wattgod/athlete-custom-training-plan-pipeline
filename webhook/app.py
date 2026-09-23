@@ -8496,13 +8496,20 @@ def test_webhook():
 
 
 # =============================================================================
-# POST-PURCHASE FOLLOW-UP EMAIL SEQUENCE
+# POST-PURCHASE FOLLOW-UPS — COACH REMINDERS
 # =============================================================================
 
-# Day offsets and email templates for training plan follow-ups.
+# Day offsets and suggested copy for training plan follow-ups.
 # Coaching and consulting follow-ups are manual (high-touch).
 # Canonical copy lives in webhook/email_templates.py (zero-dep module,
 # voice rules + tests in webhook/tests/test_email_templates.py).
+#
+# Since 2026-09-23 nothing here emails the athlete. The day-1/3/7 sequence
+# and the plan-aware touchpoints each send the coach a reminder carrying the
+# suggested text, to edit and send by hand. At a handful of orders a month a
+# personal note beats an automated one signed "Matti", and automated copy
+# that asserts delivery facts already told one customer his plan had gone
+# out when it had not. Same schedule, same delivery gate, same dedupe log.
 from email_templates import FOLLOWUP_SEQUENCE  # noqa: E402
 
 
@@ -8544,15 +8551,54 @@ def _mark_followup_sent(order_id: str, day: int, email: str):
         fcntl.flock(f, fcntl.LOCK_UN)
 
 
-def _send_followup_email(email: str, subject: str, body: str,
-                         brand: str = DEFAULT_BRAND):
-    """Send a follow-up email via Resend. Returns True on success."""
-    if not RESEND_API_KEY:
-        logger.warning(f"Resend not configured — skipping followup to {_mask_email(email)}")
-        return False
+_FOLLOWUP_LABELS = {
+    1: 'day 1 after delivery',
+    3: 'day 3 check-in',
+    7: 'week 1 done',
+}
 
-    reply_to = NOTIFICATION_EMAIL or None
-    return _send_email(email, subject, body, reply_to=reply_to, brand=brand)
+_TOUCHPOINT_LABELS = {
+    'setup_check': 'plan started, setup check',
+    'ftp_rescale': 'Week 1 test done, FTP rescale offer',
+    'recovery_note': 'first recovery week starts',
+    'midplan_survey': 'mid-plan check-in',
+    'race_week': 'race week starts',
+    'postrace': 'race is done, post-race check-in',
+}
+
+
+def _touchpoint_label(key: str) -> str:
+    if key.startswith('b_debrief_'):
+        return f"B-race debrief ({key[len('b_debrief_'):]})"
+    return _TOUCHPOINT_LABELS.get(key, key)
+
+
+def _send_coach_reminder(order: dict, label: str, subject: str, body: str,
+                         brand: str = DEFAULT_BRAND) -> bool:
+    """Tell the coach an athlete touchpoint is due, with the suggested text.
+
+    Never falls back to the athlete: without NOTIFICATION_EMAIL there is no
+    one to remind, so nothing is sent and the caller counts an error.
+    """
+    if not NOTIFICATION_EMAIL:
+        logger.warning("NOTIFICATION_EMAIL not set — follow-up reminder not sent")
+        return False
+    name = ' '.join(str(order.get('name') or order.get('customer_name') or '').split())
+    first = name.split()[0] if name else 'Athlete'
+    text = (
+        f"Due now: {label}.\n\n"
+        f"Athlete: {name or 'unknown'} <{order.get('email') or 'no email on file'}>\n"
+        f"Athlete id: {order.get('athlete_id') or 'unknown'}\n"
+        f"Order:   {order.get('order_id') or 'unknown'}\n"
+        f"Race:    {order.get('race_name') or 'not recorded'}\n\n"
+        "Nothing was sent to the athlete. If it's worth sending, edit the "
+        "suggested text and send it yourself.\n\n"
+        f"Suggested subject: {subject}\n"
+        "----\n"
+        f"{body}\n"
+    )
+    return _send_email(NOTIFICATION_EMAIL, f"[GG] Reminder: {first}, {label}",
+                       text, brand=brand)
 
 
 # Order-scoped fulfilment state shipped 2026-08-06 (3ac37563). Orders paid
@@ -8588,7 +8634,7 @@ def _plan_delivered_at(order: dict) -> datetime | None:
 
 
 def process_followup_emails():
-    """Check order logs and send due follow-up emails. Returns stats dict.
+    """Check order logs and remind the coach of due follow-ups. Returns stats dict.
 
     Reads from YYYY-MM.jsonl files (written by log_order and _log_product_event).
     Only processes training_plan orders whose plan delivery is CONFIRMED, and
@@ -8669,14 +8715,12 @@ def process_followup_emails():
                     ).replace('https://gravelgodcycling.com', brand_cfg['site'])
                 subject = followup['subject']
 
-                if _send_followup_email(email, subject, body, brand=brand):
+                if _send_coach_reminder(order, _FOLLOWUP_LABELS.get(day, f'day {day}'),
+                                        subject, body, brand=brand):
                     _mark_followup_sent(order_id, day, email)
                     sent_followups.add((order_id, day))
                     stats['sent'] += 1
-                    logger.info(
-                        f"Followup day {day} sent to {_mask_email(email)} "
-                        f"(order {order_id})"
-                    )
+                    logger.info(f"Followup day {day} reminder sent to coach (order {order_id})")
                 else:
                     stats['errors'] += 1
 
@@ -9519,14 +9563,14 @@ def consult_operator_op(order_id):
 
 
 # =============================================================================
-# LIFECYCLE TOUCHPOINTS — plan-aware anti-churn emails
+# LIFECYCLE TOUCHPOINTS — plan-aware coach reminders
 #
 # Unlike the fixed day-1/3/7 FOLLOWUP_SEQUENCE, these are computed from the
 # athlete's actual plan calendar (plan_dates.yaml): FTP-rescale offer after
 # the testing week, reassurance at the first recovery week, a mid-plan
 # survey, B-race debriefs, race-week checklist, and the post-race
-# survey + coaching offer. All reply-driven: responses land in the coach
-# inbox and become coaching-funnel conversations.
+# survey + coaching offer. Each one reminds the coach with suggested text
+# (see POST-PURCHASE FOLLOW-UPS above); nothing goes to the athlete.
 # =============================================================================
 
 def compute_touchpoints(plan_dates: dict, first_name: str, race_name: str) -> list:
@@ -9698,7 +9742,7 @@ def compute_touchpoints(plan_dates: dict, first_name: str, race_name: str) -> li
 
 
 def process_touchpoint_emails():
-    """Send lifecycle touchpoints due today. Returns stats dict.
+    """Remind the coach of lifecycle touchpoints due today. Returns stats dict.
 
     Stateless: recomputes each athlete's schedule from plan_dates.yaml on
     every run and dedupes via the followup sent-log (key = 'tp:<key>').
@@ -9768,22 +9812,21 @@ def process_touchpoint_emails():
                 if dedupe_key in sent:
                     continue
                 try:
-                    _send_email(
-                        to=email,
-                        subject=touch['subject'],
-                        body=touch['body'],
-                        reply_to=NOTIFICATION_EMAIL or None,
-                    )
+                    reminded = _send_coach_reminder(
+                        order, _touchpoint_label(touch['key']),
+                        touch['subject'], touch['body'])
+                except Exception as e:
+                    reminded = False
+                    logger.error(f"Touchpoint reminder failed: {e}")
+                if reminded:
                     _mark_followup_sent(order_id, f"tp:{touch['key']}", email)
                     sent.add(dedupe_key)
                     stats['sent'] += 1
                     logger.info(
-                        f"Touchpoint {touch['key']} sent to "
-                        f"{_mask_email(email)} (order {order_id})"
-                    )
-                except Exception as e:
+                        f"Touchpoint {touch['key']} reminder sent to coach "
+                        f"(order {order_id})")
+                else:
                     stats['errors'] += 1
-                    logger.error(f"Touchpoint send failed: {e}")
 
     return stats
 
@@ -10388,7 +10431,7 @@ def intel_stats():
 @app.route('/api/cron/followup-emails', methods=['POST'])
 @limiter.limit("5/minute")
 def cron_followup_emails():
-    """Daily cron endpoint — send follow-up emails for recent orders.
+    """Daily cron endpoint — coach reminders for due follow-ups and touchpoints.
 
     Secured by CRON_SECRET header. Call daily from an external scheduler.
     """

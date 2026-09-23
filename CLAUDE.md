@@ -49,8 +49,10 @@ Questionnaire → Block-Builder Engine → ZWO Workouts → HTML Guide → PDF �
 4. Coach reviews plan_preview.html + coaching_brief.md
 5. Coach imports ZWO files to TrainingPeaks
 6. Coach sends confirmation via API endpoint
-7. Follow-up emails auto-fire (Day 1, 3, 7), counted from the CONFIRMED delivery.
-   Nothing fires while an order is BLOCKED_REVIEW, APPROVED or APPLIED.
+7. Follow-up reminders go to the COACH (Day 1, 3, 7 + plan-calendar touchpoints),
+   counted from the CONFIRMED delivery, each with suggested text to send by hand.
+   Nothing goes to the athlete automatically (since 2026-09-23), and nothing
+   fires while an order is BLOCKED_REVIEW, APPROVED or APPLIED.
 ```
 
 ### Paid orders must reach a terminal status
@@ -149,7 +151,7 @@ railway.json       <- Railway deploy config (root, NOT webhook/)
 - **Abandoned cart recovery**: 60-min expiry, Stripe-native recovery URL, consent collection, recovery email on `checkout.session.expired`
 - **Session tracking**: Success URLs include `?session_id={CHECKOUT_SESSION_ID}` for GA4 attribution
 - **GA4 funnel**: `begin_checkout` -> Stripe -> `purchase` (with dedup via sessionStorage)
-- **Post-purchase emails**: Day 1 (getting started), Day 3 (check-in), Day 7 (coaching bridge). Triggered via `/api/cron/followup-emails` daily endpoint, fired by `.github/workflows/daily-followup-emails.yml`. Canonical copy lives in `webhook/email_templates.py` — app.py should import `FOLLOWUP_SEQUENCE` from there, not fork it inline.
+- **Post-purchase follow-ups (coach reminders)**: Day 1 (getting started), Day 3 (check-in), Day 7 (coaching bridge), plus plan-calendar touchpoints (setup check, FTP rescale, first recovery week, mid-plan, B-race debriefs, race week, post-race). Since 2026-09-23 each one emails `NOTIFICATION_EMAIL` a `[GG] Reminder:` with the suggested text; nothing is sent to the athlete. Only after CONFIRMED delivery. Triggered via `/api/cron/followup-emails` daily endpoint, fired by `.github/workflows/daily-followup-emails.yml`. Suggested copy lives in `webhook/email_templates.py` (day-1/3/7) and `compute_touchpoints()` (touchpoints).
 
 ## Handover Skills (load by task)
 
@@ -222,6 +224,7 @@ Tests cover health, validation, WooCommerce, Stripe, coaching checkout (setup fe
 - `TestLogOrderSchema` — log entries include email, name, product_type fields
 - `TestFollowupReadsCorrectLogFiles` — reads YYYY-MM.jsonl, skips failed orders
 - `TestFollowupsWaitForDelivery` — follow-ups + touchpoints only after CONFIRMED; day offsets count from delivery, not payment
+- `TestFollowupsAreCoachReminders` — follow-ups + touchpoints email the coach with suggested text, never the athlete; failed reminders retry
 - `TestRateLimiting` — limiter exists on app, checkout endpoints have rate limit decorators
 - Coaching-side `TestCssTokenValidation` — every var(--gg-*) must be defined in tokens.css
 - Coaching-side `TestAccessibility` — FAQ aria-expanded reset, no "/MO" in billing
