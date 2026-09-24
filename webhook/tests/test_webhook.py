@@ -6964,7 +6964,7 @@ class TestJobSweep:
 
     def test_sweep_fails_job_after_max_attempts(self, app, jobs_dir):
         import app as app_module
-        self._stale_job(app_module, 'stuck_max', status='queued', attempts=2)
+        self._stale_job(app_module, 'stuck_max', status='running', attempts=2)
 
         with _async_env(), \
              patch('app._start_job_thread') as mock_thread, \

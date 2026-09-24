@@ -1,0 +1,7 @@
+# Motoren ten-order offline rehearsal — 2026-09-24
+
+The fixed synthetic cohort ran the real webhook generator, persisted and verified ten separate sealed order revisions, and built the order-bound offline TP package. The run took 43.019 seconds sequentially; peak generator-child RSS was 154,688 KiB. All ten guide/TP race-name and date checks matched, and the package receipts accounted for every source session and note. A deliberate sealed-guide tamper on case 10 was rejected; regeneration made revision 2.
+
+**Readiness result: 0/10 ready for review.** All ten truthful order states were `BLOCKED_REVIEW`. Across the cohort, 47 blocker instances were `HARD_MINUTES_BELOW_FLOOR`; other recurring blockers included voice-contract, RPE/structure mismatch, VO2-dose, stale-race, and unresolved pain prescription. The load-week dose failures are now a bounded generator repair, not an excuse to relax the quality gate.
+
+The source report is in ignored local scratch at `.gg-acctest-delivery/cohort-final-20260924/report.json`; it is not a deliverable or capacity certification. The replay used a fixed 2026-08-06 clock and committed race snapshot, so some `RACE_STALE` findings are harness-date artifacts. PDF rendering was disabled. This run did **not** measure live TP folder/card readback, athlete-calendar placement, guide hosting, coach handling time, confirmation, concurrent production throughput, or the three-day 30-order soak. Ten paid orders/day remains unproven.

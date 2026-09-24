@@ -1,9 +1,10 @@
 # Motoren: custom-plan fulfillment at ten orders/day
 
-Status: execution plan, 2026-09-24. Ten paid custom orders/day is a target to
-prove, not a measured capacity claim. The first implementation card is scoped
-below for a Sol executor. No card authorizes live TrainingPeaks writes, athlete
-messages, or removal of coach approval by implication.
+Status: execution in progress, 2026-09-24. Ten paid custom orders/day is a
+target to prove, not a measured capacity claim. Card 1 is implemented; the
+coach has authorized work on the remaining cards and a klokkaskaddla test.
+This is not authorization to bypass the separate Phase 5 athlete-calendar
+release gate or to send athlete messages.
 
 ## Decision and product boundary
 
@@ -68,8 +69,10 @@ in the canonical model, renderer, and manifests. Reuse and test those first.
    but a non-waivable blocker cannot be approved. The paid order is never
    silently discarded, and internal failures are loud to the coach, not the
    athlete (`.claude/skills/order-safety/SKILL.md`).
-4. No provider write before exact athlete identity, exact revision approval,
-   an operation journal, and the applicable canary authorization. Protected
+4. No provider write before exact athlete identity, exact sealed revision,
+   an operation journal, and the applicable canary authorization. A DRAFT
+   library plan may be staged from `ready_for_review` before coach approval;
+   athlete-calendar application requires exact revision approval. Protected
    calendar items are never overwritten by a library-plan operation.
 5. Plan and guide must describe the same athlete, goals, events, schedule,
    strength, fuel prescription, and revision. All TP content must reconcile
@@ -122,15 +125,15 @@ checks the diff and the complete source-to-payload count.
 
 ### Card 2 — resumable TP Dynamic Plan library publisher
 
-Depends on card 1. Consume only a coach-approved, seal-bound package. Persist
+Depends on card 1. Consume only a sealed `ready_for_review` package. Persist
 intent before each remote action, bind remote plan/object IDs to order and
 release, and read back workouts, notes, folder, and `isDynamic`. Reconcile an
 ambiguous POST before retry; resume after browser/session loss or restart.
 Plan-library publication must not transition the paid order to APPLIED or
 CONFIRMED. Reuse reviewed Phase 5 transport/journal components only where
 their contracts actually cover plan containers; do not conflate them with
-athlete-calendar writes. Use the existing seal-bound coach approval initially;
-card 3 consolidates its review surface, not invents a second approval state.
+athlete-calendar writes. The coach reviews the library DRAFT before approval;
+card 3 consolidates the existing seal-bound approval, not a second state.
 
 Acceptance: injected-transport tests for duplicate requests, partial notes,
 ambiguous timeout, expired session, stale revision, and readback mismatch;
@@ -190,11 +193,27 @@ product ready for ten paid orders/day. Enabling athlete-calendar auto-apply
 still requires the separate Phase 5 authorization and canary proof; if that
 gate exposes gaps, file bounded repair cards rather than bypassing it.
 
-## What Sol executes next
+## Execution checkpoint
 
-Card 1 is the only accepted implementation card now. Sol should work in a
-separate branch/worktree or under disjoint file ownership, report exact diffs
-and test results, and stop if sealed artifacts cannot unambiguously identify
-plan day one or if the existing builder would discard source content without
-an explicit disposition. The parent integrates and verifies the result.
-Cards 2–5 stay planned, not implicitly authorized for live operations.
+Card 1 landed in `3f91d19d`. Cards 2–4 now have offline implementations and
+tests. Card 2's publisher has no live TP adapter or proven folder-placement
+contract; it returns `folder_pending` without exact folder evidence. Card 3's
+existing coach approval now binds the exact ready TP package receipt and guide;
+its packet still blocks release when W00 disposition, verified DRAFT, identity,
+or other required evidence is missing. Card 4's bounded workers passed
+cross-process claim, sweep, and restart tests; review, publication, and confirmation durations
+remain uninstrumented.
+
+Card 5's first real offline ten-order replay sealed all ten in 43.019 seconds
+with complete session/note coverage, but **0/10** were ready for review. All
+were honestly `BLOCKED_REVIEW`, including 47 hard-minute-floor findings; see
+`docs/reports/2026-09-24-ten-order-rehearsal.md`. The bounded repair diagnosis
+is in `docs/reports/2026-09-24-hard-minute-floor-repair-card.md`; it needs a
+ratified accounting ruler and novice-state design before generator changes.
+The three-day soak and live TP readback remain open.
+
+The klokkaskaddla preflight found the existing plan-library DRAFT is stale,
+unsealed, and lint-failing, with an unresolved September 26 race conflict; see
+`docs/reports/2026-09-24-klokkaskaddla-canary.md`. No new TP or athlete-calendar
+write is justified from that source. A DRAFT alone never counts as delivery or
+ten-orders/day proof.
