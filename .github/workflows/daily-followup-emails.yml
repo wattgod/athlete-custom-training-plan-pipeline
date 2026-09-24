@@ -5,10 +5,13 @@ name: "Daily Follow-up + Touchpoint Emails"
 #   - plan-aware lifecycle touchpoints (setup check, FTP-rescale offer,
 #     recovery-week note, mid-plan survey, B-race debriefs, race-week
 #     checklist, post-race survey + coaching bridge)
+#   - Season Plan rebuild reminders (emails Matti on each of the four
+#     scheduled-rebuild dates per order; never touches the athlete's plan)
 #
 # Railway can't self-cron (its cron restarts the whole container), so this
 # workflow is THE thing that makes the anti-churn spine actually send.
-# Dedup lives server-side (followup_sent.jsonl) — running twice is safe.
+# Dedup lives server-side (followup_sent.jsonl, .season_plan_rebuild_reminders.json)
+# — running twice is safe.
 #
 # Requires repo secret: CRON_SECRET (same value as the Railway env var).
 
@@ -60,6 +63,18 @@ jobs:
             exit 1
           fi
 
+      - name: "POST /api/cron/season-plan-rebuild-reminders"
+        run: |
+          RESPONSE=$(curl -sf -X POST \
+            "$API_BASE/api/cron/season-plan-rebuild-reminders" \
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}")
+          echo "$RESPONSE" | python3 -m json.tool
+          STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))")
+          if [ "$STATUS" != "ok" ]; then
+            echo "::error::Season Plan rebuild reminder cron returned status=$STATUS"
+            exit 1
+          fi
+
       - name: "Summarize"
         if: success()
-        run: echo "Email cron fired and coaching approval-only reminders were queued."
+        run: echo "Email cron fired, coaching approval-only reminders were queued, and Season Plan rebuild reminders were sent."
