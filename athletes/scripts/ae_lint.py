@@ -31,7 +31,8 @@ from typing import Any, Iterator, Mapping
 # ---------------------------------------------------------------- thresholds
 # All numbers come from docs/ALGORITHM_EVIDENCE.md — cite the AE ID, never
 # restate a number without one.
-ENDURANCE_IF_LO, ENDURANCE_IF_HI = 0.60, 0.70          # ratified band (AE-2.8 pair)
+ENDURANCE_IF_LO, ENDURANCE_IF_HI = 0.60, 0.70          # AE-2.8 <=2 h anchor
+ENDURANCE_IF_LO_LONG = 0.58                           # AE-2.8 >2 h floor
 ENDURANCE_TSS_PER_HR = 50.0                            # AE-2.8
 SESSION_FLOOR_SECONDS = 60 * 60                        # AE-2.7 (60 min since 2026-09-17; 45 only by explicit athlete request)
 TAPER_MAX_HARD_REP_SECONDS = 120                       # AE-1.12
@@ -247,7 +248,13 @@ def lint_workout(w: Mapping[str, Any], race: date | None) -> list[dict]:
 
     # E1/E2 — endurance band + load rate (AE-2.8 + ratified IF band)
     if is_endurance and hours > 0:
-        if if_planned and not (ENDURANCE_IF_LO <= if_planned <= ENDURANCE_IF_HI):
+        if_floor = ENDURANCE_IF_LO if hours <= 2 else ENDURANCE_IF_LO_LONG
+        rate_floor = 100.0 * if_floor ** 2
+        if not floor_exempt and (tss / hours < rate_floor - 1e-6
+                                 or (if_planned and if_planned < if_floor - 1e-9)):
+            add("FAIL", "AE-2.8", f"endurance dose below {if_floor:.2f} IF / "
+                f"{rate_floor:.1f} TSS/hr floor ({tss / hours:.1f} TSS/hr planned)")
+        if if_planned and if_planned > ENDURANCE_IF_HI:
             add("WARN", "AE-2.8", f"endurance IF {if_planned:.2f} outside {ENDURANCE_IF_LO:.2f}-{ENDURANCE_IF_HI:.2f}")
         if tss and tss / hours > ENDURANCE_TSS_PER_HR:
             add("WARN", "AE-2.8", f"endurance {tss / hours:.1f} TSS/hr exceeds {ENDURANCE_TSS_PER_HR:.0f}")

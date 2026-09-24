@@ -511,7 +511,14 @@ def _is_endurance(session: Dict[str, Any]) -> bool:
     NOT a field test, and NOT an opener."""
     if session.get("tp_kind") != "bike":
         return False
-    if _field_test_metric(session) or _is_intensity(session) or _is_long_ride(session):
+    role = str(session.get("role") or "").strip().lower()
+    short_long_ride = (role == "long_ride"
+                       and float(session.get("total_time_planned") or 0) < 3
+                       and int(session.get("duration_s") or 0) < 3 * 3600)
+    if role and role not in {"filler", "recovery"} and not short_long_ride:
+        return False
+    if (_field_test_metric(session) or _is_intensity(session)
+            or (_is_long_ride(session) and not short_long_ride)):
         return False
     title = str(session.get("title") or session.get("display_name") or "")
     if OPENERS_TITLE.search(title):
@@ -520,25 +527,32 @@ def _is_endurance(session: Dict[str, Any]) -> bool:
 
 
 _ENDURANCE_TSS_PER_HOUR_CEILING = 50.0
+_ENDURANCE_IF_FLOOR_SHORT = 0.60  # AE-2.8, up to and including 2 h
+_ENDURANCE_IF_FLOOR_LONG = 0.58  # AE-2.8, over 2 h
+_RECOVERY_SPIN_TITLE = re.compile(r"\brecovery\b|\beasy spin\b", re.I)
 
 
 def _endurance_tss_rate_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, str]]:
-    """AE-2.8 (ratified 2026-08-23, Q6): endurance-classified sessions must
-    compute to <=50 TSS/hr (planned TSS / planned hours) -- a COMPUTED gate,
-    not an authoring convention. WARNING severity: the plan still ships,
-    but a real offender (e.g. Endurance Surges L6, Tempo 3x15, named in
-    AE-2.8) surfaces for coach review instead of shipping silently."""
+    """AE-2.8: check both ends of endurance dose from planned TSS/h.
+
+    Under-dosed fillers block approval; deliberately classified recovery
+    spins retain their lower-dose exception. Upper-ceiling findings remain
+    coach-review warnings.
+    """
     findings: List[Dict[str, str]] = []
-    for _, session in _sessions(plan_ir):
+    low_sessions: List[Dict[str, Any]] = []
+    for week_number, session in _sessions(plan_ir):
         if not _is_endurance(session):
             continue
         tss = session.get("tss_planned")
         if tss is None:
             tss = session.get("tss")
+        tss_missing = False
         try:
             tss = float(tss)
         except (TypeError, ValueError):
-            continue
+            tss = 0.0
+            tss_missing = True
         hours = session.get("total_time_planned")
         try:
             hours = float(hours)
@@ -547,12 +561,27 @@ def _endurance_tss_rate_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, str]
         if hours <= 0:
             seconds = int(session.get("duration_s") or 0)
             hours = seconds / 3600.0
-        if hours <= 0 or tss <= 0:
+        if hours <= 0:
             continue
         rate = tss / hours
+        title = str(session.get("title") or session.get("display_name") or "")
+        if (week_number != 0
+                and str(session.get("role") or "").strip().lower() != "recovery"
+                and not _RECOVERY_SPIN_TITLE.search(title)):
+            if_floor = (_ENDURANCE_IF_FLOOR_SHORT if hours <= 2
+                        else _ENDURANCE_IF_FLOOR_LONG)
+            rate_floor = 100.0 * if_floor ** 2
+            if rate < rate_floor - 1e-6:
+                session_day = _session_date(session)
+                low_sessions.append({
+                    "date": session_day.isoformat() if session_day else session.get("date"),
+                    "title": title, "tss_planned": tss, "hours": hours,
+                    "tss_per_hour": round(rate, 1),
+                    "floor": round(rate_floor, 2),
+                    "planned_tss_missing": tss_missing,
+                })
         if rate <= _ENDURANCE_TSS_PER_HOUR_CEILING:
             continue
-        title = str(session.get("title") or session.get("display_name") or "")
         session_day = _session_date(session)
         findings.append(_issue(
             "ENDURANCE_TSS_RATE_HIGH",
@@ -566,6 +595,15 @@ def _endurance_tss_rate_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, str]
                 "ceiling": _ENDURANCE_TSS_PER_HOUR_CEILING,
             },
             severity="WARNING",
+        ))
+    if low_sessions:
+        first = low_sessions[0]
+        findings.append(_issue(
+            "ENDURANCE_TSS_RATE_LOW",
+            f"{len(low_sessions)} endurance workout(s) below the AE-2.8 "
+            f"duration-scaled load floor; first is {first['date']} "
+            f"'{first['title']}' at {first['tss_per_hour']:.1f} TSS/hr.",
+            review_value={**first, "sessions": low_sessions},
         ))
     return findings
 

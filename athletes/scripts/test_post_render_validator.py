@@ -564,6 +564,94 @@ def test_short_taper_endurance_is_still_reviewed_without_an_exempt_role():
     assert 'SHORT_SESSION_BELOW_FLOOR' in {issue['id'] for issue in issues}
 
 
+def test_underdosed_endurance_filler_blocks_review():
+    # AE-2.8: 90 min at 15.3 TSS was Johnny's real low-Z2 failure.
+    document = _document()
+    document['plan_ir']['weeks'][1]['sessions'].append({
+        **_session('2026-08-12', 'Low Z2 + HC', hours=1.5),
+        'role': 'filler', 'tss_planned': 15.3,
+    })
+    _mirror_to_manifest(document)
+
+    issues, _ = validate_transitional_input(document)
+
+    finding = next(item for item in issues if item['id'] == 'ENDURANCE_TSS_RATE_LOW')
+    assert finding['severity'] == 'CRITICAL'
+    assert finding['review_value']['tss_per_hour'] == 10.2
+
+
+def test_underdosed_endurance_blocker_lists_every_bad_day():
+    document = _document()
+    document['plan_ir']['weeks'][1]['sessions'].extend([
+        {**_session(day, 'Low Z2 + HC', hours=1.5),
+         'role': 'filler', 'tss_planned': 15.3}
+        for day in ('2026-08-12', '2026-08-14')
+    ])
+    _mirror_to_manifest(document)
+
+    issues, _ = validate_transitional_input(document)
+
+    finding = next(item for item in issues if item['id'] == 'ENDURANCE_TSS_RATE_LOW')
+    assert [item['date'] for item in finding['review_value']['sessions']] == [
+        '2026-08-12', '2026-08-14']
+
+
+def test_short_long_ride_role_cannot_hide_underdosed_endurance():
+    document = _document()
+    document['plan_ir']['weeks'][1]['sessions'].append({
+        **_session('2026-08-12', 'Long Ride', hours=1.5),
+        'role': 'long_ride', 'tss_planned': 15.3,
+    })
+    _mirror_to_manifest(document)
+
+    issues, _ = validate_transitional_input(document)
+
+    assert 'ENDURANCE_TSS_RATE_LOW' in {item['id'] for item in issues}
+
+
+def test_endurance_filler_without_planned_tss_cannot_escape_floor():
+    document = _document()
+    document['plan_ir']['weeks'][1]['sessions'].append({
+        **_session('2026-08-12', 'Low Z2 + HC', hours=1.5),
+        'role': 'filler',
+    })
+    _mirror_to_manifest(document)
+
+    issues, _ = validate_transitional_input(document)
+
+    assert 'ENDURANCE_TSS_RATE_LOW' in {item['id'] for item in issues}
+
+
+def test_endurance_floor_scales_and_recovery_role_is_exempt():
+    document = _document()
+    document['plan_ir']['weeks'][1]['sessions'].extend([
+        {**_session('2026-08-12', 'Low Z2 + HC', hours=1.5),
+         'role': 'filler', 'tss_planned': 57.0},
+        {**_session('2026-08-13', 'Endurance', hours=2.5),
+         'role': 'filler', 'tss_planned': 84.1},
+        {**_session('2026-08-14', 'Recovery Spin', hours=1.0),
+         'role': 'recovery', 'tss_planned': 20.0},
+    ])
+    _mirror_to_manifest(document)
+
+    issues, _ = validate_transitional_input(document)
+
+    assert 'ENDURANCE_TSS_RATE_LOW' not in {item['id'] for item in issues}
+
+
+def test_preplan_easy_rides_are_not_endurance_development():
+    document = _document()
+    document['plan_ir']['weeks'][0]['sessions'] = [{
+        **_session('2026-08-05', 'Pre-Plan Easy', hours=2 / 3),
+        'tss_planned': 23.0,
+    }]
+    _mirror_to_manifest(document)
+
+    issues, _ = validate_transitional_input(document)
+
+    assert 'ENDURANCE_TSS_RATE_LOW' not in {item['id'] for item in issues}
+
+
 def test_explicit_activation_role_exempts_an_intentionally_short_taper_touch():
     document = _document()
     session = _session('2026-09-15', 'Sharpener', hours=0.5)

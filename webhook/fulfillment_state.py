@@ -70,6 +70,7 @@ NON_WAIVABLE_RULES = {
     "STATE_UNAVAILABLE",
     "VALIDATOR_CRASH",
     "POST_RENDER_VALIDATOR_CRASH",
+    "ENDURANCE_TSS_RATE_LOW",
     "SEAL_MISMATCH",
     "APPLY_CONTRACT_INVALID",
     "ATHLETE_UNLINKED",
@@ -89,6 +90,9 @@ NON_WAIVABLE_REMEDIATIONS = {
     "VALIDATOR_CRASH": "Repair the validator failure and regenerate the order.",
     "POST_RENDER_VALIDATOR_CRASH": (
         "Repair the post-render validator failure and regenerate the order."
+    ),
+    "ENDURANCE_TSS_RATE_LOW": (
+        "Replace the under-dosed endurance workout and regenerate this revision."
     ),
     "SEAL_MISMATCH": "Regenerate from immutable source artifacts and review again.",
     "APPLY_CONTRACT_INVALID": "Repair the offline contract and regenerate this revision.",

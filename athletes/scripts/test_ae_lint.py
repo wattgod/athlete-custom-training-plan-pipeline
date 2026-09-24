@@ -90,6 +90,28 @@ def test_endurance_band_and_tss_rate_warn():
         [f for f in lint_workout(w, None) if f["rule"] == "AE-2.8"]) == 2
 
 
+def test_underdosed_z2_is_fail_even_without_if_field():
+    w = {"title": "Low Z2 + HC", "workoutTypeValueId": 2,
+         "workoutDay": "2027-01-04", "totalTimePlanned": 1.5,
+         "tssPlanned": 15.3}
+    assert ("FAIL", "AE-2.8") in _rules(lint_workout(w, None))
+
+
+def test_endurance_floor_scales_and_recovery_spin_is_exempt():
+    short = {"title": "Low Z2 + HC", "workoutTypeValueId": 2,
+             "workoutDay": "2027-01-04", "totalTimePlanned": 1.5,
+             "tssPlanned": 57.0}
+    long = {"title": "Endurance", "workoutTypeValueId": 2,
+            "workoutDay": "2027-01-05", "totalTimePlanned": 2.5,
+            "tssPlanned": 84.1}
+    recovery = {"title": "Endurance Recovery Spin", "workoutTypeValueId": 2,
+                "workoutDay": "2027-01-06", "totalTimePlanned": 1.0,
+                "tssPlanned": 20.0}
+    for workout in (short, long, recovery):
+        assert not any(f["severity"] == "FAIL" and f["rule"] == "AE-2.8"
+                       for f in lint_workout(workout, None))
+
+
 def test_anaerobic_title_is_not_endurance():
     # "Anaerobic" must not match the endurance band via the "aerobic" substring.
     w = {"title": "Anaerobic Capacity Repeats", "workoutTypeValueId": 2,
