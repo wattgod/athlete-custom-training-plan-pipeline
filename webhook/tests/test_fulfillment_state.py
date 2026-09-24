@@ -99,6 +99,21 @@ def test_blocked_approval_requires_complete_waiver(tmp_path):
     assert state['status'] == APPROVED
 
 
+def test_underdosed_endurance_blocker_cannot_be_waived(tmp_path):
+    path = tmp_path / 'status.json'
+    state = write_generation(path, 'athlete_fixture', [
+        {**_issue('ENDURANCE_TSS_RATE_LOW'), 'source': 'post_render'},
+    ])
+    assert state['status'] == BLOCKED_REVIEW
+    assert state['review_items'][0]['waivable'] is False
+    _seal(path, tmp_path)
+    with pytest.raises(FulfillmentStateError, match='non-waivable'):
+        _approve(path, waiver={
+            'rule_ids': ['ENDURANCE_TSS_RATE_LOW'],
+            'reason': 'This should require corrected generation.',
+        })
+
+
 def test_apply_requires_approved(tmp_path):
     path = tmp_path / 'status.json'
     write_generation(path, 'heather_gray')

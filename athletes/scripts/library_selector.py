@@ -384,6 +384,8 @@ def _qualifying_pool(
 # the old .78 filler ceiling admitted items above the band's own top edge
 # onto easy days. Load-week and recovery-week filler ceilings now match.
 _ENDURANCE_TSS_PER_HOUR_CEILING = 50.0  # AE-2.8, mirrors post_render_validator
+_ENDURANCE_IF_FLOOR_SHORT = 0.60  # AE-2.8, up to and including 2 h
+_ENDURANCE_IF_FLOOR_LONG = 0.58  # AE-2.8, over 2 h
 _VALIDATOR_LONG_RIDE_MIN_MINUTES = 180  # post_render_validator._is_long_ride: >= 3 h
 _FILLER_IF_CEILING = 0.72  # ratified Q-B: .78 -> .72
 _FILLER_IF_CEILING_RECOVERY = 0.70
@@ -933,6 +935,14 @@ def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bo
         # the planned-IF form is the item's own authored intensity and does
         # not depend on how a fixture happened to pair tss with duration.
         _if = item.get("if_planned")
+        # AE-2.8: an open 0-65% FTP range can decode to ~33% FTP and
+        # 10 TSS/h. Recovery spins are a separate canonical, not Z2 fillers.
+        if _if is not None:
+            _floor = (_ENDURANCE_IF_FLOOR_SHORT
+                      if float(item.get("duration_min") or 0) <= 120
+                      else _ENDURANCE_IF_FLOOR_LONG)
+            if float(_if) < _floor - 1e-9:
+                return False
         if _if is not None and (float(_if) ** 2) * 100.0 > _ENDURANCE_TSS_PER_HOUR_CEILING + 0.05:
             return False
     if (str(slot.get("phase") or "").lower() == "base"

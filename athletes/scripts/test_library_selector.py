@@ -525,6 +525,27 @@ class TestRoleWeekTypeCeiling:
         )
         assert not any(item["name_base"] == "Z2 + Sprints" for item in pool)
 
+    def test_under_dosed_endurance_item_is_not_selected(self):
+        # AE-2.8: real TP item 14355899 decodes to ~33% FTP and 15.3 TSS
+        # in 90 minutes despite being labeled low Z2.
+        index = load_index()
+        slot = base_slot(canonical_name="Endurance", role="filler",
+                         week_type="recovery", budget_min=90, series_key=None)
+        pool = _qualifying_pool(index["items"], ("endurance_z2_short",),
+                                budget_min=90, day_cap_min=None, slot=slot)
+        assert not any(item["item_id"] == 14355899 for item in pool)
+
+    def test_endurance_lower_band_is_duration_scaled(self):
+        for duration, intensity, expected in ((90, .59, False),
+                                              (90, .60, True),
+                                              (150, .58, True)):
+            item = make_item(900000 + duration, library_key="endurance_z2_short",
+                             duration_min=duration, if_planned=intensity)
+            slot = base_slot(canonical_name="Endurance", role="filler",
+                             week_type="recovery", budget_min=duration,
+                             series_key=None)
+            assert ls._passes_role_ceiling(item, slot) is expected
+
     def test_cadence_and_low_intensity_drills_survive_the_ceiling(self):
         """Drills/spin-ups (cadence targets, not power) are fine on an easy
         day -- the ceiling must not blanket-reject every filler candidate."""
