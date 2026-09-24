@@ -3656,6 +3656,11 @@ class TestRacePlanPriceParityUnchanged:
             # onto the unmodified race-plan path.
             assert 'offer_family' not in call_kwargs['metadata']
             assert 'payment_intent_data' not in call_kwargs
+            # Season Plan's card-only restriction is scoped to that branch
+            # only — race-plan checkout keeps the app's existing default
+            # (no payment_method_types set, so Stripe's dynamic methods
+            # apply, same as every other checkout in this file).
+            assert 'payment_method_types' not in call_kwargs
 
     def test_golden_price_ids_are_unchanged(self):
         """Direct check that the price-ID table itself was not touched."""
@@ -3819,6 +3824,30 @@ class TestSeasonPlanCheckout:
             assert response.status_code == 200
             call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
             assert call_kwargs['after_expiration']['recovery']['allow_promotion_codes'] is False
+
+    def test_season_plan_checkout_is_card_only(self, client, temp_athletes_dir):
+        """Matti follow-up (2026-09-23): delayed payment methods confirm on
+        a later checkout.session.async_payment_succeeded webhook event this
+        app doesn't subscribe to — a Season Plan sale must always resolve
+        synchronously at checkout.session.completed, which
+        _handle_season_plan_webhook already verifies. Card-only guarantees
+        that. The race plan's own checkout (unchanged) is covered by
+        TestRacePlanPriceParityUnchanged."""
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_season_card_only'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={'name': 'Season Buyer', 'email': 'season@test.com',
+                      'product': 'season_plan'},
+                content_type='application/json',
+            )
+            assert response.status_code == 200
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert call_kwargs['payment_method_types'] == ['card']
 
     def test_season_plan_checkout_tax_handling_matches_race_plan(
             self, client, temp_athletes_dir, monkeypatch):
@@ -4203,6 +4232,29 @@ class TestSeasonPlanWebhook:
         assert 'Build due within 3 days' in text
         assert 'same window as race plans' not in text
         assert 'Unbound 200' in text
+
+    def test_season_plan_coach_notification_carries_the_same_caveat_as_customer_email(
+            self, client, temp_athletes_dir, monkeypatch):
+        """Prompted follow-up (Matti, 2026-09-23): the coach's immediate
+        order notification said only "within 3 days," while the customer
+        confirmation email starts that clock only after payment, the
+        complete questionnaire, and the TrainingPeaks connection are all
+        in place. Same caveat belongs on both."""
+        import app as app_module
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        with patch('app._send_email') as mock_send:
+            mock_send.return_value = True
+            response = client.post(
+                '/webhook/stripe',
+                json=self._event(order_id='cs_season_caveat'),
+                content_type='application/json')
+        assert response.status_code == 200
+        call_args = mock_send.call_args_list[0]
+        subject, text, html = call_args[0][1], call_args[0][2], call_args[1]['html']
+        assert 'complete questionnaire' in text
+        assert 'TrainingPeaks connection' in text
+        assert 'complete questionnaire' in html
+        assert 'TrainingPeaks connection' in html
 
     def test_season_plan_build_window_is_3_days_not_24_hours(self):
         import app as app_module

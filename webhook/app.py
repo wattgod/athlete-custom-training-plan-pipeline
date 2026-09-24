@@ -6323,6 +6323,18 @@ def _create_season_plan_checkout(data: dict, email: str, name: str,
         client_reference_id=intake_id,
         metadata=checkout_metadata,
         payment_intent_data={'metadata': payment_intent_metadata},
+        # Card only — sol review: with no payment_method_types set (every
+        # other checkout in this app's default), Stripe's dynamic payment
+        # methods can offer delayed methods (e.g. bank debits) that confirm
+        # via a LATER checkout.session.async_payment_succeeded webhook
+        # event this app does not subscribe to or handle. That would leave
+        # a real Season Plan sale unrecorded and unalerted. Restricting to
+        # card guarantees every sale confirms synchronously at
+        # checkout.session.completed, which _handle_season_plan_webhook
+        # already verifies (payment_status == 'paid'). The race-plan
+        # checkout below is deliberately untouched — see
+        # TestRacePlanPriceParityUnchanged.
+        payment_method_types=['card'],
         # Its own success page, not the race plan's — gravel-race-automation
         # wordpress/generate_success_pages.py's 'season-plan-success' entry
         # (canonical /season-plan/success/), which never promises ZWO files
@@ -8347,7 +8359,7 @@ def _build_season_plan_email(details: dict) -> tuple:
       <tr><td style="padding: 4px 12px 4px 0; color: #888; width: 120px;">Name</td><td style="padding: 4px 0;"><strong>{html_escape(name)}</strong></td></tr>
       <tr><td style="padding: 4px 12px 4px 0; color: #888;">Email</td><td style="padding: 4px 0;"><a href="mailto:{html_escape(email)}">{html_escape(email)}</a></td></tr>
     </table>
-    <p style="font-size: 14px; margin: 16px 0 0; color: #B7950B;"><strong>Build due within {SEASON_PLAN_BUILD_WINDOW_DAYS} days</strong> (race plans stay 24 hours — a Season Plan periodises the whole year). Run Motoren (intake_to_plan.py) from the intake below; this order was not auto-generated.</p>
+    <p style="font-size: 14px; margin: 16px 0 0; color: #B7950B;"><strong>Build due within {SEASON_PLAN_BUILD_WINDOW_DAYS} days of payment, the complete questionnaire, and the TrainingPeaks connection all being in place</strong> (race plans stay 24 hours — a Season Plan periodises the whole year). Run Motoren (intake_to_plan.py) from the intake below; this order was not auto-generated.</p>
     <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Races captured</h3>
     {races_html}
     {intake_note_html}
@@ -8358,7 +8370,9 @@ def _build_season_plan_email(details: dict) -> tuple:
   </div>
 </div>"""
     text = (f"New Season Plan order: {name} ({email}), order {order_id}. "
-            f"Build due within {SEASON_PLAN_BUILD_WINDOW_DAYS} days (race plans stay 24 hours) — "
+            f"Build due within {SEASON_PLAN_BUILD_WINDOW_DAYS} days of payment, "
+            f"the complete questionnaire, and the TrainingPeaks connection all "
+            f"being in place (race plans stay 24 hours) — "
             f"run Motoren from the intake, this was not auto-generated. "
             f"Races: {races_text}."
             f"{intake_note_text} "
@@ -11279,6 +11293,18 @@ def cron_state_audit():
             Path(DELIVERIES_DIR) / 'orders', now=now,
             max_age_days=max_age_days)
         _alert_stale_paid_orders(artifact, stale_orders, now)
+
+        # Season Plan orders aren't fulfillment_state.py records (see
+        # comment above _season_plan_order_records) so they can't appear
+        # in the audit above — checked here, in the same hourly cron, with
+        # only counts in the response (no names/emails, matching this
+        # endpoint's existing redaction discipline).
+        season_plan_overdue = _season_plan_overdue_orders(now)
+        season_plan_alert_result = _alert_stale_season_plan_orders(
+            season_plan_overdue, now)
+        artifact['season_plan_overdue_count'] = len(season_plan_overdue)
+        artifact['season_plan_alert_ledger'] = season_plan_alert_result['ledger']
+
         logger.info(
             'Fulfillment state audit: %s',
             json.dumps(artifact, sort_keys=True, separators=(',', ':')),
@@ -11402,6 +11428,161 @@ def _alert_stale_paid_orders(artifact: dict, stale_orders: list,
     for item in artifact.get('anomalies') or []:
         if item.get('state_ref') in outcomes and item.get('alert') == 'new':
             item['coach_email'] = outcomes[item['state_ref']]
+
+
+# ── Season Plan overdue alert ────────────────────────────────────────────
+# Season Plan orders never get a fulfillment_state.py record (no ZWO
+# pipeline runs for them — Motoren is run by hand from the intake), so
+# they are invisible to list_open_paid_orders / the audit above. A sol
+# review flagged that a missed coach notification for a $499 order had no
+# automated follow-up at all. This is the same kind of overdue check —
+# same hourly cron endpoint, same private coach-email channel, same
+# atomic-locked-ledger-before-email discipline — sized for a product with
+# no closable "state" of its own: it fires once per order, ever, not a
+# repeating daily nag (there is nothing here to mark an order "done" and
+# stop it, unlike the race-plan side's terminal statuses).
+
+def _season_plan_order_records():
+    """Every season_plan entry ever logged (all months), oldest first.
+    Mirrors process_followup_emails' own file-reading pattern."""
+    log_dir = Path(DATA_DIR) / '.logs'
+    if not log_dir.exists():
+        return []
+    records = []
+    for log_file in sorted(log_dir.glob('20*.jsonl')):
+        for line in log_file.read_text().strip().split('\n'):
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if entry.get('product_type') == 'season_plan' and entry.get('success', True):
+                records.append(entry)
+    return records
+
+
+def _season_plan_overdue_orders(now: datetime) -> list:
+    """Season Plan orders whose SEASON_PLAN_BUILD_WINDOW_DAYS has elapsed."""
+    overdue = []
+    for record in _season_plan_order_records():
+        purchase_date = record.get('purchase_date')
+        if not purchase_date:
+            continue
+        try:
+            purchased = datetime.fromisoformat(purchase_date)
+        except ValueError:
+            continue
+        if purchased.tzinfo is None:
+            purchased = purchased.replace(tzinfo=timezone.utc)
+        age = now - purchased
+        if age >= timedelta(days=SEASON_PLAN_BUILD_WINDOW_DAYS):
+            overdue.append({
+                'order_id': record.get('order_id', ''),
+                'name': record.get('name', 'Unknown'),
+                'email': record.get('email', ''),
+                'purchase_date': purchase_date,
+                'days_overdue': age.days,
+                'intake_id': record.get('intake_id', ''),
+            })
+    return overdue
+
+
+def _season_plan_alert_ledger_path() -> Path:
+    return Path(DATA_DIR) / '.stale_season_plan_order_alerts.json'
+
+
+def _build_season_plan_overdue_email(record: dict) -> tuple:
+    """Coach alert for one Season Plan order past its build window.
+
+    States the same prerequisite the customer confirmation email states
+    (payment + complete questionnaire + TrainingPeaks connection all in
+    place) — sol review: the first version of this alert said only
+    "within 3 days" with no such qualifier, unlike the customer-facing
+    promise it is measuring the order against.
+    """
+    order_id = record['order_id']
+    subject = f"[GG] OVERDUE: Season Plan order {order_id} not built after {record['days_overdue']}d"
+    text = (
+        f"A paid Season Plan order is past the "
+        f"{SEASON_PLAN_BUILD_WINDOW_DAYS}-day build window and no build has "
+        f"been recorded.\n\n"
+        f"Order:          {order_id}\n"
+        f"Name:           {record.get('name', 'Unknown')}\n"
+        f"Email:          {record.get('email', '')}\n"
+        f"Purchased:      {record.get('purchase_date', '')}\n"
+        f"Days overdue:   {record['days_overdue']}\n"
+        f"Intake:         {record.get('intake_id') or '(none captured)'}\n\n"
+        "The customer was told the plan lands within "
+        f"{SEASON_PLAN_BUILD_WINDOW_DAYS} days of payment, their complete "
+        "questionnaire, and their TrainingPeaks connection all being in "
+        "place — if either of those is still missing, this order isn't "
+        "actually late yet; check before treating this as dropped.\n\n"
+        "Run Motoren (intake_to_plan.py) from the intake above if it "
+        "hasn't been built yet.\n\n"
+        "This alert fires once per order — it will not repeat for this "
+        "order again.\n"
+    )
+    return subject, text
+
+
+def _alert_stale_season_plan_orders(overdue_orders: list, now: datetime) -> dict:
+    """Email the coach once, ever, per overdue Season Plan order.
+
+    Same atomic-lock-then-write-then-email discipline as
+    _alert_stale_paid_orders: the ledger is written before any email goes
+    out, and if the ledger can't be read/locked/written, no email is sent
+    that run (fail closed, never a duplicate-email storm)."""
+    if not overdue_orders:
+        return {'checked': 0, 'alerted': 0, 'ledger': 'ok'}
+
+    ledger_path = _season_plan_alert_ledger_path()
+    lock_path = ledger_path.with_name(ledger_path.name + '.lock')
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(lock_path, 'a+') as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                try:
+                    ledger = json.loads(ledger_path.read_text())
+                    if not isinstance(ledger, dict):
+                        ledger = {}
+                except FileNotFoundError:
+                    ledger = {}
+                except json.JSONDecodeError:
+                    ledger = {}
+
+                to_alert = [o for o in overdue_orders if o['order_id'] not in ledger]
+                for order in to_alert:
+                    ledger[order['order_id']] = {'alerted_at': now.isoformat()}
+
+                tmp = ledger_path.with_name(f".{ledger_path.name}.{os.getpid()}.tmp")
+                with open(tmp, 'w') as handle:
+                    handle.write(json.dumps(ledger, indent=2, sort_keys=True) + '\n')
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(tmp, ledger_path)
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+    except Exception:
+        logger.exception(
+            'Season Plan overdue alert ledger unavailable; no alert emails sent')
+        return {'checked': len(overdue_orders), 'alerted': 0, 'ledger': 'failed'}
+
+    alerted = 0
+    for order in to_alert:
+        try:
+            subject, text = _build_season_plan_overdue_email(order)
+            if NOTIFICATION_EMAIL and RESEND_API_KEY:
+                if _send_email(NOTIFICATION_EMAIL, subject, text):
+                    alerted += 1
+                else:
+                    logger.critical(f'SEASON PLAN OVERDUE (email failed): {subject}')
+            else:
+                logger.critical(f'SEASON PLAN OVERDUE: {subject}')
+        except Exception:
+            logger.exception('Season Plan overdue alert email crashed')
+    return {'checked': len(overdue_orders), 'alerted': alerted, 'ledger': 'ok'}
 
 
 @app.route('/api/cron/stripe-reconciliation', methods=['POST'])
