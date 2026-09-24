@@ -12,7 +12,7 @@ ever — not a repeating daily nag).
 import json
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -45,8 +45,12 @@ def _post(client, secret=SECRET):
     return client.post("/api/cron/state-audit", json={}, headers=headers)
 
 
-def _write_season_plan_log(data_dir: Path, order_id: str, purchase_date: datetime,
-                           **overrides):
+def _write_season_plan_log(data_dir: Path, order_id: str, purchase_date=None,
+                           _raw_purchase_date=None, **overrides):
+    """purchase_date: a datetime (isoformat()'d for convenience). Pass
+    _raw_purchase_date instead for an already-formatted string, e.g. the
+    real production shape (date.today().isoformat(), no time component)."""
+    stored_date = _raw_purchase_date if _raw_purchase_date is not None else purchase_date.isoformat()
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "product_type": "season_plan",
@@ -55,7 +59,7 @@ def _write_season_plan_log(data_dir: Path, order_id: str, purchase_date: datetim
         "email": "season@example.test",
         "brand": "gravelgod",
         "price_cents": 49900,
-        "purchase_date": purchase_date.isoformat(),
+        "purchase_date": stored_date,
         "rebuild_dates": [],
         "intake_id": "intake-123",
         "races": [],
@@ -82,6 +86,22 @@ def sent_emails(monkeypatch):
 
 
 class TestSeasonPlanOverdueAlert:
+    def test_real_date_only_purchase_date_format_is_parsed_correctly(
+            self, audit_client, sent_emails):
+        """_handle_season_plan_webhook actually stores purchase_date as
+        date.today().isoformat() — a bare "YYYY-MM-DD", not a full
+        datetime. Every other test in this file uses a full-datetime
+        isoformat for convenience; this one pins the real production
+        shape so a date-vs-datetime parsing mismatch can't hide."""
+        client, data = audit_client
+        real_shape = (date.today() - timedelta(days=4)).isoformat()
+        assert len(real_shape) == 10  # "YYYY-MM-DD", no time component
+        _write_season_plan_log(data, "cs_live_real_shape", purchase_date=None,
+                                _raw_purchase_date=real_shape)
+        resp = _post(client)
+        assert resp.get_json()["season_plan_overdue_count"] == 1
+        assert len(sent_emails) == 1
+
     def test_overdue_order_emails_the_coach_once(self, audit_client, sent_emails):
         client, data = audit_client
         purchased = datetime.now(timezone.utc) - timedelta(days=4)
