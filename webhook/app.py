@@ -317,14 +317,16 @@ SEASON_PLAN_MAX_WEEKS = 52
 # wordpress/pricing.py (mirrored again in mission_control/services/
 # pricing.py) — keep these offsets in sync with that function by hand.
 SEASON_PLAN_REBUILD_OFFSETS_WEEKS = (10, 23, 36, 49)
-# Coach-facing build SLA — the same window race plans promise
-# (RACE_PLAN_DELIVERY_HOURS / data/pricing.json products.race_plan.
-# delivery_hours in gravel-race-automation). Season Plan has no separate
-# delivery_hours field of its own, so it inherits the race-plan window.
-# This is an internal "build due by" clock for the coach notification, not
-# an automated-delivery promise to the athlete — nothing here triggers a
+# Coach-facing build SLA — Matti ruling (2026-09-23): a Season Plan is a
+# full year periodised across every A/B/C race, not a single-race plan, so
+# it gets its own, longer window than the race plan's 24 hours. Mirrors
+# data/pricing.json products.season_plan.delivery_days in
+# gravel-race-automation (this repo can't read across repos at runtime, so
+# the number is duplicated here and must be kept in sync by hand). This is
+# an internal "build due by" clock for the coach notification, not an
+# automated-delivery promise to the athlete — nothing here triggers a
 # pipeline run; a human runs Motoren from the recorded intake.
-SEASON_PLAN_BUILD_WINDOW_HOURS = 24
+SEASON_PLAN_BUILD_WINDOW_DAYS = 3
 
 # Pre-built Stripe price IDs (from scripts/create_stripe_products.py)
 # Training plan prices keyed by weeks (4–16, plus 17+ cap)
@@ -1042,6 +1044,37 @@ def _apply_ga4_metadata(metadata: dict, client_id: str, session_id: str,
         metadata['ga4_session_id'] = session_id
 
 
+# Matches gravel-race-automation's own validation of these three fields
+# (web/training-plans-form.js OFFER_VARIANT_RE / ENTRY_SRC_RE, and
+# RACE_SLUG's own /^[a-z0-9-]{1,80}$/) — re-validated here because this
+# endpoint trusts nothing it did not build itself.
+_OFFER_VARIANT_RE = re.compile(r'^[ABC]\Z')
+_ENTRY_SRC_RE = re.compile(r'^[a-z_]{1,24}\Z')
+_RACE_SLUG_ATTR_RE = re.compile(r'^[a-z0-9-]{1,80}\Z')
+
+
+def _apply_funnel_attribution_metadata(metadata: dict, data: dict) -> None:
+    """Carry the /goals/ funnel's offer_variant / entry_src / race_slug
+    into Stripe Checkout Session metadata, for both the race plan and the
+    Season Plan (docs/specs/goals-2027-funnel-spec.md D9, Matti ruling
+    2026-09-23). gravel-race-automation's training-plans-form.js and
+    /season-plan/ both already send these three fields on the
+    /create-checkout POST body; until this function existed they were
+    read there and then silently dropped — no purchase was ever
+    attributable back to a variant or entry surface. Absent or malformed
+    values are simply omitted, never a 400: attribution is best-effort and
+    must never block a sale."""
+    offer_variant = data.get('offer_variant')
+    if isinstance(offer_variant, str) and _OFFER_VARIANT_RE.match(offer_variant):
+        metadata['offer_variant'] = offer_variant
+    entry_src = data.get('entry_src')
+    if isinstance(entry_src, str) and _ENTRY_SRC_RE.match(entry_src):
+        metadata['entry_src'] = entry_src
+    race_slug_attr = data.get('race_slug')
+    if isinstance(race_slug_attr, str) and _RACE_SLUG_ATTR_RE.match(race_slug_attr):
+        metadata['race_slug'] = race_slug_attr
+
+
 def _send_ga4_purchase(order_id: str, value_cents, product_type: str,
                        item_name: str, brand: str = DEFAULT_BRAND,
                        client_id: str = '', session_id: str = '',
@@ -1281,10 +1314,10 @@ def _send_season_plan_confirmation(customer_email: str, customer_name: str,
     """Confirm a Season Plan purchase to the buyer.
 
     What they bought, that Matti builds it himself (never implies automated
-    generation or a team), when it lands in TrainingPeaks (same build window
-    race plans promise), and the four rebuild months. No refund line — sales
-    surfaces don't carry one. Same Resend send path every other confirmation
-    in this file uses.
+    generation or a team), when it lands in TrainingPeaks (its own,
+    longer window than race plans — SEASON_PLAN_BUILD_WINDOW_DAYS), and
+    the four rebuild months. No refund line — sales surfaces don't carry
+    one. Same Resend send path every other confirmation in this file uses.
     """
     if not customer_email:
         logger.warning("Cannot send Season Plan confirmation — customer email missing")
@@ -1312,7 +1345,7 @@ Connect to my coaching account on TrainingPeaks so I can push your workouts ther
 If you don't have a TrainingPeaks account, create a free one first at trainingpeaks.com, then click the link above.
 
 WHAT HAPPENS NEXT:
-I build every plan myself. Yours will be in your TrainingPeaks calendar within {SEASON_PLAN_BUILD_WINDOW_HOURS} hours of payment, your complete questionnaire, and your TrainingPeaks connection all being in place.
+I build every plan myself. Yours will be in your TrainingPeaks calendar within {SEASON_PLAN_BUILD_WINDOW_DAYS} days of payment, your complete questionnaire, and your TrainingPeaks connection all being in place.
 
 YOUR REBUILD MONTHS:
 {', '.join(rebuild_months)}
@@ -1351,7 +1384,7 @@ Questions? Reply to this email.
     </div>
 
     <h3 style="margin: 24px 0 12px; font-size: 15px; color: #59473c;">What happens next</h3>
-    <p style="font-size: 14px; line-height: 1.6;">I build every plan myself. Yours will be in your TrainingPeaks calendar within {SEASON_PLAN_BUILD_WINDOW_HOURS} hours of payment, your complete questionnaire, and your TrainingPeaks connection all being in place.</p>
+    <p style="font-size: 14px; line-height: 1.6;">I build every plan myself. Yours will be in your TrainingPeaks calendar within {SEASON_PLAN_BUILD_WINDOW_DAYS} days of payment, your complete questionnaire, and your TrainingPeaks connection all being in place.</p>
 
     <h3 style="margin: 24px 0 12px; font-size: 15px; color: #59473c;">Your rebuild months</h3>
     <ul style="font-size: 14px; padding-left: 20px; line-height: 1.8;">
@@ -6128,6 +6161,7 @@ def create_checkout():
         if ga4_session_id:
             checkout_metadata['ga4_session_id'] = ga4_session_id
         checkout_metadata['analytics_consent'] = analytics_consent
+        _apply_funnel_attribution_metadata(checkout_metadata, data)
         if _is_endure_plan_pilot_checkout(
                 brand, request.headers.get('Origin', ''),
                 'training_plan', 'custom', email):
@@ -6216,6 +6250,18 @@ def _create_season_plan_checkout(data: dict, email: str, name: str,
     brand = _brand_from_origin(request.headers.get('Origin', ''))
     brand_cfg = _brand_config(brand)
 
+    # sol review: unlike create_checkout's race-plan path, this branch had
+    # no brand-availability gate at all — a brand with custom-plan
+    # generation explicitly disabled (e.g. XC Ski Labs,
+    # athletes/config/brands.yaml) could still buy a Season Plan. A
+    # Season Plan is a periodised training plan like the race plan; the
+    # same gate applies.
+    if not brand_cfg.get('training_plan_generation_enabled', True):
+        return jsonify({
+            'error': f"{brand_cfg.get('name', brand)} does not support training-plan "
+                     "generation yet"
+        }), 400
+
     intake_id = str(uuid.uuid4())
     data['computed_price_cents'] = SEASON_PLAN_PRICE_CENTS
     data['brand'] = brand
@@ -6241,6 +6287,7 @@ def _create_season_plan_checkout(data: dict, email: str, name: str,
     }
     _apply_ga4_metadata(
         checkout_metadata, ga4_client_id, ga4_session_id, analytics_consent)
+    _apply_funnel_attribution_metadata(checkout_metadata, data)
 
     payment_intent_metadata = {
         'offer_family': SEASON_PLAN_OFFER_FAMILY,
@@ -8250,10 +8297,11 @@ def _season_plan_rebuild_dates(purchase_date: date) -> list:
 def _build_season_plan_email(details: dict) -> tuple:
     """Build the coach notification for a new Season Plan order. Subject
     and body say 'Season Plan' explicitly so it's never mistaken for the
-    $15/week race plan in the inbox. States the build-due window (same
-    window as race plans — SEASON_PLAN_BUILD_WINDOW_HOURS), the races
-    captured at checkout (if any — Season Plan checkout does not require
-    them), and where the full intake lives so Motoren can be run from it."""
+    $15/week race plan in the inbox. States the build-due window (its own,
+    longer window than race plans — SEASON_PLAN_BUILD_WINDOW_DAYS), the
+    races captured at checkout (if any — Season Plan checkout does not
+    require them), and where the full intake lives so Motoren can be run
+    from it."""
     name = details.get('name', 'Unknown')
     email = details.get('email', '')
     order_id = details.get('order_id', '')
@@ -8291,15 +8339,15 @@ def _build_season_plan_email(details: dict) -> tuple:
     html = f"""
 <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
   <div style="background: #1A8A82; color: white; padding: 16px 24px; border-radius: 4px 4px 0 0;">
-    <h2 style="margin: 0; font-size: 18px;">Season Plan: {name}</h2>
-    <p style="margin: 4px 0 0; opacity: 0.9; font-size: 14px;">{SEASON_PLAN_PRICE_DISPLAY} &middot; Order {order_id}</p>
+    <h2 style="margin: 0; font-size: 18px;">Season Plan: {html_escape(name)}</h2>
+    <p style="margin: 4px 0 0; opacity: 0.9; font-size: 14px;">{SEASON_PLAN_PRICE_DISPLAY} &middot; Order {html_escape(order_id)}</p>
   </div>
   <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
     <table style="font-size: 14px; border-collapse: collapse; width: 100%;">
-      <tr><td style="padding: 4px 12px 4px 0; color: #888; width: 120px;">Name</td><td style="padding: 4px 0;"><strong>{name}</strong></td></tr>
-      <tr><td style="padding: 4px 12px 4px 0; color: #888;">Email</td><td style="padding: 4px 0;"><a href="mailto:{email}">{email}</a></td></tr>
+      <tr><td style="padding: 4px 12px 4px 0; color: #888; width: 120px;">Name</td><td style="padding: 4px 0;"><strong>{html_escape(name)}</strong></td></tr>
+      <tr><td style="padding: 4px 12px 4px 0; color: #888;">Email</td><td style="padding: 4px 0;"><a href="mailto:{html_escape(email)}">{html_escape(email)}</a></td></tr>
     </table>
-    <p style="font-size: 14px; margin: 16px 0 0; color: #B7950B;"><strong>Build due within {SEASON_PLAN_BUILD_WINDOW_HOURS} hours</strong> — same window as race plans. Run Motoren (intake_to_plan.py) from the intake below; this order was not auto-generated.</p>
+    <p style="font-size: 14px; margin: 16px 0 0; color: #B7950B;"><strong>Build due within {SEASON_PLAN_BUILD_WINDOW_DAYS} days</strong> (race plans stay 24 hours — a Season Plan periodises the whole year). Run Motoren (intake_to_plan.py) from the intake below; this order was not auto-generated.</p>
     <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Races captured</h3>
     {races_html}
     {intake_note_html}
@@ -8310,7 +8358,7 @@ def _build_season_plan_email(details: dict) -> tuple:
   </div>
 </div>"""
     text = (f"New Season Plan order: {name} ({email}), order {order_id}. "
-            f"Build due within {SEASON_PLAN_BUILD_WINDOW_HOURS} hours (same window as race plans) — "
+            f"Build due within {SEASON_PLAN_BUILD_WINDOW_DAYS} days (race plans stay 24 hours) — "
             f"run Motoren from the intake, this was not auto-generated. "
             f"Races: {races_text}."
             f"{intake_note_text} "

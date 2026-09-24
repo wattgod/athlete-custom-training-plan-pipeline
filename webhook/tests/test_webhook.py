@@ -997,6 +997,123 @@ class TestCreateCheckout:
             assert 'ga4_client_id' not in stored
             assert 'ga4_session_id' not in stored
 
+    def test_checkout_carries_funnel_attribution_into_metadata(
+            self, client, temp_athletes_dir):
+        """Matti ruling (2026-09-23): gravel-race-automation's
+        training-plans-form.js and /season-plan/ both send offer_variant/
+        entry_src/race_slug on this POST — until now this endpoint read
+        and silently dropped them, so no purchase was ever attributable
+        back to a /goals/ offer variant or entry surface."""
+        with patch('app.stripe') as mock_stripe:
+            mock_stripe.checkout.Session.create.return_value = MagicMock(
+                id='cs_live_attr_race', url='https://checkout.stripe.com/test')
+            response = client.post('/api/create-checkout', json={
+                'name': 'Variant Rider',
+                'email': 'variant@example.com',
+                'races': [{
+                    'name': 'Unbound 200', 'date': self._future_date(),
+                    'priority': 'A',
+                }],
+                'offer_variant': 'B',
+                'entry_src': 'race',
+                'race_slug': 'unbound-gravel-200',
+            }, environ_base={'REMOTE_ADDR': '198.51.100.150'})
+
+            assert response.status_code == 200
+            metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+            assert metadata['offer_variant'] == 'B'
+            assert metadata['entry_src'] == 'race'
+            assert metadata['race_slug'] == 'unbound-gravel-200'
+
+    def test_checkout_discards_malformed_funnel_attribution(
+            self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe:
+            mock_stripe.checkout.Session.create.return_value = MagicMock(
+                id='cs_live_attr_bad', url='https://checkout.stripe.com/test')
+            response = client.post('/api/create-checkout', json={
+                'name': 'Bad Variant Rider',
+                'email': 'badvariant@example.com',
+                'races': [{
+                    'name': 'Unbound 200', 'date': self._future_date(),
+                    'priority': 'A',
+                }],
+                'offer_variant': 'Z',
+                'entry_src': '<script>alert(1)</script>',
+                'race_slug': 'Not A Slug!',
+            }, environ_base={'REMOTE_ADDR': '198.51.100.151'})
+
+            assert response.status_code == 200
+            metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+            assert 'offer_variant' not in metadata
+            assert 'entry_src' not in metadata
+            assert 'race_slug' not in metadata
+
+    def test_season_plan_checkout_carries_funnel_attribution_into_metadata(
+            self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe:
+            mock_stripe.checkout.Session.create.return_value = MagicMock(
+                id='cs_live_season_attr', url='https://checkout.stripe.com/test')
+            response = client.post('/api/create-checkout', json={
+                'name': 'Season Variant Rider',
+                'email': 'seasonvariant@example.com',
+                'product': 'season_plan',
+                'offer_variant': 'C',
+                'entry_src': 'home',
+                'race_slug': 'leadville-trail-100',
+            }, environ_base={'REMOTE_ADDR': '198.51.100.152'})
+
+            assert response.status_code == 200
+            metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+            assert metadata['offer_variant'] == 'C'
+            assert metadata['entry_src'] == 'home'
+            assert metadata['race_slug'] == 'leadville-trail-100'
+
+    def test_season_plan_checkout_discards_malformed_funnel_attribution(
+            self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe:
+            mock_stripe.checkout.Session.create.return_value = MagicMock(
+                id='cs_live_season_attr_bad', url='https://checkout.stripe.com/test')
+            response = client.post('/api/create-checkout', json={
+                'name': 'Season Bad Variant Rider',
+                'email': 'seasonbadvariant@example.com',
+                'product': 'season_plan',
+                'offer_variant': 'Z',
+                'entry_src': '<script>alert(1)</script>',
+                'race_slug': 'Not A Slug!',
+            }, environ_base={'REMOTE_ADDR': '198.51.100.153'})
+
+            assert response.status_code == 200
+            metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+            assert 'offer_variant' not in metadata
+            assert 'entry_src' not in metadata
+            assert 'race_slug' not in metadata
+
+    def test_funnel_attribution_rejects_trailing_newline_bypass(
+            self, client, temp_athletes_dir):
+        """sol review NIT #5: Python's `$` in re.match accepts a position
+        just before a trailing newline, so 'A\\n' / 'home\\n' /
+        'slug\\n' would have passed the old ^...$ regexes. Fixed with \\Z."""
+        with patch('app.stripe') as mock_stripe:
+            mock_stripe.checkout.Session.create.return_value = MagicMock(
+                id='cs_live_attr_newline', url='https://checkout.stripe.com/test')
+            response = client.post('/api/create-checkout', json={
+                'name': 'Newline Rider',
+                'email': 'newline@example.com',
+                'races': [{
+                    'name': 'Unbound 200', 'date': self._future_date(),
+                    'priority': 'A',
+                }],
+                'offer_variant': 'A\n',
+                'entry_src': 'home\n',
+                'race_slug': 'unbound-200\n',
+            }, environ_base={'REMOTE_ADDR': '198.51.100.154'})
+
+            assert response.status_code == 200
+            metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+            assert 'offer_variant' not in metadata
+            assert 'entry_src' not in metadata
+            assert 'race_slug' not in metadata
+
     def test_checkout_discards_ga4_ids_when_consent_is_denied(
             self, client, temp_athletes_dir):
         with patch('app.stripe') as mock_stripe:
@@ -3667,6 +3784,22 @@ class TestSeasonPlanCheckout:
             assert '/season-plan/success/' in call_kwargs['success_url']
             assert '/training-plans/success/' not in call_kwargs['success_url']
 
+    def test_season_plan_checkout_respects_brand_availability_gate(
+            self, client, temp_athletes_dir):
+        """sol review (NO-GO #3): unlike the race-plan path, the Season
+        Plan checkout had no brand-availability check at all — a brand
+        with custom-plan generation explicitly disabled (xcskilabs,
+        athletes/config/brands.yaml) could still buy one."""
+        response = client.post(
+            '/api/create-checkout',
+            json={'name': 'Ski Buyer', 'email': 'ski@test.com',
+                  'product': 'season_plan'},
+            content_type='application/json',
+            headers={'Origin': 'https://xcskilabs.com'},
+        )
+        assert response.status_code == 400
+        assert 'does not support training-plan' in response.get_json()['error']
+
     def test_season_plan_checkout_disables_promotion_codes(
             self, client, temp_athletes_dir):
         """sol NO-GO #2: Season Plan never offers a promo code, unlike the
@@ -4046,8 +4179,9 @@ class TestSeasonPlanWebhook:
 
     def test_season_plan_coach_notification_states_build_window_and_races(
             self, client, temp_athletes_dir, monkeypatch):
-        """Coach notification must clearly say Season Plan, the build-due
-        window (same as race plans), and the races captured — so Matti can
+        """Coach notification must clearly say Season Plan, its own
+        build-due window (3 days — longer than the race plan's 24 hours,
+        Matti ruling 2026-09-23), and the races captured — so Matti can
         run Motoren from the intake without hunting for it."""
         import app as app_module
         monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
@@ -4066,8 +4200,31 @@ class TestSeasonPlanWebhook:
         call_args = mock_send.call_args_list[0]
         subject, text = call_args[0][1], call_args[0][2]
         assert 'Season Plan' in subject
-        assert '24 hours' in text
+        assert 'Build due within 3 days' in text
+        assert 'same window as race plans' not in text
         assert 'Unbound 200' in text
+
+    def test_season_plan_build_window_is_3_days_not_24_hours(self):
+        import app as app_module
+        assert app_module.SEASON_PLAN_BUILD_WINDOW_DAYS == 3
+
+    def test_season_plan_coach_notification_escapes_name_and_order_id_html(self):
+        """sol review (BLOCKER #4): name/email/order_id were interpolated
+        unescaped into the coach notification's HTML while race fields and
+        the intake id were already escaped — a buyer-controlled name could
+        inject markup/links into a private coach alert."""
+        import app as app_module
+        _, _, html = app_module._build_season_plan_email({
+            'name': '<img src=x onerror=alert(1)>',
+            'email': 'rider@example.com',
+            'order_id': '</h2><script>bad</script>',
+            'rebuild_dates': [],
+            'races': [],
+            'brand': 'gravelgod',
+        })
+        assert '<img src=x onerror=alert(1)>' not in html
+        assert '<script>bad</script>' not in html
+        assert '&lt;img src=x onerror=alert(1)&gt;' in html
 
     def test_season_plan_webhook_sends_customer_confirmation(
             self, client, temp_athletes_dir):
