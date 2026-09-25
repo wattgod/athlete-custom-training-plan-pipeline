@@ -503,7 +503,7 @@ def _bike_session(day, title, steps, session_type='workout'):
 
 def test_hard_minutes_below_floor_warns_on_a_load_week():
     """AE-2.1 (sol programming review 2026-08-24, blocker 4): a load week
-    delivering under 90 structured minutes at >=92% FTP surfaces a
+    delivering under 90 structured minutes above Z2 surfaces a
     WARNING (real case: W3's 26.7 hard minutes, the pilot plan's only
     true build/load week)."""
     document = _document()
@@ -522,6 +522,43 @@ def test_hard_minutes_below_floor_warns_on_a_load_week():
     assert item['id'] == 'HARD_MINUTES_BELOW_FLOOR_W01'
     assert item['severity'] == 'WARNING'
     assert item['review_value']['hard_minutes'] == 30.0
+
+
+def test_hard_minutes_count_tempo_and_sweet_spot_but_not_z2():
+    """Matti's 2026-09-24 ruling: tempo and sweet spot count toward AE-2.1.
+
+    A 75%-FTP Z2 step does not; 76%-FTP tempo and 88%-FTP sweet spot do.
+    The week must clear the 90-minute floor on those two work steps alone.
+    """
+    document = _document()
+    document['plan_ir']['weeks'][1]['week_type'] = 'load'
+    document['plan_ir']['weeks'][1]['sessions'] = [
+        _bike_session('2026-08-11', 'Tempo + Sweet Spot', [
+            _step(3600, 65, 75),  # 60 min Z2: excluded
+            _step(3600, 76, 80),  # 60 min tempo: credited
+            _step(1800, 88, 90),  # 30 min sweet spot: credited
+        ]),
+    ]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    assert not [issue for issue in issues
+                if issue['id'] == 'HARD_MINUTES_BELOW_FLOOR_W01']
+
+
+def test_hard_minutes_do_not_credit_a_step_spanning_z2_and_tempo():
+    """An 80% upper bound alone cannot prove every second was above Z2."""
+    document = _document()
+    document['plan_ir']['weeks'][1]['week_type'] = 'load'
+    document['plan_ir']['weeks'][1]['sessions'] = [
+        _bike_session('2026-08-11', 'Mixed target band', [
+            _step(5400, 70, 80),  # Could be entirely Z2: no hard credit.
+        ]),
+    ]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    item = next(issue for issue in issues
+                if issue['id'] == 'HARD_MINUTES_BELOW_FLOOR_W01')
+    assert item['review_value']['hard_minutes'] == 0.0
 
 
 def test_hard_minutes_expands_repetition_blocks():

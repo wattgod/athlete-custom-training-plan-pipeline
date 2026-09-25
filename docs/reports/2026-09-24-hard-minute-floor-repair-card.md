@@ -23,3 +23,20 @@ AE-2.1 ratifies 90–120 genuinely hard minutes for graduated athletes training 
 4. Regression fixtures: the sealed `cohort-05`/`cohort-06` schedules and a novice with zero structured years. Assert exact day placement, planned and rendered hard minutes under the ratified ruler, VO2 ceiling, weekly hour fit, taper exemptions, and no athlete-calendar writes. Rerun the fixed ten-order replay and compare every finding by ID; a lower warning count alone is not acceptance.
 
 No generator or gate code was changed in this investigation. The 47 findings remain blockers for review readiness, alongside the rehearsal's independent voice, RPE/structure, VO2-dose, stale-race, and unresolved-pain findings. This card does not certify Motoren for ten orders/day.
+
+## 2026-09-24 ruling and follow-up
+
+Matti ruled that tempo and sweet-spot intervals count toward AE-2.1's
+90-minute load-week target. The post-render counter now credits FTP-targeted
+steps whose entire target band is at or above 76% FTP (Z3); Z1–Z2 steps and
+bands crossing the Z2 boundary are not credited. The separate ≥92% taper cap
+and ≥106% VO₂ dose check were not relaxed. Focused red/green tests cover
+tempo, sweet spot, Z2, and a target band crossing the boundary.
+
+The fixed ten-order offline replay after this accounting change sealed all
+ten packages, but **0/10 were ready for review**. Hard-minute findings fell
+from 47 to 29; the remaining 29 and independent voice, RPE/structure,
+VO₂-dose, stale-race, unresolved-pain, and registry findings remain visible.
+The generator's feasible-dose scheduling, novice graduation state, and live
+TP adapter still require separate work. This is progress in measurement, not
+a claim that the plans or ten-order/day operation are production-ready.
