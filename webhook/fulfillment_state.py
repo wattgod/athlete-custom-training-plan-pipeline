@@ -15,6 +15,7 @@ import hmac
 import json
 import os
 import re
+import tempfile
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -1343,6 +1344,51 @@ def approval_matches_release(state: Dict[str, Any]) -> bool:
     )
 
 
+def _tp_package_approval_preflight(path: os.PathLike[str] | str) -> Optional[Dict[str, Any]]:
+    """Derive Card 1 bytes before transition acquires the per-order state lock.
+
+    The package builder reads the state under that same lock. Only canonical
+    TP sources opt in; older TP and other delivery approvals retain their
+    existing contract.
+    """
+    state = load(path)
+    if state.get("delivery_platform") != "trainingpeaks":
+        return None
+    manifest_path = Path(str(state.get("release_manifest") or ""))
+    if not manifest_path.is_file():
+        return None
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        paths = {record["path"] for record in manifest["artifacts"]}
+    except (OSError, ValueError, KeyError, TypeError):
+        return None  # The existing release verifier diagnoses malformed seals.
+    required = {f"artifacts/{name}" for name in (
+        "tp_manifest.json", "fulfillment_manifest.json", "plan_ir.json",
+        "canonical_training_model.json", "training_guide.html")}
+    if not required <= paths:
+        return None
+    from tools import build_sealed_tp_plan_package as sealed
+    revision_dir = manifest_path.parent
+    with tempfile.TemporaryDirectory(prefix="tp-approval-package-") as scratch:
+        try:
+            receipt = sealed.build(state["order_id"], Path(path), revision_dir,
+                                   Path(scratch))
+        except (ValueError, OSError) as exc:
+            raise FulfillmentStateError(
+                f"TP package approval preflight failed: {exc}") from exc
+        if not receipt["ready_for_review"]:
+            return None
+        digest = hashlib.sha256(
+            (Path(scratch) / "coverage_receipt.json").read_bytes()).hexdigest()
+    return {
+        "revision": state["generation_revision"],
+        "model_seal": state["model_seal"],
+        "release_manifest_digest": state["release_manifest_digest"],
+        "binding": {"coverage_receipt_sha256": digest,
+                    "customer_guide": receipt["customer_guide"]},
+    }
+
+
 def _seal_mismatch_issue(message: str) -> Dict[str, Any]:
     return _validate_issue({
         "id": "SEAL_MISMATCH",
@@ -1514,6 +1560,7 @@ def transition(
         raise FulfillmentStateError("unknown destination status")
     if not str(coach).strip():
         raise FulfillmentStateError("coach is required")
+    tp_preflight = _tp_package_approval_preflight(path) if to == APPROVED else None
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")
@@ -1737,6 +1784,14 @@ def transition(
                 "release_manifest_digest": state["release_manifest_digest"],
                 "confirmations": snapshots,
             }
+            if tp_preflight is not None:
+                if (tp_preflight["revision"] != state["generation_revision"]
+                        or tp_preflight["model_seal"] != state["model_seal"]
+                        or tp_preflight["release_manifest_digest"]
+                        != state["release_manifest_digest"]):
+                    raise FulfillmentStateError(
+                        "TP package changed during approval; review the current revision")
+                state["approval"]["tp_package_binding"] = tp_preflight["binding"]
         elif to == APPLIED:
             if current != APPROVED:
                 raise FulfillmentStateError("application requires APPROVED status")

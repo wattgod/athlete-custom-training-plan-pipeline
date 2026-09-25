@@ -37,6 +37,9 @@ COPY schemas/ ./schemas/
 # Read-only host audit only. The calendar-mutating historical tools remain out
 # of the production image; this file scans durable JSON and emits redacted data.
 COPY tools/audit_fulfillment_states.py ./tools/
+# Canonical TP approval preflight rebuilds the sealed, order-bound package.
+# These pure offline tools are required at runtime; no TP transport is shipped.
+COPY tools/build_sealed_tp_plan_package.py tools/build_tp_plan_payload.py tools/tp_polyline.py ./tools/
 
 # Create persistent data directory (Railway volume mounts here)
 RUN mkdir -p /data

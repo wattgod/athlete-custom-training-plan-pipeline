@@ -608,7 +608,11 @@ def _endurance_tss_rate_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, str]
     return findings
 
 
-_HARD_FTP_THRESHOLD = 92.0
+# AE-2.1 hard-minute accounting uses time above Z2. Matti's 2026-09-24
+# ruling explicitly includes tempo and sweet spot; Z3 begins at 76% FTP
+# (nate_constants.TEMPO_LOW). This is distinct from AE-1.12's >=92% taper
+# cap and AE-3.1's >=106% VO2 dose ceiling.
+_HARD_FTP_THRESHOLD = 76.0
 _HARD_MINUTES_FLOOR = 90.0
 # week_type values (plan_ir week dict, project_tp_structure) NOT covered by
 # AE-2.1's floor -- recovery/taper carry their own zero/capped-intensity
@@ -640,13 +644,13 @@ def _step_seconds(step: Dict[str, Any]) -> int:
 
 
 def _step_hard_seconds(step: Dict[str, Any], *, is_test: bool) -> int:
-    """Seconds of this step that count toward AE-2.1's >=92% FTP hard-minutes
+    """Seconds of this step above Z2 that count toward AE-2.1's hard-minutes
     floor. A field-test session's own open/FreeRide test effort (structured
     honestly as a zero-target step per AE-8.4d, since its whole point is
     that no numeric target can be trusted) still counts as hard time --
     AE-2.1: "testing weeks count test efforts toward the floor". Only the
     field test's genuinely easy between-rep recovery blocks (a real,
-    non-zero, sub-92% target) are excluded."""
+    non-zero, Z2-or-easier target) are excluded."""
     intensity_class = str(step.get("intensityClass") or "")
     if intensity_class in ("warmUp", "coolDown", "rest"):
         return 0
@@ -664,7 +668,9 @@ def _step_hard_seconds(step: Dict[str, Any], *, is_test: bool) -> int:
                 pass
     maximum = max(values) if values else None
     minimum = min(values) if values else None
-    if maximum is not None and maximum >= _HARD_FTP_THRESHOLD:
+    # A broad target band crossing Z2/tempo does not prove that all of the
+    # step was above Z2. Credit full seconds only when the whole band is.
+    if minimum is not None and minimum >= _HARD_FTP_THRESHOLD:
         return seconds
     if is_test and minimum == 0 and (maximum is None or maximum == 0):
         return seconds
@@ -768,7 +774,7 @@ def _hard_minutes_findings(
     plan_ir: Dict[str, Any], profile: Dict[str, Any] | None = None,
 ) -> List[Dict[str, Any]]:
     """AE-2.1 (phase-scoped, sol programming review 2026-08-24): a LOAD week
-    needs >=90 structured hard minutes (>=92% FTP, test efforts counted per
+    needs >=90 structured hard minutes (tempo and above, test efforts counted per
     the ratified scoping addendum); recovery/taper/race weeks are governed
     by their own rules and exempt. WARNING severity: the plan still ships,
     but a real offender (W3's 26.7 hard minutes in the sol review, the

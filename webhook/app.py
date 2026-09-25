@@ -21,6 +21,7 @@ import hashlib
 import logging
 import subprocess
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import uuid
 import math
 import shutil
@@ -3853,12 +3854,12 @@ def log_order(order_data: dict, result: dict):
 
 
 # =============================================================================
-# ASYNC PIPELINE JOBS — durable JSON job records + background threads
+# ASYNC PIPELINE JOBS — durable JSON job records + bounded workers
 #
 # The pipeline takes minutes; Stripe times out webhook responses at ~20s.
-# The webhook handler now writes a job record to the persistent volume
-# (DATA_DIR/jobs/{athlete_id}.json), spawns the pipeline in a background
-# thread, and returns 200 to Stripe immediately. Job records survive
+# The webhook handler writes an order-keyed job record to the persistent
+# volume, offers it to the bounded worker pool, and returns 200 to Stripe.
+# Job records survive
 # Railway restarts; sweep_stuck_jobs() retries jobs orphaned mid-generation
 # (on startup, hourly, and via POST /api/jobs/sweep for external cron).
 #
@@ -3871,10 +3872,27 @@ JOBS_DIR = os.path.join(DATA_DIR, 'jobs')
 # restart or crash and gets retried by the sweep (max JOB_MAX_ATTEMPTS).
 JOB_STUCK_AFTER_MINUTES = int(os.environ.get('JOB_STUCK_AFTER_MINUTES', '30'))
 JOB_MAX_ATTEMPTS = int(os.environ.get('JOB_MAX_ATTEMPTS', '2'))
+JOB_WORKERS_PER_PROCESS = max(1, min(4, int(os.environ.get('JOB_WORKERS_PER_PROCESS', '2'))))
 
-# Serializes job-file writes within this process (cross-process safety comes
-# from atomic tempfile + os.replace; gunicorn runs 2 workers).
-_jobs_write_lock = threading.Lock()
+# The local lock prevents same-process flock reentrancy; per-order flock
+# provides cross-process ownership under Gunicorn's two web processes.
+_jobs_write_lock = threading.RLock()
+_job_slots = threading.BoundedSemaphore(JOB_WORKERS_PER_PROCESS)
+_job_executor = ThreadPoolExecutor(max_workers=JOB_WORKERS_PER_PROCESS,
+                                   thread_name_prefix='plan-job')
+
+
+@contextlib.contextmanager
+def _job_record_lock(order_id: str):
+    """Serialize ownership decisions across threads and Gunicorn processes."""
+    lock_path = _canonical_job_path(order_id).with_suffix('.lock')
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with _jobs_write_lock, open(lock_path, 'a+') as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def _sync_pipeline_mode() -> bool:
@@ -3891,16 +3909,16 @@ def _job_path(ref: str) -> Path:
     return Path(JOBS_DIR) / f'{_normalize_athlete_id(ref)}.json'
 
 
-def _write_job(job: dict):
-    """Atomically persist a job record (temp file + os.replace)."""
+def _write_job_unlocked(job: dict):
+    """Persist under the order lock; callers must hold it."""
     job['updated_at'] = datetime.now().isoformat()
     order_id = job.get('order_id') or f"legacy-job-{_normalize_athlete_id(job['athlete_id'])}"
     job['order_id'] = order_id
     order_id = _safe_order_id(order_id)
     path = _canonical_job_path(order_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f'.{path.name}.tmp')
-    with _jobs_write_lock:
+    tmp = path.with_name(f'.{path.name}.{uuid.uuid4().hex}.tmp')
+    try:
         with open(tmp, 'w') as f:
             json.dump(job, f, indent=2)
             f.flush()
@@ -3909,18 +3927,31 @@ def _write_job(job: dict):
         # Athlete-keyed file is a lookup only. Keep enough compatibility for
         # older operational tooling when exactly one order is known.
         lookup_path = _job_path(job['athlete_id'])
-        try:
-            lookup = json.loads(lookup_path.read_text()) if lookup_path.exists() else {}
-        except (OSError, json.JSONDecodeError):
-            lookup = {}
-        order_ids = sorted(set((lookup.get('order_ids') or []) + [order_id]))
-        lookup_payload = {'athlete_id': job['athlete_id'], 'order_ids': order_ids}
-        if len(order_ids) == 1:
-            lookup_payload.update(job)
-            lookup_payload['order_ids'] = order_ids
-        lookup_tmp = lookup_path.with_name(f'.{lookup_path.name}.tmp')
-        lookup_tmp.write_text(json.dumps(lookup_payload, indent=2) + '\n')
-        os.replace(lookup_tmp, lookup_path)
+        lookup_lock = lookup_path.with_suffix('.lock')
+        with open(lookup_lock, 'a+') as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                lookup = json.loads(lookup_path.read_text()) if lookup_path.exists() else {}
+            except (OSError, json.JSONDecodeError):
+                lookup = {}
+            order_ids = sorted(set((lookup.get('order_ids') or []) + [order_id]))
+            lookup_payload = {'athlete_id': job['athlete_id'], 'order_ids': order_ids}
+            if len(order_ids) == 1:
+                lookup_payload.update(job)
+                lookup_payload['order_ids'] = order_ids
+            lookup_tmp = lookup_path.with_name(f'.{lookup_path.name}.{uuid.uuid4().hex}.tmp')
+            lookup_tmp.write_text(json.dumps(lookup_payload, indent=2) + '\n')
+            os.replace(lookup_tmp, lookup_path)
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _write_job(job: dict):
+    """Atomically persist a job record with a cross-process order lock."""
+    order_id = job.get('order_id') or f"legacy-job-{_normalize_athlete_id(job['athlete_id'])}"
+    with _job_record_lock(order_id):
+        _write_job_unlocked(job)
 
 
 def _read_job(ref: str) -> dict:
@@ -3957,12 +3988,20 @@ def _read_job(ref: str) -> dict:
 
 def _update_job(ref: str, **fields) -> dict:
     """Read-modify-write a job record."""
-    job = _read_job(ref)
-    if not job:
-        raise ValueError(f'job not found: {ref}')
-    job.update(fields)
-    _write_job(job)
-    return job
+    with _job_record_lock(ref):
+        job = _read_job(ref)
+        if not job:
+            raise ValueError(f'job not found: {ref}')
+        job.update(fields)
+        _write_job_unlocked(job)
+        return job
+
+
+def _elapsed_job_seconds(started_at: str) -> float | None:
+    try:
+        return round(max(0, (datetime.now() - datetime.fromisoformat(started_at)).total_seconds()), 3)
+    except (TypeError, ValueError):
+        return None
 
 
 def _execute_plan_job(job: dict, intake_data: dict = None):
@@ -3984,8 +4023,9 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
     try:
         if not _read_job(job['order_id']):
             _write_job(job)
-        _update_job(job['order_id'], status='running',
-                    started_at=datetime.now().isoformat())
+        if _read_job(job['order_id']).get('status') != 'running':
+            _update_job(job['order_id'], status='running',
+                        started_at=datetime.now().isoformat())
 
         result = run_pipeline(athlete_id, deliver=True,
                               intake_data=intake_data or None,
@@ -4060,14 +4100,22 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
                 logger.error(
                     f'Review token unavailable for order '
                     f"{order_data.get('order_id', '')}: {exc}")
+            # The intent precedes the external email. If the process dies
+            # during send, recovery never repeats a possibly delivered notice.
+            _update_job(job['order_id'], notification_attempted_at=datetime.now().isoformat())
             _notify_new_order('training_plan', details)
             _update_job(job['order_id'], status='succeeded',
-                        finished_at=datetime.now().isoformat(), error=None)
+                        finished_at=datetime.now().isoformat(), error=None,
+                        generation_seconds=_elapsed_job_seconds(
+                            _read_job(job['order_id']).get('started_at')))
         else:
+            _update_job(job['order_id'], notification_attempted_at=datetime.now().isoformat())
             _notify_new_order('training_plan_FAILED', details)
             _update_job(job['order_id'], status='failed',
                         finished_at=datetime.now().isoformat(),
-                        error=_pipeline_error_excerpt(result))
+                        error=_pipeline_error_excerpt(result),
+                        generation_seconds=_elapsed_job_seconds(
+                            _read_job(job['order_id']).get('started_at')))
         return result
 
     except Exception as e:
@@ -4076,35 +4124,182 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
             f"PLAN JOB CRASHED for {athlete_id} "
             f"(order {job.get('order_id', '?')}): {e}", exc_info=True)
         try:
+            # A notification may have been delivered even if its transport
+            # raised. Do not send a contradictory second notice. The durable
+            # job record exposes the uncertain outcome for the coach audit.
+            notification_attempted = bool(
+                (_read_job(job['order_id']) or {}).get('notification_attempted_at'))
             _update_job(job['order_id'], status='failed',
                         finished_at=datetime.now().isoformat(),
-                        error=str(e)[:500])
-            details = _build_plan_notification_details(
-                order_data,
-                {'success': False, 'stdout': '', 'stderr': str(e)[:500]},
-                intake_data or None)
-            _notify_new_order('training_plan_FAILED', details)
+                        error=str(e)[:500],
+                        notification_outcome='uncertain' if notification_attempted
+                        else None)
+            if not notification_attempted:
+                details = _build_plan_notification_details(
+                    order_data,
+                    {'success': False, 'stdout': '', 'stderr': str(e)[:500]},
+                    intake_data or None)
+                _update_job(job['order_id'], notification_attempted_at=
+                            datetime.now().isoformat())
+                _notify_new_order('training_plan_FAILED', details)
         except Exception:
             logger.exception(f"Failed to record job crash for {athlete_id}")
         return {'success': False, 'stdout': '', 'stderr': str(e)}
 
 
-def _start_job_thread(job: dict, intake_data: dict = None) -> threading.Thread:
-    """Spawn the job in a background (non-daemon) thread.
+def _claim_plan_job(order_id: str) -> dict | None:
+    """Atomically claim a queued order; never claim a live running lease."""
+    with _job_record_lock(order_id):
+        job = _read_job(order_id)
+        if not job or job.get('status') != 'queued':
+            return None
+        job.update(status='running', claim_id=uuid.uuid4().hex,
+                   started_at=datetime.now().isoformat(),
+                   queue_seconds=_elapsed_job_seconds(job.get('created_at')),
+                   lease_expires_at=(datetime.now() + timedelta(
+                       minutes=JOB_STUCK_AFTER_MINUTES)).isoformat())
+        _write_job_unlocked(job)
+        return job
 
-    Separate function so tests can patch it to run inline/deterministically.
-    daemon=False: on graceful shutdown the worker waits for the thread
-    (gunicorn --graceful-timeout 30); a hard kill is what the sweep handles.
-    """
-    t = threading.Thread(
-        target=_execute_plan_job,
-        args=(job,),
-        kwargs={'intake_data': intake_data},
-        name=f'plan-job-{job["athlete_id"]}',
-        daemon=False,
-    )
-    t.start()
-    return t
+
+def _renew_job_lease(order_id: str, claim_id: str, stop: threading.Event):
+    """Keep an active generation from being reclaimed by another process."""
+    while not stop.wait(60):
+        with _job_record_lock(order_id):
+            job = _read_job(order_id)
+            if not job or job.get('status') != 'running' or job.get('claim_id') != claim_id:
+                return
+            job['lease_expires_at'] = (datetime.now() + timedelta(
+                minutes=JOB_STUCK_AFTER_MINUTES)).isoformat()
+            _write_job_unlocked(job)
+
+
+def _run_claimed_job(order_id: str, intake_data: dict = None):
+    stop_lease = threading.Event()
+    lease_thread = None
+    execution_lock = None
+    owns_execution = False
+    try:
+        execution_path = _canonical_job_path(order_id).with_suffix('.execution.lock')
+        execution_lock = open(execution_path, 'a+')
+        try:
+            fcntl.flock(execution_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            owns_execution = True
+        except BlockingIOError:
+            return  # Another process is still generating this exact order.
+        job = _claim_plan_job(order_id)
+        if job:
+            lease_thread = threading.Thread(
+                target=_renew_job_lease,
+                args=(order_id, job['claim_id'], stop_lease),
+                name='plan-lease', daemon=True)
+            lease_thread.start()
+            # A sealed canonical release means generation already completed
+            # before a worker died. Never make another revision on recovery.
+            state_path = _order_dir(order_id) / 'fulfillment_status.json'
+            if state_path.is_file():
+                try:
+                    state = load_fulfillment_state(state_path)
+                    if state.get('model_seal') and state.get('order_id') == order_id:
+                        revision_dir = _order_dir(order_id) / 'revisions' / f"r{state['generation_revision']}"
+                        verify_release_manifest(state, revision_dir)
+                        if not job.get('notification_attempted_at'):
+                            details = _build_plan_notification_details(
+                                job.get('order_data', {}),
+                                {'success': True, 'stdout': '', 'stderr': ''},
+                                intake_data)
+                            details['fulfillment_state'] = state.get('status', '')
+                            details['fulfillment_status'] = state.get('status', '')
+                            details['blocking_issues'] = state.get('blocking_issues', [])
+                            details['required_confirmations'] = state.get(
+                                'required_confirmations', [])
+                            try:
+                                details['review_token'] = _generate_review_token(
+                                    order_id, NOTIFICATION_EMAIL)
+                            except (ReviewAuthError, FulfillmentStateError):
+                                logger.exception('Recovered release has no review token')
+                            _update_job(order_id, notification_attempted_at=
+                                        datetime.now().isoformat())
+                            _notify_new_order('training_plan', details)
+                        _update_job(order_id, status='succeeded',
+                                    recovered_from_release=True,
+                                    finished_at=datetime.now().isoformat())
+                        return
+                    raise FulfillmentStateError(
+                        'existing canonical order state is unsealed or has wrong order id')
+                except (OSError, ValueError, FulfillmentStateError):
+                    logger.exception('Could not inspect canonical release for job recovery')
+                    notification_attempted = bool(
+                        (_read_job(order_id) or {}).get('notification_attempted_at'))
+                    _update_job(order_id, status='failed',
+                                error=('Canonical release recovery needs coach review; '
+                                       'coach notification outcome uncertain'
+                                       if notification_attempted else
+                                       'Canonical release recovery needs coach review'),
+                                notification_outcome='uncertain' if notification_attempted
+                                else None,
+                                notification_attempted_at=datetime.now().isoformat())
+                    if not notification_attempted:
+                        details = _build_plan_notification_details(
+                            job.get('order_data', {}),
+                            {'success': False, 'stdout': '',
+                             'stderr': 'Canonical release recovery needs coach review'},
+                            intake_data)
+                        _notify_new_order('training_plan_FAILED', details)
+                    return
+            _execute_plan_job(job, intake_data=intake_data)
+    except Exception as exc:
+        logger.critical(f'Claimed plan job crashed for order {order_id}: {exc}',
+                        exc_info=True)
+        try:
+            record = _read_job(order_id)
+            if record and record.get('status') == 'running':
+                notification_attempted = bool(record.get('notification_attempted_at'))
+                _update_job(order_id, status='failed',
+                            finished_at=datetime.now().isoformat(),
+                            error=str(exc)[:500],
+                            notification_outcome='uncertain' if notification_attempted
+                            else None,
+                            notification_attempted_at=datetime.now().isoformat())
+                if not notification_attempted:
+                    details = _build_plan_notification_details(
+                        record.get('order_data', {}),
+                        {'success': False, 'stdout': '', 'stderr': str(exc)[:500]}, None)
+                    _notify_new_order('training_plan_FAILED', details)
+        except Exception:
+            logger.exception('Could not record claimed job failure')
+    finally:
+        stop_lease.set()
+        if lease_thread:
+            lease_thread.join(timeout=2)
+        if execution_lock:
+            if owns_execution:
+                fcntl.flock(execution_lock.fileno(), fcntl.LOCK_UN)
+            execution_lock.close()
+        _job_slots.release()
+        # Start the next durable queued job, if any. This runs after the slot
+        # is free and does not create an unbounded in-memory executor queue.
+        if owns_execution:
+            _dispatch_queued_jobs()
+
+
+def _start_job_thread(job: dict, intake_data: dict = None):
+    """Offer one durable order to the bounded process-local worker pool."""
+    if not _job_slots.acquire(blocking=False):
+        return None
+    try:
+        return _job_executor.submit(_run_claimed_job, job['order_id'], intake_data)
+    except Exception:
+        _job_slots.release()
+        raise
+
+
+def _dispatch_queued_jobs():
+    for path in sorted((Path(JOBS_DIR) / 'orders').glob('*.json')):
+        job = _read_job(path.stem)
+        if job and job.get('status') == 'queued':
+            if _start_job_thread(job) is None:
+                break
 
 
 def _spawn_plan_job(order_data: dict, intake_id: str = '',
@@ -4120,13 +4315,6 @@ def _spawn_plan_job(order_data: dict, intake_id: str = '',
     athlete_id = order_data['athlete_id']
 
     order_id = _safe_order_id(order_data.get('order_id', ''))
-    existing = _read_job(order_id)
-    if existing and existing.get('status') in ('queued', 'running'):
-        logger.warning(
-            f"Job for order {order_id} already {existing['status']} "
-            f"(order {existing.get('order_id', '?')}) — not spawning duplicate")
-        return existing, None
-
     job = {
         'athlete_id': athlete_id,
         'order_id': order_id,
@@ -4144,7 +4332,11 @@ def _spawn_plan_job(order_data: dict, intake_id: str = '',
         # Full order_data so sweep retries are self-contained after restart.
         'order_data': order_data,
     }
-    _write_job(job)
+    with _job_record_lock(order_id):
+        existing = _read_job(order_id)
+        if existing:
+            return existing, None
+        _write_job_unlocked(job)
 
     if _sync_pipeline_mode():
         result = _execute_plan_job(job, intake_data=intake_data)
@@ -4167,34 +4359,52 @@ def sweep_stuck_jobs() -> dict:
     if not jobs_dir.exists():
         return stats
 
-    stuck_before = datetime.now() - timedelta(minutes=JOB_STUCK_AFTER_MINUTES)
-
     for path in sorted((jobs_dir / 'orders').glob('*.json')):
-        job = _read_job(path.stem)
-        if not job or job.get('status') not in ('queued', 'running'):
-            continue
-        stats['scanned'] += 1
+        with _job_record_lock(path.stem):
+            job = _read_job(path.stem)
+            if not job or job.get('status') not in ('queued', 'running'):
+                continue
+            stats['scanned'] += 1
+            if job['status'] == 'queued':
+                continue  # Waiting for capacity is not a failed attempt.
+            try:
+                lease_until = datetime.fromisoformat(
+                    job.get('lease_expires_at') or job.get('updated_at', ''))
+            except (ValueError, TypeError):
+                lease_until = datetime.min
+            if not job.get('lease_expires_at'):
+                lease_until += timedelta(minutes=JOB_STUCK_AFTER_MINUTES)
+            if lease_until > datetime.now():
+                continue
+            athlete_id = job['athlete_id']
+            attempts = int(job.get('attempts', 1))
+            max_attempts = int(job.get('max_attempts', JOB_MAX_ATTEMPTS))
+            state_path = _order_dir(job['order_id']) / 'fulfillment_status.json'
+            has_sealed_release = False
+            if state_path.is_file():
+                try:
+                    state = load_fulfillment_state(state_path)
+                    if state.get('model_seal') and state.get('order_id') == job['order_id']:
+                        revision_dir = _order_dir(job['order_id']) / 'revisions' / f"r{state['generation_revision']}"
+                        verify_release_manifest(state, revision_dir)
+                        has_sealed_release = True
+                except (OSError, ValueError, FulfillmentStateError):
+                    logger.exception('Cannot inspect canonical release during job sweep')
+            if attempts >= max_attempts and not has_sealed_release:
+                job.update(status='failed', finished_at=datetime.now().isoformat(),
+                           error=f'Job stuck after {attempts} attempts (likely restart mid-generation)',
+                           notification_attempted_at=datetime.now().isoformat())
+            else:
+                job.update(attempts=attempts + (not has_sealed_release),
+                           status='queued', error=None,
+                           claim_id=None, lease_expires_at=None)
+            _write_job_unlocked(job)
 
-        try:
-            updated_at = datetime.fromisoformat(job.get('updated_at', ''))
-        except (ValueError, TypeError):
-            updated_at = datetime.min
-        if updated_at > stuck_before:
-            continue  # Recently touched — probably still running
-
-        athlete_id = job['athlete_id']
-        attempts = int(job.get('attempts', 1))
-        max_attempts = int(job.get('max_attempts', JOB_MAX_ATTEMPTS))
-
-        if attempts >= max_attempts:
+        if attempts >= max_attempts and not has_sealed_release:
             logger.critical(
                 f"PLAN JOB ORPHANED after {attempts} attempts: {athlete_id} "
                 f"(order {job.get('order_id', '?')}) — marking failed, "
                 f"manual re-run required")
-            _update_job(job['order_id'], status='failed',
-                        finished_at=datetime.now().isoformat(),
-                        error=f'Job stuck after {attempts} attempts '
-                              f'(likely restart mid-generation)')
             try:
                 details = _build_plan_notification_details(
                     job.get('order_data', {}),
@@ -4208,19 +4418,15 @@ def sweep_stuck_jobs() -> dict:
                 logger.exception(f"Failed to notify for orphaned job {athlete_id}")
             stats['failed'] += 1
         else:
-            job['attempts'] = attempts + 1
-            job['status'] = 'queued'
-            job['error'] = None
-            _write_job(job)
             logger.warning(
                 f"Retrying stuck job for {athlete_id} "
                 f"(attempt {job['attempts']}/{max_attempts})")
             if _sync_pipeline_mode():
                 _execute_plan_job(job)
-            else:
-                _start_job_thread(job)
             stats['retried'] += 1
 
+    if not _sync_pipeline_mode():
+        _dispatch_queued_jobs()
     return stats
 
 

@@ -258,6 +258,12 @@ rules (AE-1.12 caps make the floor impossible there by design; testing
 weeks count test efforts toward the floor). **Precedence:** AE-2.1 applies only
 after an athlete passes AE-1.10's intensity-graduation gate — true novices
 inside the onboarding state machine are exempt from the hard-minutes floor.
+**Accounting ruling (Matti, 2026-09-24):** tempo and sweet-spot work count
+toward the 90-minute load-week target, as do threshold and VO₂ work; easy
+Z1–Z2 riding does not. For FTP-targeted structures the boundary is the start
+of Z3, 76% FTP. This accounting rule does not relax the separate VO₂ session
+dose or taper hard-content caps. It does not authorize adding sessions beyond
+the athlete's schedule to make a week pass.
 **Migration:** active registry rule R05 currently permits novices 1–3
 intensity sessions (`block_compliance.py:237`, SPEC_EARNED_SELECTION R05);
 implementing this rule requires an R05 revision (owner review + version
